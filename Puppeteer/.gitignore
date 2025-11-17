@@ -1,0 +1,45 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Logs and runtime files
+logs/
+*.log
+.pnpm-debug.log*
+/*.pid
+/*.seed
+/*.pid.lock
+
+# Builds / output
+dist/
+build/
+out/
+.cache/
+.tmp/
+
+# Environment & secret files
+.env
+.env.local
+.env.*.local
+
+# OS / Editor stuff
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Puppeteer / Chromium/Browser binaries
+.puppeteer/
+chrome-debug.log
+
+# Misc caches
+*.tsbuildinfo
+*.rpt2_cache/
+*.rts2_cache_cjs/
+*.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional: lock files to include or ignore based on your team preference
+# package-lock.json
+# yarn.lock
