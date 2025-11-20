@@ -3,8 +3,6 @@ import { downloadFile } from "./downloadFile";
 
 const DownloadCSV = ({ data }) => {
   const handleDownload = () => {
-    if (!data) return;
-
     const escapeCsv = (value) => {
       if (value == null) return "";
       const escaped = String(value).replace(/"/g, '""');
@@ -14,8 +12,7 @@ const DownloadCSV = ({ data }) => {
     const rows = [];
     rows.push("type,text");
     rows.push(`heading,${escapeCsv(data.heading)}`);
-
-    (data.paragraphs || []).forEach((p) => {
+    data.paragraphs.forEach((p) => {
       rows.push(`paragraph,${escapeCsv(p)}`);
     });
 
@@ -23,11 +20,7 @@ const DownloadCSV = ({ data }) => {
     downloadFile(csvContent, "scraped-data.csv", "text/csv");
   };
 
-  return (
-    <Button color="teal" onClick={handleDownload}>
-      Download CSV
-    </Button>
-  );
+  return <Button color="teal" onClick={handleDownload}>Download CSV</Button>;
 };
 
 export default DownloadCSV;
