@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Button, Container, Title } from '@mantine/core';
 
 const App = () => {
   const [data, setData] = useState(null);
@@ -14,6 +15,10 @@ const App = () => {
 
   return (
     <div style={{ padding: 20 }}>
+      <Container p="md">
+      <Title order={2} mb="md">Mantine is working</Title>
+      <Button color="blue">Test Button</Button>
+      </Container>
       <h1>Scraped Heading:</h1>
       <h2>{data.heading}</h2>
       <h3>Paragraphs:</h3>
