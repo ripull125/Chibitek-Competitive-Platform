@@ -1,3 +1,7 @@
+node_modules/
+frontend/node_modules/
+dist/
+.vite/
 # .gitignore
 .env
 .DS_Store
