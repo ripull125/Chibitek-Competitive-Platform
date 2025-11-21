@@ -11,7 +11,7 @@ const App = () => {
   const [data, setData] = useState({ heading: "", paragraphs: [] });
 
   useEffect(() => {
-    fetch(`http://localhost:4000/scrape?ts=${Date.now()}`, { cache: "no-store" })
+    fetch(`http://localhost:8080/scrape?ts=${Date.now()}`, { cache: "no-store" })
       .then(res => res.json())
       .then(json => setData(json))
       .catch(err => console.error(err));
