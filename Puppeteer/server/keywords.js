@@ -4,6 +4,8 @@ dotenv.config();
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
+const systemPrompt =
+  'You generate 3-5 concise search keywords for each book. Return only JSON in the shape {"books": [{"keywords": ["keyword1", ...]}]} matching the input order. Keep keywords simple.';
 
 const parseKeywordsResponse = (content, books) => {
   try {
@@ -45,11 +47,11 @@ export async function suggestKeywordsForBooks(books = []) {
     body: JSON.stringify({
       model: chatGptModel,
       temperature: 0.3,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
-          content:
-            'You generate 3-5 concise search keywords for books. Respond with JSON {"books": [{"keywords": ["keyword1", ...]}]} matching the input order. Use simple words only.',
+          content: systemPrompt,
         },
         {
           role: 'user',

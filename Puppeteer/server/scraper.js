@@ -18,8 +18,14 @@ export async function Scraping() {
         return heading ? heading.textContent : 'Element not found';
     })
     const paragraphTexts = await page.evaluate(() => {
-        const paragraphs = Array.from(document.querySelectorAll('p'));
-        return paragraphs.map(p => p.textContent || '');
+        const cleanText = (text) => (text || '').replace(/\s+/g, ' ').trim();
+        const paragraphs = Array.from(document.querySelectorAll('p')).filter((p) => {
+            const classes = p.className || '';
+            return !classes.includes('price_color') && !classes.includes('instock');
+        });
+        return paragraphs
+            .map((p) => cleanText(p.textContent))
+            .filter(Boolean);
     });
 
     const books = await page.evaluate(() => {
