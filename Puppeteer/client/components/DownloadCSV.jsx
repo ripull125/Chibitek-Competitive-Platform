@@ -10,10 +10,20 @@ const DownloadCSV = ({ data }) => {
     };
 
     const rows = [];
-    rows.push("type,text");
-    rows.push(`heading,${escapeCsv(data.heading)}`);
-    data.paragraphs.forEach((p) => {
-      rows.push(`paragraph,${escapeCsv(p)}`);
+    rows.push("type,text,details");
+    rows.push(`heading,${escapeCsv(data.heading)},`);
+    data.paragraphs.forEach((p, index) => {
+      rows.push(`paragraph,${escapeCsv(p)},Paragraph ${index + 1}`);
+    });
+
+    (data.books || []).forEach((book, index) => {
+      rows.push(
+        `book,${escapeCsv(book.title)},${escapeCsv(
+          `price: ${book.price || "Unknown"}; availability: ${book.availability || "Unknown"}; keywords: ${
+            book.keywords?.length ? book.keywords.join(' | ') : 'Not available'
+          }`
+        )}`
+      );
     });
 
     const csvContent = rows.join("\n");

@@ -22,6 +22,23 @@ export async function Scraping() {
         return paragraphs.map(p => p.textContent || '');
     });
 
+    const books = await page.evaluate(() => {
+        const cleanText = (text) => (text || '').replace(/\s+/g, ' ').trim();
+
+        return Array.from(document.querySelectorAll('.product_pod')).map((card) => {
+            const titleElement = card.querySelector('h3 a');
+            const title = titleElement?.getAttribute('title') || cleanText(titleElement?.textContent);
+            const price = cleanText(card.querySelector('.price_color')?.textContent);
+            const availability = cleanText(card.querySelector('.instock.availability')?.textContent);
+
+            return {
+                title: title || 'Unknown title',
+                price,
+                availability,
+            };
+        });
+    });
+
     const currentUrl = await page.url();
 
     await browser.close();
@@ -30,6 +47,7 @@ export async function Scraping() {
         heading: headingText,
         paragraphs: paragraphTexts,
         url: currentUrl,
-        platform_post_id: currentUrl
-    } 
+        platform_post_id: currentUrl,
+        books
+    }
 }

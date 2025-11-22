@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
+import { suggestKeywordsForBooks } from './keywords.js';
 
 const app = express();
 app.use(cors());
@@ -12,6 +13,8 @@ app.use(cors());
 app.get('/scrape', async (req, res) => {
   try {
     const data = await Scraping();
+    const booksWithKeywords = await suggestKeywordsForBooks(data.books || []);
+    const payload = { ...data, books: booksWithKeywords };
     const { data: inserted, error } = await supabase
       .from('posts')
       .insert({
@@ -24,7 +27,7 @@ app.get('/scrape', async (req, res) => {
     if (error) {
       console.error('Insert error:', error);
     }
-    res.json(data);
+    res.json(payload);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Scraping failed' });

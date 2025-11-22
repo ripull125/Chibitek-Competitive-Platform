@@ -8,7 +8,7 @@ import DownloadCSV from "../components/DownloadCSV";
 // set cloud scheduler to only push to supabase when necessary
 
 const App = () => {
-  const [data, setData] = useState({ heading: "", paragraphs: [] });
+  const [data, setData] = useState({ heading: "", paragraphs: [], books: [] });
 
   useEffect(() => {
     fetch(`http://localhost:4000/scrape?ts=${Date.now()}`, { cache: "no-store" })
@@ -37,6 +37,19 @@ const App = () => {
       <h3>Paragraphs:</h3>
       {data.paragraphs.map((p, i) => (
         <p key={i}>{p}</p>
+      ))}
+
+      <h3>Books:</h3>
+      {!data.books?.length && <p>No books detected.</p>}
+      {data.books?.map((book, idx) => (
+        <div key={idx} style={{ marginBottom: "12px" }}>
+          <strong>{book.title}</strong>
+          <div>Price: {book.price || "Unknown"}</div>
+          {book.availability && <div>Availability: {book.availability}</div>}
+          <div>
+            Suggested keywords: {book.keywords?.length ? book.keywords.join(", ") : "Not available"}
+          </div>
+        </div>
       ))}
     </div>
   );
