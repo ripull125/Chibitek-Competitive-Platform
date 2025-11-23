@@ -1,23 +1,53 @@
-import React, { useEffect, useState } from "react";
-import { Button, Container, Title } from "@mantine/core";
+import React, { useState, useEffect } from "react";
+import { Button, Container, Title, Input, Box, Text } from "@mantine/core";
 import DownloadJSON from "../components/DownloadJSON";
 import DownloadTXT from "../components/DownloadTXT";
 import DownloadCSV from "../components/DownloadCSV";
 
-// every time the page renders, it uploads the files into supabase
-// set cloud scheduler to only push to supabase when necessary
-
 const App = () => {
+  const [message, setMessage] = useState("");
+  const [records, setRecords] = useState([]);
   const [data, setData] = useState({ heading: "", paragraphs: [], books: [] });
 
+  const backendUrl = "http://localhost:8080";
+
+  const fetchRecords = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/read`);
+      const json = await res.json();
+      if (json.records) {
+        setRecords(json.records);
+      }
+    } catch (err) {
+      console.error("Error fetching records:", err);
+    }
+  };
+
+  const submitMessage = async () => {
+    if (!message) return;
+    try {
+      await fetch(`${backendUrl}/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      setMessage("");
+      await fetchRecords();
+    } catch (err) {
+      console.error("Error writing message:", err);
+    }
+  };
+
   useEffect(() => {
-    fetch(`http://localhost:4000/scrape?ts=${Date.now()}`, { cache: "no-store" })
+    fetchRecords();
+
+    fetch(`${backendUrl}/scrape?ts=${Date.now()}`, { cache: "no-store" })
       .then(res => res.json())
-      .then(json => setData(json))
+      .then(json => {
+        setData(json);
+      })
       .catch(err => console.error(err));
   }, []);
-
-  if (!data) return <div>Loading scrape…</div>;
 
   return (
     <div style={{ padding: 20 }}>

@@ -34,6 +34,36 @@ app.get('/scrape', async (req, res) => {
   }
 });
 
-app.listen(4000, () => {
-  console.log('Server running at http://localhost:4000');
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+app.use(express.json()); 
+
+app.post("/write", async (req, res) => {
+  const { message } = req.body;
+  const { data, error } = await supabase
+    .from("hello_world") 
+    .insert({ message })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Insert error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ inserted: data });
+});
+
+app.get("/read", async (req, res) => {
+  const { data, error } = await supabase
+    .from("hello_world")
+    .select("*");
+  if (error) {
+    console.error("Select error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+  res.json({ records: data });
 });
