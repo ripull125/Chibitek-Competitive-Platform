@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button, Container, Title, Input, Box, Text } from "@mantine/core";
+import { supabase } from "./supabaseClient";
 import DownloadJSON from "../components/DownloadJSON";
 import DownloadTXT from "../components/DownloadTXT";
 import DownloadCSV from "../components/DownloadCSV";
@@ -38,6 +39,54 @@ const App = () => {
     }
   };
 
+  const saveKeywords = async (book) => {
+    const keywords = (book.keywords || []).join(", ");
+    const message = `${book.title} - ${keywords}`;
+    try {
+      const res = await fetch(`${backendUrl}/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        console.error('Save keywords failed:', json);
+        alert('Failed to save keywords');
+        return;
+      }
+
+      await fetchRecords();
+    } catch (err) {
+      console.error('Save keywords error:', err);
+      alert('Failed to save keywords');
+    }
+  };
+
+  const deleteMessage = async (id) => {
+    const ok = window.confirm("Delete this message? This cannot be undone.");
+    if (!ok) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/delete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-SCRAPER-AUTH": import.meta.env.VITE_SCRAPER_AUTH || ""
+        },
+        body: JSON.stringify({ id })
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        console.error('Delete error:', json);
+        alert('Failed to delete: ' + (json.error || res.statusText));
+        return;
+      }
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error('Delete failed:', err);
+      alert('Failed to delete');
+    }
+  };
+
   useEffect(() => {
     fetchRecords();
 
@@ -53,9 +102,9 @@ const App = () => {
     <Container p="md">
       <Box style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
         <Button color="blue">Test Button</Button>
-        <DownloadJSON data={data} />
-        <DownloadTXT data={data} />
-        <DownloadCSV data={data} />
+        <DownloadJSON data={records} />
+        <DownloadTXT data={records} />
+        <DownloadCSV data={records} />
       </Box>
 
       <Title order={2} mb="md">Write & Read to Database</Title>
@@ -69,9 +118,12 @@ const App = () => {
         />
         <Button onClick={submitMessage} color="teal" mb="md">Submit Message</Button>
 
-        <Title order={3} mb="sm">Previous Messages:</Title>
-        {records.map(r => (
-          <Text key={r.id} mb="xs">{r.message}</Text>
+        <Title order={3} mb="sm">Saved Data:</Title>
+        {records.map((r) => (
+          <Box key={r.id} mb="xs" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Text>{r.message}</Text>
+            <Button color="red" size="xs" onClick={() => deleteMessage(r.id)}>Delete</Button>
+          </Box>
         ))}
       </Box>
 
@@ -93,13 +145,16 @@ const App = () => {
         <Title order={4} mb="sm">Books:</Title>
         {!data.books?.length && <Text>No books detected.</Text>}
         {data.books?.map((book, idx) => (
-          <Box key={idx} mb="sm">
+          <Box key={idx} mb="sm" style={{ border: '1px solid #eee', padding: 8 }}>
             <Text weight={700}>{book.title}</Text>
             <Text>Price: {book.price || "Unknown"}</Text>
             {book.availability && <Text>Availability: {book.availability}</Text>}
-            <Text>
-              Suggested keywords: {book.keywords?.length ? book.keywords.join(", ") : "Not available"}
-            </Text>
+            <Box style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <Text style={{ marginBottom: 0 }}>
+                Suggested keywords: {book.keywords?.length ? book.keywords.join(", ") : "Not available"}
+              </Text>
+              <Button size="xs" onClick={() => saveKeywords(book)}>Save</Button>
+            </Box>
           </Box>
         ))}
       </Box>

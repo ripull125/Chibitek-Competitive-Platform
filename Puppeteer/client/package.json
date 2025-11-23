@@ -14,6 +14,7 @@
     "@mantine/modals": "^8.3.8",
     "@mantine/notifications": "^8.3.8",
     "@mantine/styles": "^6.0.22",
+    "@supabase/supabase-js": "^2.84.0",
     "clsx": "^2.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
