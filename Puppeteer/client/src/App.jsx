@@ -50,38 +50,60 @@ const App = () => {
   }, []);
 
   return (
-    <div style={{ padding: 20 }}>
-      <Container p="md">
-        <Title order={2} mb="md">Mantine is working</Title>
-        <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-          <Button color="blue">Test Button</Button>
-          <DownloadJSON data={data} />
-          <DownloadTXT data={data} />
-          <DownloadCSV data={data} />
-        </div>
-      </Container>
+    <Container p="md">
+      <Box style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+        <Button color="blue">Test Button</Button>
+        <DownloadJSON data={data} />
+        <DownloadTXT data={data} />
+        <DownloadCSV data={data} />
+      </Box>
 
-      <h1>Scraped Heading:</h1>
-      <h2>{data.heading}</h2>
+      <Title order={2} mb="md">Write & Read to Database</Title>
 
-      <h3>Paragraphs:</h3>
-      {data.paragraphs.map((p, i) => (
-        <p key={i}>{p}</p>
-      ))}
+      <Box mb="lg">
+        <Input
+          placeholder="Enter your message"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          mb="sm"
+        />
+        <Button onClick={submitMessage} color="teal" mb="md">Submit Message</Button>
 
-      <h3>Books:</h3>
-      {!data.books?.length && <p>No books detected.</p>}
-      {data.books?.map((book, idx) => (
-        <div key={idx} style={{ marginBottom: "12px" }}>
-          <strong>{book.title}</strong>
-          <div>Price: {book.price || "Unknown"}</div>
-          {book.availability && <div>Availability: {book.availability}</div>}
-          <div>
-            Suggested keywords: {book.keywords?.length ? book.keywords.join(", ") : "Not available"}
-          </div>
-        </div>
-      ))}
-    </div>
+        <Title order={3} mb="sm">Previous Messages:</Title>
+        {records.map(r => (
+          <Text key={r.id} mb="xs">{r.message}</Text>
+        ))}
+      </Box>
+
+      <Title order={3} mb="sm">Scraped Content:</Title>
+      <Text fontSize="lg" mb="sm">Heading: {data.heading}</Text>
+
+      <Box mb="lg">
+        <Title order={4}>Paragraphs:</Title>
+        {data.paragraphs?.length ? (
+          data.paragraphs.map((p, i) => (
+            <Text key={i} mb="xs">{p}</Text>
+          ))
+        ) : (
+          <Text mb="xs">No paragraphs detected.</Text>
+        )}
+      </Box>
+
+      <Box mb="lg">
+        <Title order={4} mb="sm">Books:</Title>
+        {!data.books?.length && <Text>No books detected.</Text>}
+        {data.books?.map((book, idx) => (
+          <Box key={idx} mb="sm">
+            <Text weight={700}>{book.title}</Text>
+            <Text>Price: {book.price || "Unknown"}</Text>
+            {book.availability && <Text>Availability: {book.availability}</Text>}
+            <Text>
+              Suggested keywords: {book.keywords?.length ? book.keywords.join(", ") : "Not available"}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+    </Container>
   );
 };
 
