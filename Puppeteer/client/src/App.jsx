@@ -5,6 +5,9 @@ import DownloadJSON from "../components/DownloadJSON";
 import DownloadTXT from "../components/DownloadTXT";
 import DownloadCSV from "../components/DownloadCSV";
 
+// Import the RechartsTest chart
+import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
+
 const App = () => {
   const [message, setMessage] = useState("");
   const [records, setRecords] = useState([]);
@@ -41,7 +44,8 @@ const App = () => {
 
   const saveKeywords = async (book) => {
     const keywords = (book.keywords || []).join(", ");
-    const message = `${book.title} - ${keywords}`;
+    const price = book.price || "Unknown";
+    const message = `${book.title} - ${keywords} - Price: ${price}`;
     try {
       const res = await fetch(`${backendUrl}/write`, {
         method: "POST",
@@ -102,9 +106,34 @@ const App = () => {
     <Container p="md">
       <Box style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
         <Button color="blue">Test Button</Button>
-        <DownloadJSON data={records} />
+        <DownloadJSON data={records.map(r => {
+          // ...existing code...
+          let price = null;
+          let title = r.message;
+          let keywords = "";
+          const priceMatch = r.message.match(/Price:\s*[£$]?\s*([0-9,]+(?:\.[0-9]+)?)/);
+          if (priceMatch) {
+            price = Number(priceMatch[1].replace(/,/g, ""));
+          }
+          const split = r.message.split(" - ");
+          if (split.length >= 2) {
+            title = split[0];
+            keywords = split[1];
+          }
+          return {
+            id: r.id,
+            title,
+            keywords,
+            price
+          };
+        })} />
         <DownloadTXT data={records} />
         <DownloadCSV data={records} />
+      </Box>
+
+      {/* Render the RechartsTest chart below the download buttons */}
+      <Box mt="xl">
+        <RechartsTest data={Array.isArray(data.books) ? data.books : []} />
       </Box>
 
       <Title order={2} mb="md">Write & Read to Database</Title>

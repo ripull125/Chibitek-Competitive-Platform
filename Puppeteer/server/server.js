@@ -3,6 +3,8 @@
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs/promises';
+import path from 'path';
 import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
@@ -27,6 +29,18 @@ app.get('/scrape', async (req, res) => {
     if (error) {
       console.error('Insert error:', error);
     }
+
+    // Write a copy of the scraped payload to recharts/scraped-data.json
+    (async () => {
+      try {
+        const outPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
+        await fs.mkdir(path.dirname(outPath), { recursive: true });
+        await fs.writeFile(outPath, JSON.stringify(payload, null, 2), 'utf8');
+      } catch (err) {
+        console.error('Failed to write scraped payload to recharts:', err);
+      }
+    })();
+
     res.json(payload);
   } catch (err) {
     console.error(err);
@@ -53,6 +67,7 @@ app.post("/write", async (req, res) => {
     console.error("Insert error:", error);
     return res.status(500).json({ error: error.message });
   }
+
 
   res.json({ inserted: data });
 });
