@@ -15,9 +15,12 @@
     "@mantine/notifications": "^8.3.8",
     "@mantine/styles": "^6.0.22",
     "@supabase/supabase-js": "^2.84.0",
+    "@tabler/icons-react": "^3.35.0",
     "clsx": "^2.1.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.9.6",
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
