@@ -5,8 +5,9 @@ import DownloadJSON from "../components/DownloadJSON";
 import DownloadTXT from "../components/DownloadTXT";
 import DownloadCSV from "../components/DownloadCSV";
 
+
 // Import the RechartsTest chart
-import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
+//import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
 
 const App = () => {
   const [message, setMessage] = useState("");
@@ -132,9 +133,9 @@ const App = () => {
       </Box>
 
       {/* Render the RechartsTest chart below the download buttons */}
-      <Box mt="xl">
+      {/*<Box mt="xl">
         <RechartsTest data={Array.isArray(data.books) ? data.books : []} />
-      </Box>
+      </Box>*/}
 
       <Title order={2} mb="md">Write & Read to Database</Title>
 
