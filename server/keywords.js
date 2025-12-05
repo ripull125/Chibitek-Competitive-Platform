@@ -1,8 +1,8 @@
 // server
-// navigate to Puppeteer/server
+// navigate to server
 // node server.js
 // client
-// navigate to Puppeteer/client
+// navigate to client
 // npm run dev
 import dotenv from 'dotenv';
 
