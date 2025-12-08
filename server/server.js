@@ -1,6 +1,7 @@
 // React can't directly work with puppeteer so it has to go through a
 // server that calls another file with puppeteer
 
+import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs/promises';
@@ -69,6 +70,18 @@ app.get('/scrape', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Scraping failed' });
+  }
+});
+
+app.get("/api/x/fetch/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+    const userId = await getUserIdByUsername(username);
+    const posts = await fetchPostsByUserId(userId, 2);
+    res.json({ success: true, username, userId, posts });
+  } catch (err) {
+    console.error("X fetch error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
