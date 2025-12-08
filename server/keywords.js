@@ -67,6 +67,8 @@ export async function suggestKeywordsForBooks(books = []) {
     }),
   });
 
+  console.log("Query Complete")
+
   if (!response.ok) {
     console.error('Keyword suggestion request failed:', response.status, response.statusText);
     return books.map((book) => ({ ...book, keywords: [] }));

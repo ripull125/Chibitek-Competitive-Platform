@@ -59,9 +59,9 @@
       "price": "£22.65",
       "availability": "In stock",
       "keywords": [
-        "mystery novel",
-        "crime",
-        "redemption"
+        "fantasy",
+        "adventure",
+        "young adult"
       ]
     },
     {
@@ -81,7 +81,7 @@
       "keywords": [
         "biography",
         "feminism",
-        "Victoria Woodhull"
+        "historical novel"
       ]
     },
     {
@@ -91,7 +91,7 @@
       "keywords": [
         "sports history",
         "Olympics",
-        "rowing"
+        "teamwork"
       ]
     },
     {
@@ -101,7 +101,7 @@
       "keywords": [
         "fiction",
         "mystery",
-        "art"
+        "literary"
       ]
     },
     {
@@ -110,8 +110,8 @@
       "availability": "In stock",
       "keywords": [
         "fantasy",
-        "young adult",
-        "romance"
+        "romance",
+        "young adult"
       ]
     },
     {
@@ -129,9 +129,9 @@
       "price": "£17.46",
       "availability": "In stock",
       "keywords": [
-        "self-discovery",
-        "freedom",
-        "inspiration"
+        "self-help",
+        "inspiration",
+        "personal growth"
       ]
     },
     {
@@ -151,7 +151,7 @@
       "keywords": [
         "music history",
         "indie rock",
-        "American culture"
+        "cultural impact"
       ]
     },
     {
@@ -179,7 +179,7 @@
       "price": "£37.59",
       "availability": "In stock",
       "keywords": [
-        "political philosophy",
+        "politics",
         "libertarianism",
         "introduction"
       ]
@@ -189,9 +189,9 @@
       "price": "£51.33",
       "availability": "In stock",
       "keywords": [
-        "travel writing",
-        "Himalayas",
-        "adventure"
+        "travel",
+        "adventure",
+        "Himalayas"
       ]
     },
     {
