@@ -24,16 +24,18 @@ export default function ChatInput() {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center',
-      backgroundColor: '#f8f9fa',
-      padding: '0 40px'
+      backgroundColor: 'var(--bg-primary)',
+      padding: '0 40px',
+      transition: 'background-color 0.3s ease'
     }}>
       <Box style={{ width: '100%' }}>
         <Box style={{ textAlign: 'center', marginBottom: 40 }}>
           <h1 style={{ 
             fontSize: 32, 
             fontWeight: 400, 
-            color: '#212529',
-            margin: 0 
+            color: 'var(--text-primary)',
+            margin: 0,
+            transition: 'color 0.3s ease'
           }}>
             ChibitekAI
           </h1>
@@ -43,11 +45,12 @@ export default function ChatInput() {
           display: 'flex', 
           alignItems: 'center', 
           gap: 12,
-          backgroundColor: 'white',
+          backgroundColor: 'var(--bg-secondary)',
           padding: '8px 12px',
           borderRadius: 50,
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-          border: '1px solid #e9ecef'
+          boxShadow: '0 2px 8px var(--shadow)',
+          border: '1px solid var(--border-color)',
+          transition: 'all 0.3s ease'
         }}>
           <ActionIcon 
             variant="subtle" 
@@ -72,12 +75,14 @@ export default function ChatInput() {
                 padding: '8px 0',
                 border: 'none',
                 outline: 'none',
+                color: 'var(--text-primary)',
+                backgroundColor: 'transparent',
                 '&:focus': {
                   outline: 'none',
                   border: 'none'
                 },
                 '&::placeholder': {
-                  color: '#adb5bd'
+                  color: 'var(--text-tertiary)'
                 }
               }
             }}
