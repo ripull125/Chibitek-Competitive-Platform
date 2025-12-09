@@ -13,7 +13,16 @@ import {
 } from '@mantine/core';
 import { IconPlus, IconMicrophone, IconMicrophoneOff, IconSend } from '@tabler/icons-react';
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+const resolveBackendUrl = () => {
+  const envUrl = import.meta.env.VITE_BACKEND_URL;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
+};
+
+const backendUrl = resolveBackendUrl();
 
 const SpeechRecognition =
   typeof window !== 'undefined'
@@ -104,7 +113,9 @@ export default function ChatInput() {
       });
 
       if (!response.ok) {
-        throw new Error('Chat request failed');
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Chat request failed${reason}`);
       }
 
       const data = await response.json();
@@ -112,7 +123,13 @@ export default function ChatInput() {
     } catch (error) {
       setConversation((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Sorry, I could not reach the language model right now.' },
+        {
+          role: 'assistant',
+          content:
+            error?.message?.includes('OPENAI_API_KEY')
+              ? 'Server is missing the OpenAI API key. Please add it and try again.'
+              : 'Sorry, I could not reach the language model right now.',
+        },
       ]);
     } finally {
       setIsSending(false);
@@ -235,7 +252,20 @@ export default function ChatInput() {
             </Group>
           ) : null}
 
-          <Group mt="md" align="center" gap="sm">
+          <Box
+            mt="md"
+            px={12}
+            py={8}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              backgroundColor: 'white',
+              borderRadius: 50,
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+              border: '1px solid #e9ecef',
+            }}
+          >
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -258,10 +288,25 @@ export default function ChatInput() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyPress}
-              variant="filled"
-              radius="xl"
+              variant="unstyled"
               size="md"
+              disabled={isSending}
               style={{ flex: 1 }}
+              styles={{
+                input: {
+                  fontSize: 16,
+                  padding: '8px 0',
+                  border: 'none',
+                  outline: 'none',
+                  '&:focus': {
+                    outline: 'none',
+                    border: 'none',
+                  },
+                  '&::placeholder': {
+                    color: '#adb5bd',
+                  },
+                },
+              }}
             />
 
             <ActionIcon
@@ -286,7 +331,7 @@ export default function ChatInput() {
             >
               <IconSend size={18} />
             </ActionIcon>
-          </Group>
+          </Box>
         </Paper>
       </Box>
     </Box>
