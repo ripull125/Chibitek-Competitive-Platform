@@ -188,19 +188,24 @@ export default function ChatInput() {
   );
 
   return (
-    <Box
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#f8f9fa',
-        padding: '32px 16px',
-      }}
-    >
-      <Box style={{ width: '100%', maxWidth: 900 }}>
-        <Box style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title order={1} style={{ fontWeight: 500, color: '#212529' }}>
+    <Box style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      backgroundColor: 'var(--bg-primary)',
+      padding: '0 40px',
+      transition: 'background-color 0.3s ease'
+    }}>
+      <Box style={{ width: '100%' }}>
+        <Box style={{ textAlign: 'center', marginBottom: 40 }}>
+          <h1 style={{ 
+            fontSize: 32, 
+            fontWeight: 400, 
+            color: 'var(--text-primary)',
+            margin: 0,
+            transition: 'color 0.3s ease'
+          }}>
             ChibitekAI
           </Title>
           <Text c="dimmed" mt={6}>

@@ -20,11 +20,36 @@ app.use(express.json({ limit: '10mb' }));
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
 
+let cachedPayload = null;
+const scrapedDataPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
+
+const loadCachedPayload = async () => {
+  if (cachedPayload) return cachedPayload;
+  try {
+    const existing = await fs.readFile(scrapedDataPath, 'utf8');
+    cachedPayload = JSON.parse(existing);
+    return cachedPayload;
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.error('Failed to read cached scrape payload:', err);
+    }
+    return null;
+  }
+};
+
 app.get('/scrape', async (req, res) => {
   try {
+    if (req.query.refresh !== 'true') {
+      const existing = await loadCachedPayload();
+      if (existing) {
+        return res.json(existing);
+      }
+    }
+
     const data = await Scraping();
     const booksWithKeywords = await suggestKeywordsForBooks(data.books || []);
     const payload = { ...data, books: booksWithKeywords };
+    cachedPayload = payload;
     const { data: inserted, error } = await supabase
       .from('posts')
       .insert({
@@ -41,9 +66,8 @@ app.get('/scrape', async (req, res) => {
     // Write a copy of the scraped payload to recharts/scraped-data.json
     (async () => {
       try {
-        const outPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
-        await fs.mkdir(path.dirname(outPath), { recursive: true });
-        await fs.writeFile(outPath, JSON.stringify(payload, null, 2), 'utf8');
+        await fs.mkdir(path.dirname(scrapedDataPath), { recursive: true });
+        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 2), 'utf8');
       } catch (err) {
         console.error('Failed to write scraped payload to recharts:', err);
       }
