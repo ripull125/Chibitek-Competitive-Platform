@@ -30,8 +30,8 @@
       "availability": "In stock",
       "keywords": [
         "French literature",
-        "Islam",
-        "controversial themes"
+        "political themes",
+        "contemporary fiction"
       ]
     },
     {
@@ -51,7 +51,7 @@
       "keywords": [
         "history",
         "human evolution",
-        "Yuval Noah Harari"
+        "non-fiction"
       ]
     },
     {
@@ -59,9 +59,9 @@
       "price": "£22.65",
       "availability": "In stock",
       "keywords": [
-        "mystery novel",
-        "crime",
-        "redemption"
+        "fantasy",
+        "adventure",
+        "young adult"
       ]
     },
     {
@@ -79,8 +79,8 @@
       "price": "£17.93",
       "availability": "In stock",
       "keywords": [
-        "biography",
-        "feminism",
+        "feminist literature",
+        "biographical novel",
         "Victoria Woodhull"
       ]
     },
@@ -91,7 +91,7 @@
       "keywords": [
         "sports history",
         "Olympics",
-        "rowing"
+        "teamwork"
       ]
     },
     {
@@ -99,9 +99,9 @@
       "price": "£52.15",
       "availability": "In stock",
       "keywords": [
-        "fiction",
+        "literary fiction",
         "mystery",
-        "art"
+        "suspense"
       ]
     },
     {
@@ -109,7 +109,7 @@
       "price": "£13.99",
       "availability": "In stock",
       "keywords": [
-        "fantasy",
+        "fantasy series",
         "young adult",
         "romance"
       ]
@@ -130,8 +130,8 @@
       "availability": "In stock",
       "keywords": [
         "self-discovery",
-        "freedom",
-        "inspiration"
+        "young adult",
+        "fiction"
       ]
     },
     {
@@ -151,7 +151,7 @@
       "keywords": [
         "music history",
         "indie rock",
-        "American culture"
+        "1980s"
       ]
     },
     {
