@@ -44,7 +44,13 @@
   font-weight: 500;
   margin-bottom: 4px;
 
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.link span {
+  display: inline-block;
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 .linkIcon {
@@ -52,7 +58,8 @@
   width: 26px;
   height: 26px;
   color: var(--text-secondary);
-  transition: color 150ms ease;
+  transition: color 0.3s ease;
+  flex-shrink: 0;
 }
 
 .link:hover {
@@ -65,10 +72,28 @@
 }
 
 .link[data-active] {
-  background-color: var(--accent-primary);
-  color: #ffffff;
+  background-color: var(--accent-primary) !important;
+  color: #ffffff !important;
+  animation: fadeIn 0.3s ease;
 }
 
 .link[data-active] .linkIcon {
-  color: #ffffff;
+  color: #ffffff !important;
+}
+
+.link[data-active] span {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+@keyframes fadeIn {
+  from {
+    background-color: transparent;
+    opacity: 0.7;
+  }
+  to {
+    background-color: var(--accent-primary);
+    opacity: 1;
+  }
 }
