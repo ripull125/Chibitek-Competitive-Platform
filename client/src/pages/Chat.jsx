@@ -14,9 +14,16 @@ import {
 import { IconPlus, IconMicrophone, IconMicrophoneOff, IconSend } from '@tabler/icons-react';
 
 const resolveBackendUrl = () => {
-  const envUrl = import.meta.env.VITE_BACKEND_URL;
+  const envUrl = import.meta.env.e_BACKEND_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
   if (typeof window !== 'undefined' && window.location?.origin) {
+    // When running the Vite dev server (default http://localhost:5173),
+    // the API lives on the Express server at port 8080. Point there so
+    // chat requests don't 404 against the frontend origin.
+    const { hostname, port, protocol } = window.location;
+    if (hostname === 'localhost' && port === '5173') {
+      return `${protocol}//${hostname}:8080`;
+    }
     return window.location.origin;
   }
   return '';
@@ -41,7 +48,7 @@ const fileToAttachment = (file) =>
         size: file.size,
         content: content.slice(0, 12000),
       });
-    };
+     };
     reader.onerror = () => reject(reader.error);
     if (isTextLike) {
       reader.readAsText(file);
