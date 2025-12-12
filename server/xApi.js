@@ -1,36 +1,60 @@
-// server/xApi.js
+import "dotenv/config";
+import axios from "axios";
 
-const BEARER = process.env.X_BEARER_TOKEN || "AAAAAAAAAAAAAAAAAAAAADsX5gEAAAAAoHshZqkZsHDIna4hl0BiA2SnWHg%3D7REFZaBuGPSdII63M4bKx5bpDNImzdB2XzGioNU7L8YReYHbaQ";
+const BEARER = process.env.X_BEARER_TOKEN;
+
+if (!BEARER) {
+  throw new Error("X_BEARER_TOKEN is not set in .env");
+}
+
+const xClient = axios.create({
+  baseURL: "https://api.x.com/2",
+  headers: {
+    Authorization: `Bearer ${BEARER}`,
+    "User-Agent": "Chibitek-App",
+    Accept: "application/json",
+  },
+  timeout: 15000,
+});
 
 export async function getUserIdByUsername(username) {
-  const url = `https://api.x.com/2/users/by/username/${encodeURIComponent(username)}`;
-  const resp = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${BEARER}`,
-      "User-Agent": "Chibitek-App"
+  try {
+    const res = await xClient.get(
+      `/users/by/username/${encodeURIComponent(username)}`
+    );
+
+    if (!res.data?.data?.id) {
+      throw new Error(`No user found for username ${username}`);
     }
-  });
-  if (!resp.ok) {
-    throw new Error(`X API error fetching user id: ${resp.status} ${await resp.text()}`);
+
+    return res.data.data.id;
+  } catch (err) {
+    if (err.response) {
+      throw new Error(
+        `X API user lookup failed: ${err.response.status} ${JSON.stringify(
+          err.response.data
+        )}`
+      );
+    }
+    throw err;
   }
-  const json = await resp.json();
-  if (!json.data || !json.data.id) {
-    throw new Error(`No user found for username ${username}`);
-  }
-  return json.data.id;
 }
 
 export async function fetchPostsByUserId(userId, maxResults = 2) {
-  const url = `https://api.x.com/2/users/${userId}/tweets?max_results=${maxResults}`;
-  const resp = await fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${BEARER}`,
-      "User-Agent": "Chibitek-App"
+  try {
+    const res = await xClient.get(`/users/${userId}/tweets`, {
+      params: { max_results: maxResults },
+    });
+
+    return res.data?.data || [];
+  } catch (err) {
+    if (err.response) {
+      throw new Error(
+        `X API tweet fetch failed: ${err.response.status} ${JSON.stringify(
+          err.response.data
+        )}`
+      );
     }
-  });
-  if (!resp.ok) {
-    throw new Error(`X API error fetching tweets: ${resp.status} ${await resp.text()}`);
+    throw err;
   }
-  const json = await resp.json();
-  return json.data;
 }

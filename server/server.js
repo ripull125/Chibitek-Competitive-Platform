@@ -4,6 +4,7 @@
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
 import { Scraping } from './scraper.js';
@@ -60,7 +61,7 @@ app.get('/scrape', async (req, res) => {
     (async () => {
       try {
         await fs.mkdir(path.dirname(scrapedDataPath), { recursive: true });
-        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 2), 'utf8');
+        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 5), 'utf8');
       } catch (err) {
         console.error('Failed to write scraped payload to recharts:', err);
       }
@@ -77,11 +78,17 @@ app.get("/api/x/fetch/:username", async (req, res) => {
   try {
     const username = req.params.username;
     const userId = await getUserIdByUsername(username);
-    const posts = await fetchPostsByUserId(userId, 2);
+    const posts = await fetchPostsByUserId(userId, 5);
+
     res.json({ success: true, username, userId, posts });
   } catch (err) {
-    console.error("X fetch error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("X fetch error:", err.message);
+
+    if (String(err.message).includes("Rate limit")) {
+      return res.status(429).json({ error: err.message });
+    }
+
+    res.status(500).json({ error: "Failed to fetch tweets" });
   }
 });
 
