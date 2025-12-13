@@ -11,6 +11,7 @@ import {
   Box,
 } from "@mantine/core";
 import classes from "./Settings.module.css";
+import { useNavigate } from "react-router-dom";
 
 function SettingsCard({ label, title, description, children }) {
   return (
@@ -27,6 +28,7 @@ function SettingsCard({ label, title, description, children }) {
 
 export default function Settings() {
   const [language, setLanguage] = useState("english");
+  const navigate = useNavigate();
 
   return (
     <Box className={classes.page}>
@@ -43,9 +45,15 @@ export default function Settings() {
             title="Profile"
             description="Manage personal details"
           >
-            <Button variant="light" radius="md" className={classes.actionBtn}>
+            <Button
+              variant="light"
+              radius="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/settings/profile")}
+            >
               Manage
             </Button>
+
           </SettingsCard>
 
           <SettingsCard
@@ -53,9 +61,15 @@ export default function Settings() {
             title="Connected integrations"
             description="Control connected platforms"
           >
-            <Button variant="light" radius="md" className={classes.actionBtn}>
+            <Button
+              variant="light"
+              radius="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/settings/integrations")}
+            >
               Manage
             </Button>
+
           </SettingsCard>
 
           <SettingsCard label="LANGUAGE" title="Language">
