@@ -7,8 +7,9 @@ if (!BEARER) {
   throw new Error("X_BEARER_TOKEN is not set in .env");
 }
 
+// Note: Despite rebranding, the official v2 API host remains api.twitter.com
 const xClient = axios.create({
-  baseURL: "https://api.x.com/2",
+  baseURL: "https://api.twitter.com/2",
   headers: {
     Authorization: `Bearer ${BEARER}`,
     "User-Agent": "Chibitek-App",
@@ -36,6 +37,10 @@ export async function getUserIdByUsername(username) {
         )}`
       );
     }
+    // Improve network error visibility
+    if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+      throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
+    }
     throw err;
   }
 }
@@ -56,6 +61,9 @@ export async function fetchPostsByUserId(userId, maxResults = 5) {
           err.response.data
         )}`
       );
+    }
+    if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+      throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
     }
     throw err;
   }
