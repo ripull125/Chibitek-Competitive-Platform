@@ -88,7 +88,7 @@ app.get("/api/x/fetch/:username", async (req, res) => {
       return res.status(429).json({ error: err.message });
     }
 
-    res.status(500).json({ error: "Failed to fetch tweets" });
+    res.status(500).json({ error: err.message });
   }
 });
 

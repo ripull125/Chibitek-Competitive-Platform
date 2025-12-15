@@ -40,10 +40,12 @@ export async function getUserIdByUsername(username) {
   }
 }
 
-export async function fetchPostsByUserId(userId, maxResults = 2) {
+export async function fetchPostsByUserId(userId, maxResults = 5) {
+  const clamped = Math.min(100, Math.max(5, maxResults));
+
   try {
     const res = await xClient.get(`/users/${userId}/tweets`, {
-      params: { max_results: maxResults },
+      params: { max_results: clamped },
     });
 
     return res.data?.data || [];
