@@ -5,12 +5,20 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs/promises';
 import path from 'path';
+import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 
+dotenv.config();
+
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+const { OPENAI_API_KEY } = process.env;
+const chatGptModel = 'gpt-4o-mini';
 
 let cachedPayload = null;
 const scrapedDataPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
@@ -72,13 +80,6 @@ app.get('/scrape', async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-
-app.use(express.json());
-
 app.post("/write", async (req, res) => {
   const { message } = req.body;
   const { data, error } = await supabase
@@ -127,4 +128,69 @@ app.post("/api/delete", async (req, res) => {
     console.error("Delete failed:", err);
     res.status(500).json({ error: "Delete failed" });
   }
+});
+
+app.post('/api/chat', async (req, res) => {
+  if (!OPENAI_API_KEY) {
+    console.error('Missing OPENAI_API_KEY on server');
+    return res.status(500).json({ error: 'OPENAI_API_KEY is not configured on the server.' });
+  }
+
+  try {
+    const { messages = [], attachments = [] } = req.body || {};
+
+    const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
+
+    const attachmentContext = (attachments || [])
+      .filter((file) => file && file.name && file.content)
+      .map((file) => {
+        const preview = String(file.content).slice(0, 6000);
+        return `Attachment: ${file.name} (${file.type || 'unknown type'})\n${preview}`;
+      })
+      .join('\n\n');
+
+    const userMessages = attachmentContext
+      ? [...sanitizedMessages, { role: 'user', content: `Attachment context:\n${attachmentContext}` }]
+      : sanitizedMessages;
+
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: chatGptModel, // 'gpt-4o-mini'
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
+          },
+          ...userMessages,
+        ],
+      }),
+    });
+
+    if (!openaiResponse.ok) {
+      const errorBody = await openaiResponse.text();
+      console.error('OpenAI API error:', openaiResponse.status, openaiResponse.statusText, errorBody);
+      return res.status(500).json({
+        error: `OpenAI API error: ${openaiResponse.status} ${openaiResponse.statusText}`,
+      });
+    }
+
+    const data = await openaiResponse.json();
+    const reply = data.choices?.[0]?.message?.content || 'No response from model.';
+    return res.json({ reply });
+  } catch (error) {
+    console.error('Chat completion error:', error);
+    return res.status(500).json({ error: 'Chat request failed.' });
+  }
+});
+
+
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
