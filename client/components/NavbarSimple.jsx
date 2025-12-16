@@ -14,6 +14,7 @@ import classes from "./NavbarSimple.module.css";
 
 const linksData = [
   { label: "Dashboard", icon: IconGauge, path: "/" },
+  { label: "Competitor Lookup", icon: IconSearch, path: "/competitor-lookup" },
   { label: "Keyword Tracking", icon: IconSearch, path: "/keywords" },
   { label: "Competitor Tracking", icon: IconBuildingFactory, path: "/competitors" },
   { label: "Reports", icon: IconReport, path: "/reports" },
@@ -67,7 +68,7 @@ export function NavbarSimple() {
         <button
           type="button"
           className={classes.link}
-          onClick={() => {}}
+          onClick={() => { }}
         >
           <IconSwitchHorizontal className={classes.linkIcon} stroke={1.6} />
           <span>Change account</span>
@@ -76,7 +77,7 @@ export function NavbarSimple() {
         <button
           type="button"
           className={classes.link}
-          onClick={() => {}}
+          onClick={() => { }}
         >
           <IconLogout className={classes.linkIcon} stroke={1.6} />
           <span>Logout</span>

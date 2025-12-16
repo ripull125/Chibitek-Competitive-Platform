@@ -37,11 +37,19 @@ async function requestWithTokenFallback(requestConfig) {
   if (!tokens.length) {
     throw new Error("No X bearer tokens found in environment (X_BEARER_TOKENS, X_BEARER_TOKEN or X_BEARER_TOKEN_1..).");
   }
+  const attempts = [];
+
+  function mask(tok) {
+    if (!tok) return '(<missing>)';
+    if (tok.length <= 8) return tok.replace(/./g, '*');
+    return `${tok.slice(0, 4)}...${tok.slice(-4)}`;
+  }
 
   let lastError = null;
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
+    const attempt = { index: i, token: mask(token), url: requestConfig.url };
     try {
       const res = await xClient.request({
         ...requestConfig,
@@ -50,15 +58,36 @@ async function requestWithTokenFallback(requestConfig) {
           Authorization: `Bearer ${token}`,
         },
       });
+      attempt.success = true;
+      attempt.status = res.status;
+      attempts.push(attempt);
       return res;
     } catch (err) {
       lastError = err;
-      // try next token
+      attempt.success = false;
+      attempt.errorCode = err.code || null;
+      if (err.response) {
+        attempt.status = err.response.status;
+        try {
+          attempt.body = JSON.stringify(err.response.data);
+        } catch (e) {
+          attempt.body = String(err.response.data);
+        }
+      } else {
+        attempt.message = err.message;
+      }
+      attempts.push(attempt);
+      // continue to next token
     }
   }
 
-  // if we exit loop, all tokens failed — throw the last error so calling code sees the original failure
-  throw lastError;
+  // All tokens failed — throw an aggregated error with per-token diagnostics (tokens masked)
+  const summary = attempts.map(a => ({ index: a.index, token: a.token, success: a.success, status: a.status || null, errorCode: a.errorCode || null, body: a.body || a.message || null }));
+  const agg = new Error(`All bearer tokens failed for request ${requestConfig.method || 'GET'} ${requestConfig.url}. Attempts: ${JSON.stringify(summary, null, 2)}`);
+  // attach attempts array for programmatic access if caller wants it
+  agg.attempts = summary;
+  agg.lastError = lastError;
+  throw agg;
 }
 
 export async function getUserIdByUsername(username) {
