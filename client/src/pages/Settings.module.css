@@ -1,0 +1,128 @@
+/* Settings.module.css */
+
+/* Remove scrollbars for this page */
+:global(html),
+:global(body) {
+  height: 100%;
+  overflow: hidden;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 56px 24px;
+  background: radial-gradient(
+    900px 520px at 25% 18%,
+    #eef3ff 0%,
+    #f6f7fb 52%,
+    #f8f9fb 100%
+  );
+}
+
+.shell {
+  max-width: 1100px;
+}
+
+.header {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto 22px auto;
+}
+
+.title {
+  margin: 0;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  color: #111827;
+}
+
+.grid {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+@media (max-width: 640px) {
+  :global(html),
+  :global(body) {
+    height: auto;
+    overflow: auto;
+  }
+
+  .header {
+    max-width: 420px;
+  }
+
+  .grid {
+    max-width: 420px;
+    grid-template-columns: 1fr;
+  }
+}
+
+.card {
+  min-height: 260px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.08);
+}
+
+/* Center all content in cards */
+.cardInner {
+  height: 100%;
+  text-align: center;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  color: rgba(17, 24, 39, 0.55);
+}
+
+.rowTitle {
+  font-size: 15px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.subText {
+  margin-top: -6px;
+  font-size: 13px;
+  color: rgba(17, 24, 39, 0.60);
+}
+
+.actionBtn {
+  margin-top: 10px;
+  font-weight: 700;
+}
+
+/* Remove the thin outline by removing border + background from the SegmentedControl root */
+.segmentRoot {
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+/* Keep each option looking like a pill button */
+.segmentControl {
+  border: 0;
+}
+
+.segmentLabel {
+  font-weight: 700;
+}
+
+.segmentIndicator {
+  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.10);
+}

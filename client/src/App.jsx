@@ -5,6 +5,16 @@ import DownloadJSON from "../components/DownloadJSON";
 import DownloadTXT from "../components/DownloadTXT";
 import DownloadCSV from "../components/DownloadCSV";
 import ThemeManager from './utils/ThemeManager';
+import { Routes, Route } from "react-router-dom";
+
+import DashboardPage from "./pages/DashboardPage";
+import KeywordTracking from "./pages/KeywordTracking";
+import CompetitorTracking from "./pages/CompetitorTracking";
+import Reports from "./pages/Reports";
+import Chat from "./pages/Chat";
+import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
+import ConnectedIntegrations from "./pages/ConnectedIntegrations";
 
 // Import the RechartsTest chart
 //import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
