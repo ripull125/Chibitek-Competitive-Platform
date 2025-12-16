@@ -199,7 +199,7 @@ export default function ChatInput() {
     }}>
       <Box style={{ width: '100%' }}>
         <Box style={{ textAlign: 'center', marginBottom: 40 }}>
-          <h1 style={{ 
+          <Title style={{ 
             fontSize: 32, 
             fontWeight: 400, 
             color: 'var(--text-primary)',
