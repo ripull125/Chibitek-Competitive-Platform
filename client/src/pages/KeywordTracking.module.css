@@ -1,0 +1,77 @@
+/* client/src/pages/KeywordTracking.module.css */
+
+/* Arrow colors */
+:root {
+  --kt-green: #16a34a;  /* up */
+  --kt-red:   #ef4444;  /* down */
+  --kt-grey:  #9ca3af;  /* flat */
+}
+
+/* Center the card both horizontally & vertically */
+.wrap {
+  min-height: 100dvh;
+  padding: 16px;
+  display: flex;
+  align-items: center;     /* vertical center */
+  justify-content: center; /* horizontal center */
+}
+
+/* Neat, centered card with internal scroll when needed */
+.cardCenter {
+  width: clamp(720px, 90vw, 1000px);
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  border-color: rgba(100, 116, 139, 0.18);
+  box-shadow: 0 2px 10px rgba(20, 20, 20, 0.04);
+}
+
+/* Fixed-height chart area */
+.chartBox {
+  height: 190px;
+  width: 100%;
+}
+
+/* Table consumes remaining height; scrolls */
+.tablePane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px 8px;
+}
+
+/* Table styling */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.th {
+  font-weight: 700;
+  color: var(--mantine-color-dimmed);
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+  padding: 10px 0;
+}
+.tr > td {
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  padding: 14px 0;
+}
+.tr:last-child > td { border-bottom: 0; }
+
+.tdKeyword { width: 48%; }
+.tdNumber  { width: 14%; }
+.tdRank    { width: 19%; }
+
+.link { color: #2E6CF6; font-weight: 700; }
+
+/* a11y hidden heading */
+.visuallyHidden {
+  position: absolute !important;
+  height: 1px; width: 1px; overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+}
+
+/* Dark mode polish */
+@media (prefers-color-scheme: dark) {
+  .cardCenter { box-shadow: 0 2px 16px rgba(0,0,0,.35); border-color: rgba(255,255,255,.08); }
+  .th { border-bottom-color: rgba(255,255,255,.12); }
+  .tr > td { border-bottom-color: rgba(255,255,255,.08); }
+}

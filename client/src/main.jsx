@@ -1,9 +1,12 @@
+// client/src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider, ScrollArea } from "@mantine/core";
+import "@mantine/core/styles.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import App from "./App.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
+import Placeholder from "./pages/Placeholder.jsx";
 import KeywordTracking from "./pages/KeywordTracking.jsx";
 import CompetitorTracking from "./pages/CompetitorTracking.jsx";
 import Reports from "./pages/Reports.jsx";
@@ -16,20 +19,25 @@ import "./index.css";
 function AppLayout() {
   return (
     <div className="app-layout">
-      {/* Left sidebar */}
-      <NavbarSimple />
+      {/* Fixed sidebar (does not scroll with page) */}
+      <aside className="app-sidebar">
+        <NavbarSimple />
+      </aside>
 
-      {/* Right content area */}
-      <div className="app-main">
-        <Routes>
-          <Route path="/" element={<App />} />
-          <Route path="/keywords" element={<KeywordTracking />} />
-          <Route path="/competitors" element={<CompetitorTracking />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </div>
+      {/* Only this pane scrolls */}
+      <main className="app-main">
+        <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/placeholder" element={<Placeholder />} />
+            <Route path="/keywords" element={<KeywordTracking />} />
+            <Route path="/competitors" element={<CompetitorTracking />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </ScrollArea>
+      </main>
     </div>
   );
 }
