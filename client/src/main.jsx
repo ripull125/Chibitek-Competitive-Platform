@@ -12,7 +12,6 @@ import CompetitorTracking from "./pages/CompetitorTracking.jsx";
 import Reports from "./pages/Reports.jsx";
 import Chat from "./pages/Chat.jsx";
 import Settings from "./pages/Settings.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
 import CompetitorLookup from "./pages/CompetitorLookup.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
