@@ -12,7 +12,6 @@ import CompetitorTracking from "./pages/CompetitorTracking.jsx";
 import Reports from "./pages/Reports.jsx";
 import Chat from "./pages/Chat.jsx";
 import Settings from "./pages/Settings.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
 import CompetitorLookup from "./pages/CompetitorLookup.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
@@ -31,6 +30,7 @@ function AppLayout() {
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+              <Route path="/competitor-lookup" element={<CompetitorLookup />} />
             <Route path="/placeholder" element={<Placeholder />} />
             <Route path="/keywords" element={<KeywordTracking />} />
             <Route path="/competitors" element={<CompetitorTracking />} />
