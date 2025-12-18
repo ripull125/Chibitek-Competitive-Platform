@@ -30,6 +30,7 @@ function AppLayout() {
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
+              <Route path="/competitor-lookup" element={<CompetitorLookup />} />
             <Route path="/placeholder" element={<Placeholder />} />
             <Route path="/keywords" element={<KeywordTracking />} />
             <Route path="/competitors" element={<CompetitorTracking />} />
