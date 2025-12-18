@@ -20,6 +20,7 @@ const FADE_MS = 140;
 
 const linksData = [
   { label: "Dashboard", icon: IconGauge, path: "/" },
+  { label: "Competitor Lookup", icon: IconSearch, path: "/competitor-lookup" },
   { label: "Keyword Tracking", icon: IconSearch, path: "/keywords" },
   { label: "Competitor Tracking", icon: IconBuildingFactory, path: "/competitors" },
   { label: "Reports", icon: IconReport, path: "/reports" },
@@ -78,12 +79,20 @@ export function NavbarSimple() {
       </div>
 
       <div className={classes.footer}>
-        <button type="button" className={classes.link}>
+        <button
+          type="button"
+          className={classes.link}
+          onClick={() => { }}
+        >
           <IconSwitchHorizontal className={classes.linkIcon} stroke={1.6} />
           <span className={classes.linkLabel}>Change account</span>
         </button>
 
-        <button type="button" className={classes.link}>
+        <button
+          type="button"
+          className={classes.link}
+          onClick={() => { }}
+        >
           <IconLogout className={classes.linkIcon} stroke={1.6} />
           <span className={classes.linkLabel}>Logout</span>
         </button>
