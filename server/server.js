@@ -1,8 +1,10 @@
 // React can't directly work with puppeteer so it has to go through a
 // server that calls another file with puppeteer
 
+import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -67,7 +69,7 @@ app.get('/scrape', async (req, res) => {
     (async () => {
       try {
         await fs.mkdir(path.dirname(scrapedDataPath), { recursive: true });
-        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 2), 'utf8');
+        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 5), 'utf8');
       } catch (err) {
         console.error('Failed to write scraped payload to recharts:', err);
       }
@@ -79,6 +81,31 @@ app.get('/scrape', async (req, res) => {
     res.status(500).json({ error: 'Scraping failed' });
   }
 });
+
+app.get("/api/x/fetch/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+    const userId = await getUserIdByUsername(username);
+    const posts = await fetchPostsByUserId(userId, 5);
+
+    res.json({ success: true, username, userId, posts });
+  } catch (err) {
+    console.error("X fetch error:", err.message);
+
+    if (String(err.message).includes("Rate limit")) {
+      return res.status(429).json({ error: err.message });
+    }
+
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+app.use(express.json());
 
 app.post("/write", async (req, res) => {
   const { message } = req.body;
