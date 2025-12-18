@@ -1,4 +1,4 @@
-/* Settings.module.css */
+/* client/src/pages/Settings.module.css */
 
 /* Remove scrollbars for this page */
 :global(html),
@@ -104,7 +104,56 @@
   font-weight: 700;
 }
 
-/* Remove the thin outline by removing border + background from the SegmentedControl root */
+/* ---- Language Select (dropdown) ---- */
+.selectRoot {
+  width: 100%;
+  max-width: 300px;
+}
+
+/* pill input */
+.selectInput {
+  text-align: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 6px 18px rgba(17, 24, 39, 0.08);
+  padding-block: 12px;
+  padding-left: 40px; /* room for left icon */
+  font-weight: 700;
+}
+.selectInput:focus-within {
+  outline: 0;
+  border-color: #6aa4ff;
+  box-shadow: 0 0 0 3px rgba(106, 164, 255, 0.25);
+}
+
+/* icon color alignment */
+.selectSection {
+  color: #2d6cdf;
+}
+
+/* dropdown menu */
+.selectDropdown {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.15);
+  overflow: hidden;
+}
+
+/* option look */
+.selectOption {
+  padding-block: 10px;
+  font-weight: 600;
+}
+.selectOption[data-checked="true"] {
+  background: rgba(45, 108, 223, 0.08);
+  color: #1f2937;
+}
+.selectOption[data-hovered="true"] {
+  background: rgba(45, 108, 223, 0.06);
+}
+
+/* (unused now) old segmented styles kept for reference */
 .segmentRoot {
   width: 100%;
   max-width: 280px;
@@ -113,16 +162,6 @@
   background: transparent;
   padding: 0;
 }
-
-/* Keep each option looking like a pill button */
-.segmentControl {
-  border: 0;
-}
-
-.segmentLabel {
-  font-weight: 700;
-}
-
-.segmentIndicator {
-  box-shadow: 0 10px 20px rgba(17, 24, 39, 0.10);
-}
+.segmentControl { border: 0; }
+.segmentLabel { font-weight: 700; }
+.segmentIndicator { box-shadow: 0 10px 20px rgba(17, 24, 39, 0.10); }

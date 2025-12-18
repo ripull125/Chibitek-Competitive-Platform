@@ -1,15 +1,17 @@
-// Settings.jsx
-import { useState } from "react";
+// client/src/pages/Settings.jsx
+import { useState, useMemo } from "react";
 import {
   Title,
   Paper,
   Text,
   Button,
-  SegmentedControl,
   Stack,
   Container,
   Box,
+  Select,
+  Group,
 } from "@mantine/core";
+import { IconWorld } from "@tabler/icons-react";
 import classes from "./Settings.module.css";
 import { useNavigate } from "react-router-dom";
 
@@ -27,8 +29,13 @@ function SettingsCard({ label, title, description, children }) {
 }
 
 export default function Settings() {
-  const [language, setLanguage] = useState("english");
+  const [language, setLanguage] = useState("en");
   const navigate = useNavigate();
+
+  const languageLabel = useMemo(() => {
+    const map = { en: "English", ja: "Japanese", fr: "French", de: "German", es: "Spanish" };
+    return map[language] || "English";
+  }, [language]);
 
   return (
     <Box className={classes.page}>
@@ -53,7 +60,6 @@ export default function Settings() {
             >
               Manage
             </Button>
-
           </SettingsCard>
 
           <SettingsCard
@@ -69,25 +75,48 @@ export default function Settings() {
             >
               Manage
             </Button>
-
           </SettingsCard>
 
+          {/* LANGUAGE — styled dropdown */}
           <SettingsCard label="LANGUAGE" title="Language">
-            <SegmentedControl
+            <Select
               value={language}
-              onChange={setLanguage}
+              onChange={(v) => v && setLanguage(v)}
               data={[
-                { label: "English", value: "english" },
-                { label: "Japanese", value: "japanese" },
+                { value: "en", label: "English" },
+                { value: "ja", label: "Japanese" },
+                { value: "fr", label: "French" },
+                { value: "de", label: "German" },
+                { value: "es", label: "Spanish" },
               ]}
+              placeholder="Choose language"
               radius="xl"
+              size="md"
+              leftSection={<IconWorld size={18} />}
               classNames={{
-                root: classes.segmentRoot,
-                control: classes.segmentControl,
-                label: classes.segmentLabel,
-                indicator: classes.segmentIndicator,
+                root: classes.selectRoot,
+                input: classes.selectInput,
+                dropdown: classes.selectDropdown,
+                option: classes.selectOption,
+                section: classes.selectSection,
               }}
+              comboboxProps={{
+                transitionProps: { transition: "pop", duration: 140 },
+                shadow: "md",
+                radius: "md",
+              }}
+              withinPortal
+              aria-label="Interface language"
             />
+
+            <Group gap={6}>
+              <Text size="xs" c="dimmed">
+                Current:
+              </Text>
+              <Text size="xs" fw={700}>
+                {languageLabel}
+              </Text>
+            </Group>
           </SettingsCard>
 
           <SettingsCard
