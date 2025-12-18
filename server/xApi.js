@@ -14,7 +14,7 @@ function loadBearerTokens() {
 
   // Support individually numbered vars: X_BEARER_TOKEN_1 ... X_BEARER_TOKEN_10
   for (let i = 1; i <= 10; i++) {
-    const k = `X_BEARER_TOKEN_${i}`;
+    const k = `X_BEARER_TOKEN${i}`;
     if (process.env[k]) tokens.push(process.env[k]);
   }
 

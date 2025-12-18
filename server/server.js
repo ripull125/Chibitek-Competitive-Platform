@@ -215,9 +215,3 @@ app.post('/api/chat', async (req, res) => {
     return res.status(500).json({ error: 'Chat request failed.' });
   }
 });
-
-
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
