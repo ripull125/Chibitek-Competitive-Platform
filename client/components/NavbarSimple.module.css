@@ -1,74 +1,158 @@
+/* client/components/NavbarSimple.module.css */
+
 .navbar {
-  height: 100%;
-  width: 260px;
-  padding: 16px 14px;
+  height: 100vh;
+  width: 76px; /* collapsed */
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+
   border-right: 1px solid var(--border-color);
   background-color: var(--nav-bg);
-  box-sizing: border-box;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+
+  transition: width 180ms ease, background-color 0.3s ease, border-color 0.3s ease;
+  overflow: hidden;
+}
+
+/* expand on hover anywhere on the sidebar */
+.navbar:hover {
+  width: 260px; /* expanded */
 }
 
 .navbarMain {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
+/* header */
 .header {
-  padding-bottom: 8px;
-  margin-bottom: 12px;
+  width: 100%;
+  padding: 6px 2px 12px 2px;
+  margin-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
-  transition: border-color 0.3s ease;
 }
 
+/* logo spans full width when expanded. stays compact when collapsed */
+.logo {
+  width: 100%;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  transition: height 180ms ease;
+}
+
+.navbar:hover .logo {
+  height: 54px;
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* footer pinned to bottom */
 .footer {
-  padding-top: 8px;
-  margin-top: 8px;
+  margin-top: auto;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color);
-  transition: border-color 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
+/* link button */
 .link {
   width: 100%;
   display: flex;
   align-items: center;
+
   border: none;
   background: none;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
 
-  font-size: 15px;
+  padding: 10px 10px;
+  border-radius: 12px;
+
   color: var(--nav-text);
-  padding: 10px 12px;
-  border-radius: 6px;
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
 
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background 180ms ease, color 180ms ease, transform 120ms ease;
 }
 
+/* icon stays visible in both states */
 .linkIcon {
-  margin-right: 12px;
   width: 26px;
   height: 26px;
+  flex: 0 0 auto;
+
   color: var(--text-secondary);
-  transition: color 150ms ease;
+  transition: color 180ms ease, opacity 180ms ease;
+}
+
+/* label hidden when collapsed, revealed on hover-expand */
+.linkLabel {
+  margin-left: 12px;
+
+  white-space: nowrap;
+  overflow: hidden;
+
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+
+  transition: max-width 180ms ease, opacity 160ms ease, transform 180ms ease;
+}
+
+/* reveal labels when navbar expands */
+.navbar:hover .linkLabel {
+  max-width: 220px;
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .link:hover {
-  background-color: var(--nav-hover);
-  color: var(--nav-text);
+  background: var(--nav-hover);
 }
 
 .link:hover .linkIcon {
   color: var(--nav-text);
 }
 
+.link:active {
+  transform: translateY(1px);
+}
+
+/* active item teal gradient */
 .link[data-active] {
-  background-color: var(--accent-primary);
+  background: linear-gradient(135deg, #027e7f 0%, #02afb0 55%, #38d6d4 100%);
   color: #ffffff;
+  box-shadow: 0 10px 24px rgba(2, 175, 176, 0.25);
 }
 
 .link[data-active] .linkIcon {
   color: #ffffff;
+}
+
+.link[data-active] .linkLabel {
+  color: #ffffff;
+}
+
+/* fade effect on route change */
+.navbar[data-fading="1"] .linkIcon,
+.navbar[data-fading="1"] .linkLabel {
+  opacity: 0.65;
+}
+
+.navbar[data-fading="0"] .linkIcon {
+  opacity: 1;
+}
+
+/* keyboard focus */
+.link:focus-visible {
+  outline: 2px solid rgba(2, 175, 176, 0.6);
+  outline-offset: 2px;
 }

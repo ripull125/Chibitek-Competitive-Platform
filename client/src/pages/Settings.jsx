@@ -1,99 +1,106 @@
+// Settings.jsx
 import { useState } from "react";
 import {
   Title,
   Paper,
-  Group,
   Text,
   Button,
   SegmentedControl,
   Stack,
-  SimpleGrid,
   Container,
+  Box,
 } from "@mantine/core";
+import classes from "./Settings.module.css";
+import { useNavigate } from "react-router-dom";
+
+function SettingsCard({ label, title, description, children }) {
+  return (
+    <Paper withBorder radius="xl" p="lg" className={classes.card}>
+      <Stack gap={10} className={classes.cardInner}>
+        <Text className={classes.sectionLabel}>{label}</Text>
+        <Text className={classes.rowTitle}>{title}</Text>
+        {description ? <Text className={classes.subText}>{description}</Text> : null}
+        {children}
+      </Stack>
+    </Paper>
+  );
+}
 
 export default function Settings() {
   const [language, setLanguage] = useState("english");
-
-  console.log("Settings page – card layout loaded");
+  const navigate = useNavigate();
 
   return (
-    <Container fluid px="xl" py="lg" style={{ width: "100%" }}>
-      <Stack gap="xl">
-        <Title order={1}>Settings</Title>
+    <Box className={classes.page}>
+      <Container size="lg" className={classes.shell}>
+        <Box className={classes.header}>
+          <Title order={2} className={classes.title}>
+            SETTINGS
+          </Title>
+        </Box>
 
-        <SimpleGrid
-          cols={2}
-          spacing="xl"
-          breakpoints={[{ maxWidth: "md", cols: 1 }]}
-        >
-          {/* ACCOUNT */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Account
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Profile</Text>
-                <Text fz="sm" c="dimmed">
-                  Manage personal details
-                </Text>
-              </div>
-              <Button variant="light">Manage</Button>
-            </Group>
-          </Paper>
+        <Box className={classes.grid}>
+          <SettingsCard
+            label="ACCOUNT"
+            title="Profile"
+            description="Manage personal details"
+          >
+            <Button
+              variant="light"
+              radius="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/settings/profile")}
+            >
+              Manage
+            </Button>
 
-          {/* DATA SOURCES */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Data sources
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Connected integrations</Text>
-                <Text fz="sm" c="dimmed">
-                  Control connected platforms
-                </Text>
-              </div>
-              <Button variant="light">Manage</Button>
-            </Group>
-          </Paper>
+          </SettingsCard>
 
-          {/* LANGUAGE */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Language
-            </Text>
-            <Stack gap="xs">
-              <Text fw={500}>Language</Text>
-              <SegmentedControl
-                value={language}
-                onChange={setLanguage}
-                data={[
-                  { label: "English", value: "english" },
-                  { label: "Japanese", value: "japanese" },
-                ]}
-                radius="xl"
-              />
-            </Stack>
-          </Paper>
+          <SettingsCard
+            label="DATA SOURCES"
+            title="Connected integrations"
+            description="Control connected platforms"
+          >
+            <Button
+              variant="light"
+              radius="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/settings/integrations")}
+            >
+              Manage
+            </Button>
 
-          {/* TUTORIAL */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Tutorial
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Take the tour</Text>
-                <Text fz="sm" c="dimmed">
-                  Quick walkthrough of features
-                </Text>
-              </div>
-              <Button variant="light">Start</Button>
-            </Group>
-          </Paper>
-        </SimpleGrid>
-      </Stack>
-    </Container>
+          </SettingsCard>
+
+          <SettingsCard label="LANGUAGE" title="Language">
+            <SegmentedControl
+              value={language}
+              onChange={setLanguage}
+              data={[
+                { label: "English", value: "english" },
+                { label: "Japanese", value: "japanese" },
+              ]}
+              radius="xl"
+              classNames={{
+                root: classes.segmentRoot,
+                control: classes.segmentControl,
+                label: classes.segmentLabel,
+                indicator: classes.segmentIndicator,
+              }}
+            />
+          </SettingsCard>
+
+          <SettingsCard
+            label="TUTORIAL"
+            title="Take the tour"
+            description="Quick walkthrough of features"
+          >
+            <Button variant="light" radius="md" className={classes.actionBtn}>
+              Start
+            </Button>
+          </SettingsCard>
+        </Box>
+      </Container>
+    </Box>
   );
 }

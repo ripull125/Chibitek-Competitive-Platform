@@ -30,8 +30,8 @@
       "availability": "In stock",
       "keywords": [
         "French literature",
-        "Islam",
-        "controversial themes"
+        "political themes",
+        "contemporary fiction"
       ]
     },
     {
@@ -41,7 +41,7 @@
       "keywords": [
         "psychological thriller",
         "mystery",
-        "Gillian Flynn"
+        "dark themes"
       ]
     },
     {
@@ -51,7 +51,7 @@
       "keywords": [
         "history",
         "human evolution",
-        "Yuval Noah Harari"
+        "non-fiction"
       ]
     },
     {
@@ -59,9 +59,9 @@
       "price": "£22.65",
       "availability": "In stock",
       "keywords": [
-        "fantasy",
-        "adventure",
-        "young adult"
+        "mystery novel",
+        "crime fiction",
+        "suspense"
       ]
     },
     {
@@ -79,7 +79,7 @@
       "price": "£17.93",
       "availability": "In stock",
       "keywords": [
-        "biography",
+        "biographical fiction",
         "feminism",
         "historical novel"
       ]
@@ -91,7 +91,7 @@
       "keywords": [
         "sports history",
         "Olympics",
-        "teamwork"
+        "inspiration"
       ]
     },
     {
@@ -99,9 +99,9 @@
       "price": "£52.15",
       "availability": "In stock",
       "keywords": [
-        "fiction",
+        "literary fiction",
         "mystery",
-        "literary"
+        "art"
       ]
     },
     {
@@ -110,8 +110,8 @@
       "availability": "In stock",
       "keywords": [
         "fantasy",
-        "romance",
-        "young adult"
+        "young adult",
+        "romance"
       ]
     },
     {
@@ -129,9 +129,9 @@
       "price": "£17.46",
       "availability": "In stock",
       "keywords": [
-        "self-help",
-        "inspiration",
-        "personal growth"
+        "self-discovery",
+        "young adult",
+        "fiction"
       ]
     },
     {
@@ -141,7 +141,7 @@
       "keywords": [
         "graphic novel",
         "comics",
-        "Scott Pilgrim"
+        "humor"
       ]
     },
     {
@@ -179,7 +179,7 @@
       "price": "£37.59",
       "availability": "In stock",
       "keywords": [
-        "politics",
+        "political philosophy",
         "libertarianism",
         "introduction"
       ]
@@ -189,9 +189,9 @@
       "price": "£51.33",
       "availability": "In stock",
       "keywords": [
-        "travel",
-        "adventure",
-        "Himalayas"
+        "travel writing",
+        "Himalayas",
+        "adventure"
       ]
     },
     {
