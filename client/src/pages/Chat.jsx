@@ -10,18 +10,54 @@ import {
   Text,
   TextInput,
   Title,
-  useMantineTheme,
 } from '@mantine/core';
-import { useMantineColorScheme } from '@mantine/core';
 import { IconPlus, IconMicrophone, IconMicrophoneOff, IconSend } from '@tabler/icons-react';
 
-// ... keep your resolveBackendUrl / backendUrl / SpeechRecognition / fileToAttachment above ...
+const resolveBackendUrl = () => {
+  const envUrl = import.meta.env.e_BACKEND_URL;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    // When running the Vite dev server (default http://localhost:5173),
+    // the API lives on the Express server at port 8080. Point there so
+    // chat requests don't 404 against the frontend origin.
+    const { hostname, port, protocol } = window.location;
+    if (hostname === 'localhost' && port === '5173') {
+      return `${protocol}//${hostname}:8080`;
+    }
+    return window.location.origin;
+  }
+  return '';
+};
+
+const backendUrl = resolveBackendUrl();
+
+const SpeechRecognition =
+  typeof window !== 'undefined'
+    ? window.SpeechRecognition || window.webkitSpeechRecognition
+    : null;
+
+const fileToAttachment = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const isTextLike = file.type.startsWith('text/') || file.type.includes('json');
+    reader.onload = () => {
+      const content = typeof reader.result === 'string' ? reader.result : '';
+      resolve({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        content: content.slice(0, 12000),
+      });
+     };
+    reader.onerror = () => reject(reader.error);
+    if (isTextLike) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
+    }
+  });
 
 export default function ChatInput() {
-  const theme = useMantineTheme();
-  const { colorScheme } = useMantineColorScheme();
-  const isDark = colorScheme === 'dark';
-
   const [message, setMessage] = useState('');
   const [conversation, setConversation] = useState([
     {
@@ -49,8 +85,13 @@ export default function ChatInput() {
       setMessage((prev) => `${prev ? `${prev} ` : ''}${transcript}`.trim());
     };
 
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
 
     recognitionRef.current = recognition;
     return () => recognition.stop();
@@ -58,7 +99,6 @@ export default function ChatInput() {
 
   const handleSend = async () => {
     if (!message.trim() && attachments.length === 0) return;
-
     const userMessage = {
       role: 'user',
       content: message.trim() || 'See attached files for context.',
@@ -140,43 +180,32 @@ export default function ChatInput() {
   const attachmentBadges = useMemo(
     () =>
       attachments.map((file) => (
-        <Badge key={`${file.name}-${file.size}`} color={isDark ? 'gray' : 'gray'} variant="light">
+        <Badge key={`${file.name}-${file.size}`} color="gray" variant="light">
           {file.name}
         </Badge>
       )),
-    [attachments, isDark]
+    [attachments]
   );
 
-  // Theme-aware colors (no hard-coded white)
-  const pageBg = isDark ? theme.colors.dark[8] : theme.colors.gray[0];
-  const panelBg = isDark ? theme.colors.dark[7] : theme.white;
-  const panelBorder = isDark ? theme.colors.dark[5] : theme.colors.gray[3];
-
-  const userBubbleBg = isDark ? theme.colors.blue[9] : theme.colors.blue[0];
-  const userBubbleBorder = isDark ? theme.colors.blue[8] : theme.colors.blue[2];
-  const userTextColor = isDark ? theme.white : theme.colors.dark[9];
-
-  const botBubbleBg = isDark ? theme.colors.dark[6] : theme.white;
-  const botBubbleBorder = isDark ? theme.colors.dark[5] : theme.colors.gray[3];
-  const botTextColor = isDark ? theme.colors.gray[0] : theme.colors.dark[9];
-
-  const composerBg = isDark ? theme.colors.dark[6] : theme.white;
-  const composerBorder = isDark ? theme.colors.dark[4] : theme.colors.gray[3];
-
   return (
-    <Box
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: pageBg,
-        padding: '32px 16px',
-      }}
-    >
-      <Box style={{ width: '100%', maxWidth: 900 }}>
-        <Box style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title order={1} style={{ fontWeight: 500, color: isDark ? theme.white : theme.colors.dark[9] }}>
+    <Box style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      backgroundColor: 'var(--bg-primary)',
+      padding: '0 40px',
+      transition: 'background-color 0.3s ease'
+    }}>
+      <Box style={{ width: '100%' }}>
+        <Box style={{ textAlign: 'center', marginBottom: 40 }}>
+          <Title style={{ 
+            fontSize: 32, 
+            fontWeight: 400, 
+            color: 'var(--text-primary)',
+            margin: 0,
+            transition: 'color 0.3s ease'
+          }}>
             ChibitekAI
           </Title>
           <Text c="dimmed" mt={6}>
@@ -184,69 +213,42 @@ export default function ChatInput() {
           </Text>
         </Box>
 
-        <Paper
-          shadow="sm"
-          radius="lg"
-          p="md"
-          withBorder
-          style={{
-            backgroundColor: panelBg,
-            borderColor: panelBorder,
-          }}
-        >
+        <Paper shadow="sm" radius="lg" p="md" withBorder>
           <ScrollArea style={{ height: '50vh' }} pr="md">
             <Box style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {conversation.map((entry, index) => {
-                const isUser = entry.role === 'user';
-                return (
-                  <Box
-                    key={index}
+              {conversation.map((entry, index) => (
+                <Box
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    justifyContent: entry.role === 'user' ? 'flex-end' : 'flex-start',
+                  }}
+                >
+                  <Paper
+                    shadow="xs"
+                    p="sm"
+                    withBorder
                     style={{
-                      display: 'flex',
-                      justifyContent: isUser ? 'flex-end' : 'flex-start',
+                      maxWidth: '80%',
+                      backgroundColor: entry.role === 'user' ? '#e7f5ff' : 'white',
                     }}
                   >
-                    <Paper
-                      shadow="xs"
-                      p="sm"
-                      withBorder
-                      style={{
-                        maxWidth: '80%',
-                        backgroundColor: isUser ? userBubbleBg : botBubbleBg,
-                        borderColor: isUser ? userBubbleBorder : botBubbleBorder,
-                      }}
-                    >
-                      <Text size="xs" c="dimmed" mb={4} style={{ opacity: isDark ? 0.85 : 1 }}>
-                        {isUser ? 'You' : 'ChibitekAI'}
-                      </Text>
-
-                      <Text
-                        style={{
-                          whiteSpace: 'pre-wrap',
-                          color: isUser ? userTextColor : botTextColor,
-                        }}
-                      >
-                        {entry.content}
-                      </Text>
-
-                      {entry.attachments?.length ? (
-                        <Group gap="xs" mt={8} wrap="wrap">
-                          {entry.attachments.map((file) => (
-                            <Badge
-                              key={`${file.name}-${file.size}`}
-                              color={isUser ? 'gray' : 'blue'}
-                              variant={isDark ? 'filled' : 'light'}
-                            >
-                              {file.name}
-                            </Badge>
-                          ))}
-                        </Group>
-                      ) : null}
-                    </Paper>
-                  </Box>
-                );
-              })}
-
+                    <Text size="xs" c="dimmed" mb={4}>
+                      {entry.role === 'user' ? 'You' : 'ChibitekAI'}
+                    </Text>
+                    <Text style={{ whiteSpace: 'pre-wrap' }}>{entry.content}</Text>
+                    {entry.attachments?.length ? (
+                      <Group gap="xs" mt={8} wrap="wrap">
+                        {entry.attachments.map((file) => (
+                          <Badge key={`${file.name}-${file.size}`} color="blue" variant="light">
+                            {file.name}
+                          </Badge>
+                        ))}
+                      </Group>
+                    ) : null}
+                  </Paper>
+                </Box>
+              ))}
               {isSending ? (
                 <Group gap="xs">
                   <Loader size="sm" />
@@ -270,16 +272,28 @@ export default function ChatInput() {
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              backgroundColor: composerBg,
-              borderRadius: 999,
-              border: `1px solid ${composerBorder}`,
+              backgroundColor: 'white',
+              borderRadius: 50,
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+              border: '1px solid #e9ecef',
             }}
           >
-            <ActionIcon variant="subtle" color="gray" size="lg" onClick={handleFileButtonClick} style={{ flexShrink: 0 }}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              onClick={handleFileButtonClick}
+              style={{ flexShrink: 0 }}
+            >
               <IconPlus size={20} />
             </ActionIcon>
-
-            <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+            <input
+              type="file"
+              multiple
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
 
             <TextInput
               placeholder="Ask anything"
@@ -296,9 +310,13 @@ export default function ChatInput() {
                   padding: '8px 0',
                   border: 'none',
                   outline: 'none',
-                  color: isDark ? theme.colors.gray[0] : theme.colors.dark[9],
-                  backgroundColor: 'transparent',
-                  '&::placeholder': { color: isDark ? theme.colors.gray[5] : theme.colors.gray[6] },
+                  '&:focus': {
+                    outline: 'none',
+                    border: 'none',
+                  },
+                  '&::placeholder': {
+                    color: '#adb5bd',
+                  },
                 },
               }}
             />
