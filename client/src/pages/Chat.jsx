@@ -14,6 +14,8 @@ import {
 } from '@mantine/core';
 import { IconPlus, IconMicrophone, IconMicrophoneOff, IconSend } from '@tabler/icons-react';
 
+const CHAT_STORAGE_KEY = 'chibitek-chat-state';
+
 const resolveBackendUrl = () => {
   const envUrl = import.meta.env.e_BACKEND_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
@@ -33,6 +35,24 @@ const SpeechRecognition =
   typeof window !== 'undefined'
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
+
+const defaultConversation = [
+  {
+    role: 'assistant',
+    content: 'Hi! I am ChibitekAI. Ask me anything about your competitive research.',
+  },
+];
+
+const loadPersistedChat = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn('Failed to load saved chat', err);
+    return null;
+  }
+};
 
 const fileToAttachment = (file) =>
   new Promise((resolve, reject) => {
@@ -55,19 +75,30 @@ const fileToAttachment = (file) =>
     }
   });
 
-export default function Chat() {
-  const [message, setMessage] = useState('');
-  const [conversation, setConversation] = useState([
-    {
-      role: 'assistant',
-      content: 'Hi! I am ChibitekAI. Ask me anything about your competitive research.',
-    },
-  ]);
-  const [attachments, setAttachments] = useState([]);
+export default function ChatInput() {
+  const persisted = useMemo(() => loadPersistedChat(), []);
+  const [message, setMessage] = useState(persisted?.message ?? '');
+  const [conversation, setConversation] = useState(persisted?.conversation ?? defaultConversation);
+  const [attachments, setAttachments] = useState(persisted?.attachments ?? []);
   const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    hasHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || typeof window === 'undefined') return;
+    try {
+      const toStore = JSON.stringify({ message, conversation, attachments });
+      window.localStorage.setItem(CHAT_STORAGE_KEY, toStore);
+    } catch (err) {
+      console.warn('Failed to persist chat', err);
+    }
+  }, [message, conversation, attachments]);
 
   useEffect(() => {
     if (!SpeechRecognition) return undefined;
