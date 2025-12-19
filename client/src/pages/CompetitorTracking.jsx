@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import { Card, Title } from "@mantine/core";
 
-export default function CompetitorTracking() {
+export default function CompetitorTracking({ selectedDatasets }) {
   const datasets = [
     {
       title: "Week 1 Engagement",
@@ -36,52 +36,55 @@ export default function CompetitorTracking() {
         Competitor Tracking
       </Title>
 
-      {datasets.map((set, index) => (
-        <Card key={index} shadow="sm" p="md" radius="md" mb="lg">
-          {/* CARD-LEVEL TITLE */}
-          <Title order={4} mb="md">
-            {set.title}
-          </Title>
+      {datasets.map(
+        (set, index) =>
+          (!selectedDatasets || selectedDatasets[index]) && (
+            <Card key={index} shadow="sm" p="md" radius="md" mb="lg">
+              {/* CARD-LEVEL TITLE */}
+              <Title order={4} mb="md">
+                {set.title}
+              </Title>
 
-          <ResponsiveContainer width="60%" height={300}>
-            <ScatterChart>
-              <CartesianGrid />
+              <ResponsiveContainer width="60%" height={300}>
+                <ScatterChart>
+                  <CartesianGrid />
 
-              <XAxis
-                type="number"
-                dataKey="posts"
-                name="Posts"
-                label={{
-                  value: "Number of Posts",
-                  position: "insideBottom",
-                  offset: -5,
-                }}
-              />
+                  <XAxis
+                    type="number"
+                    dataKey="posts"
+                    name="Posts"
+                    label={{
+                      value: "Number of Posts",
+                      position: "insideBottom",
+                      offset: -5,
+                    }}
+                  />
 
-              <YAxis
-                type="number"
-                dataKey="likes"
-                name="Likes"
-                label={{
-                  value: "Likes (Reception)",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
-              />
+                  <YAxis
+                    type="number"
+                    dataKey="likes"
+                    name="Likes"
+                    label={{
+                      value: "Likes (Reception)",
+                      angle: -90,
+                      position: "insideLeft",
+                    }}
+                  />
 
-              <Tooltip
-                cursor={{ strokeDasharray: "3 3" }}
-                formatter={(value, name) => [value, name]}
-                labelFormatter={(_, payload) =>
-                  payload?.[0]?.payload?.competitor
-                }
-              />
+                  <Tooltip
+                    cursor={{ strokeDasharray: "3 3" }}
+                    formatter={(value, name) => [value, name]}
+                    labelFormatter={(_, payload) =>
+                      payload?.[0]?.payload?.competitor
+                    }
+                  />
 
-              <Scatter data={set.data} />
-            </ScatterChart>
-          </ResponsiveContainer>
-        </Card>
-      ))}
+                  <Scatter data={set.data} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </Card>
+          )
+      )}
     </>
   );
 }
