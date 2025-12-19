@@ -1,13 +1,20 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Button } from "@mantine/core";
+import { Button, Checkbox } from "@mantine/core";
 import "../utils/ui.css";
+
 export default function Reports() {
   const chartRef = useRef(null);
+  const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
 
   const generatePDF = async () => {
+    if (!includeKeywordTracking) {
+      alert("Please enable Keyword Tracking to generate PDF");
+      return;
+    }
+
     const input = chartRef.current;
 
     if (!input) return;
@@ -37,11 +44,20 @@ export default function Reports() {
 
   return (
     <div style={{ padding: "1rem" }}>
+      <h1 style={{ marginBottom: "1.5rem" }}>Analysis Reports</h1>
+      
       <Button onClick={generatePDF} mb="lg">
         Download PDF
       </Button>
 
-      <KeywordTracking ref={chartRef} />
+      <Checkbox
+        label="Include Keyword Tracking"
+        checked={includeKeywordTracking}
+        onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
+        mb="lg"
+      />
+
+      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
     </div>
   );
 }
