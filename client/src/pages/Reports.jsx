@@ -3,7 +3,7 @@ import KeywordTracking from "./KeywordTracking";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Button } from "@mantine/core";
-
+import "../utils/ui.css";
 export default function Reports() {
   const chartRef = useRef(null);
 

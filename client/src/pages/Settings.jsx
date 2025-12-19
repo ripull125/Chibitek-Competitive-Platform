@@ -1,4 +1,5 @@
 // client/src/pages/Settings.jsx
+// — Bold title + slightly larger sizing —
 import { useState, useMemo } from "react";
 import {
   Title,
@@ -12,13 +13,14 @@ import {
   Group,
 } from "@mantine/core";
 import { IconWorld } from "@tabler/icons-react";
-import classes from "./Settings.module.css";
 import { useNavigate } from "react-router-dom";
+import classes from "./Settings.module.css";
+import "../utils/ui.css"; // provides .pageTitle (regular)
 
 function SettingsCard({ label, title, description, children }) {
   return (
-    <Paper withBorder radius="xl" p="lg" className={classes.card}>
-      <Stack gap={10} className={classes.cardInner}>
+    <Paper withBorder radius="lg" p="md" className={classes.card}>
+      <Stack gap={12} className={classes.cardInner}>
         <Text className={classes.sectionLabel}>{label}</Text>
         <Text className={classes.rowTitle}>{title}</Text>
         {description ? <Text className={classes.subText}>{description}</Text> : null}
@@ -41,9 +43,8 @@ export default function Settings() {
     <Box className={classes.page}>
       <Container size="lg" className={classes.shell}>
         <Box className={classes.header}>
-          <Title order={2} className={classes.title}>
-            SETTINGS
-          </Title>
+          {/* Bold only here; other pages keep regular .pageTitle */}
+          <Title order={2} className={`pageTitle ${classes.titleBold}`}>Settings</Title>
         </Box>
 
         <Box className={classes.grid}>
@@ -55,8 +56,9 @@ export default function Settings() {
             <Button
               variant="light"
               radius="md"
+              size="md"
               className={classes.actionBtn}
-              onClick={() => navigate("/settings/profile")}
+              onClick={() => navigate("/profile")}
             >
               Manage
             </Button>
@@ -70,14 +72,14 @@ export default function Settings() {
             <Button
               variant="light"
               radius="md"
+              size="md"
               className={classes.actionBtn}
-              onClick={() => navigate("/settings/integrations")}
+              onClick={() => navigate("/connected-integrations")}
             >
               Manage
             </Button>
           </SettingsCard>
 
-          {/* LANGUAGE — styled dropdown */}
           <SettingsCard label="LANGUAGE" title="Language">
             <Select
               value={language}
@@ -90,7 +92,7 @@ export default function Settings() {
                 { value: "es", label: "Spanish" },
               ]}
               placeholder="Choose language"
-              radius="xl"
+              radius="md"
               size="md"
               leftSection={<IconWorld size={18} />}
               classNames={{
@@ -100,22 +102,12 @@ export default function Settings() {
                 option: classes.selectOption,
                 section: classes.selectSection,
               }}
-              comboboxProps={{
-                transitionProps: { transition: "pop", duration: 140 },
-                shadow: "md",
-                radius: "md",
-              }}
-              withinPortal
+              comboboxProps={{ transitionProps: { transition: "pop", duration: 140 }, shadow: "md", radius: "md" }}
               aria-label="Interface language"
             />
-
-            <Group gap={6}>
-              <Text size="xs" c="dimmed">
-                Current:
-              </Text>
-              <Text size="xs" fw={700}>
-                {languageLabel}
-              </Text>
+            <Group gap={8}>
+              <Text size="sm" c="dimmed">Current:</Text>
+              <Text size="sm" fw={700}>{languageLabel}</Text>
             </Group>
           </SettingsCard>
 
@@ -124,7 +116,7 @@ export default function Settings() {
             title="Take the tour"
             description="Quick walkthrough of features"
           >
-            <Button variant="light" radius="md" className={classes.actionBtn}>
+            <Button variant="light" radius="md" size="md" className={classes.actionBtn}>
               Start
             </Button>
           </SettingsCard>

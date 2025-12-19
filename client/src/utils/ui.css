@@ -1,0 +1,9 @@
+/* client/src/utils/ui.css */
+.pageTitle {
+  font-family: var(--mantine-font-family);
+  font-weight: 400;
+  font-size: clamp(24px, 2.6vw, 30px);
+  line-height: 1.2;
+  color: var(--mantine-color-text);
+  margin: 0;
+}

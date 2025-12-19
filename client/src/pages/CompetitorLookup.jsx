@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-
+import "../utils/ui.css";
 export default function CompetitorLookup() {
     const [username, setUsername] = useState('');
     const [loading, setLoading] = useState(false);
