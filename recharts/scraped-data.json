@@ -30,8 +30,8 @@
       "availability": "In stock",
       "keywords": [
         "French literature",
-        "political themes",
-        "contemporary fiction"
+        "Islam",
+        "controversial themes"
       ]
     },
     {
@@ -40,8 +40,8 @@
       "availability": "In stock",
       "keywords": [
         "psychological thriller",
-        "mystery",
-        "dark themes"
+        "murder mystery",
+        "Gillian Flynn"
       ]
     },
     {
@@ -51,7 +51,7 @@
       "keywords": [
         "history",
         "human evolution",
-        "non-fiction"
+        "Yuval Noah Harari"
       ]
     },
     {
@@ -59,9 +59,9 @@
       "price": "£22.65",
       "availability": "In stock",
       "keywords": [
-        "mystery novel",
-        "crime fiction",
-        "suspense"
+        "fantasy novel",
+        "mystery",
+        "adventure"
       ]
     },
     {
@@ -79,9 +79,9 @@
       "price": "£17.93",
       "availability": "In stock",
       "keywords": [
-        "biographical fiction",
+        "biographical novel",
         "feminism",
-        "historical novel"
+        "Victoria Woodhull"
       ]
     },
     {
@@ -91,7 +91,7 @@
       "keywords": [
         "sports history",
         "Olympics",
-        "inspiration"
+        "teamwork"
       ]
     },
     {
@@ -109,8 +109,8 @@
       "price": "£13.99",
       "availability": "In stock",
       "keywords": [
-        "fantasy",
         "young adult",
+        "fantasy",
         "romance"
       ]
     },
@@ -131,7 +131,7 @@
       "keywords": [
         "self-discovery",
         "young adult",
-        "fiction"
+        "inspiration"
       ]
     },
     {
@@ -141,7 +141,7 @@
       "keywords": [
         "graphic novel",
         "comics",
-        "humor"
+        "Scott Pilgrim"
       ]
     },
     {
@@ -151,7 +151,7 @@
       "keywords": [
         "music history",
         "indie rock",
-        "cultural impact"
+        "American culture"
       ]
     },
     {
@@ -189,7 +189,7 @@
       "price": "£51.33",
       "availability": "In stock",
       "keywords": [
-        "travel writing",
+        "travel memoir",
         "Himalayas",
         "adventure"
       ]

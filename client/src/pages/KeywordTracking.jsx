@@ -11,45 +11,53 @@ import {
 } from "recharts";
 
 const KeywordTracking = forwardRef((props, ref) => {
-  const data = [
-    { keyword: "fiction", freq: 12 },
-    { keyword: "nonfiction", freq: 7 },
-    { keyword: "history", freq: 5 },
-    { keyword: "cooking", freq: 9 },
-    { keyword: "biography", freq: 4 },
+  const datasets = [
+    {
+      title: "Sample Data #1",
+      data: [
+        { keyword: "fiction", freq: 12 },
+        { keyword: "nonfiction", freq: 7 },
+        { keyword: "history", freq: 5 },
+      ],
+    },
+    {
+      title: "Sample Data #2",
+      data: [
+        { keyword: "cooking", freq: 9 },
+        { keyword: "biography", freq: 4 },
+        { keyword: "science", freq: 6 },
+      ],
+    },
   ];
 
   return (
     <div ref={ref}>
-      <Card shadow="sm" p="lg" radius="md">
-        <Title order={3} mb="md">
-          Keyword Frequency Chart
-        </Title>
+      {/* PAGE-LEVEL TITLE (renders once) */}
+      <Title order={2} mb="lg">
+        Keyword Tracking
+      </Title>
 
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart
-            data={data}
-            margin={{ top: 40, right: 20, left: 20, bottom: 20 }} // <-- pushes chart down
-          >
-            {/* Chart Title */}
-            <text
-              x="50%"
-              y={20} // stays near the top
-              textAnchor="middle"
-              dominantBaseline="middle"
-              style={{ fontSize: "16px", fontWeight: "bold" }}
+      {datasets.map((set, index) => (
+        <Card key={index} shadow="sm" p="lg" radius="md" mb="lg">
+          {/* CARD-LEVEL TITLE */}
+          <Title order={4} mb="md">
+            {set.title}
+          </Title>
+
+          <ResponsiveContainer width="60%" height={320}>
+            <BarChart
+              data={set.data}
+              margin={{ top: 20, right: 20, left: 20, bottom: 20 }}
             >
-              Sample Data #1
-            </text>
-
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="keyword" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="freq" fill="#4dabf7" />
-          </BarChart>
-        </ResponsiveContainer>
-      </Card>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="keyword" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="freq" fill="#4dabf7" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      ))}
     </div>
   );
 });
