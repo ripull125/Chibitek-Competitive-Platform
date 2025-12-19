@@ -88,4 +88,80 @@ body,
   background-color: var(--bg-primary);
   transition: background-color 0.3s ease;
 }
+/* Base chrome follows theme */
+html, body, #root { background: var(--mantine-color-body); color: var(--mantine-color-text); }
+.app-main, .app-sidebar { background: var(--mantine-color-body); }
 
+/* DARK MODE ENFORCERS */
+html[data-mantine-color-scheme="dark"] {
+  /* Inputs */
+  --_input-bg: var(--mantine-color-dark-7);
+  --_input-border: var(--mantine-color-dark-4);
+  --_surface: var(--mantine-color-dark-6);
+  --_surface-elev: var(--mantine-color-dark-7);
+  --_text: var(--mantine-color-dark-0);
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-Input-input,
+html[data-mantine-color-scheme="dark"] .mantine-Textarea-input,
+html[data-mantine-color-scheme="dark"] .mantine-Select-input,
+html[data-mantine-color-scheme="dark"] .mantine-PasswordInput-input,
+html[data-mantine-color-scheme="dark"] .mantine-TextInput-input {
+  background-color: var(--_input-bg) !important;
+  border-color: var(--_input-border) !important;
+  color: var(--_text) !important;
+}
+
+html[data-mantine-color-scheme="dark"] .mantine-InputWrapper-label,
+html[data-mantine-color-scheme="dark"] .mantine-InputWrapper-description {
+  color: var(--_text) !important;
+  opacity: 0.85;
+}
+
+/* Cards / Papers / Panels */
+html[data-mantine-color-scheme="dark"] .mantine-Card-root,
+html[data-mantine-color-scheme="dark"] .mantine-Paper-root,
+html[data-mantine-color-scheme="dark"] .panel,
+html[data-mantine-color-scheme="dark"] .settings-card {
+  background-color: var(--_surface) !important;
+  color: var(--_text) !important;
+  border-color: var(--_input-border) !important;
+}
+
+/* Menus / Popovers / Tooltip / Modal content */
+html[data-mantine-color-scheme="dark"] .mantine-Menu-dropdown,
+html[data-mantine-color-scheme="dark"] .mantine-Popover-dropdown,
+html[data-mantine-color-scheme="dark"] .mantine-Tooltip-tooltip,
+html[data-mantine-color-scheme="dark"] .mantine-Modal-content,
+html[data-mantine-color-scheme="dark"] .mantine-Dropdown-root {
+  background-color: var(--_surface-elev) !important;
+  color: var(--_text) !important;
+  border-color: var(--_input-border) !important;
+}
+
+/* Tables / Scroll areas */
+html[data-mantine-color-scheme="dark"] .mantine-Table-root,
+html[data-mantine-color-scheme="dark"] .mantine-ScrollArea-viewport {
+  background-color: var(--_surface) !important;
+  color: var(--_text) !important;
+}
+
+/* Chat bubbles (adjust class names to yours if different) */
+html[data-mantine-color-scheme="dark"] .chat-bubble,
+html[data-mantine-color-scheme="dark"] .chat-bubble--incoming {
+  background: var(--_surface) !important;
+  color: var(--_text) !important;
+  border-color: var(--_input-border) !important;
+}
+html[data-mantine-color-scheme="dark"] .chat-bubble--outgoing {
+  background: var(--_surface-elev) !important;
+  color: var(--_text) !important;
+  border-color: var(--_input-border) !important;
+}
+
+/* If any custom CSS hard-coded white backgrounds, neutralize in dark */
+html[data-mantine-color-scheme="dark"] .bg-white,
+html[data-mantine-color-scheme="dark"] [style*="background: #fff"],
+html[data-mantine-color-scheme="dark"] [style*="background:#fff"] {
+  background: var(--_surface) !important;
+}
