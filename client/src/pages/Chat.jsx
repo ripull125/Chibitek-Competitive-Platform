@@ -1,3 +1,4 @@
+// client/src/pages/Chat.jsx (or ChatInput.jsx if that's the file name you use)
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
@@ -19,9 +20,6 @@ const resolveBackendUrl = () => {
   const envUrl = import.meta.env.e_BACKEND_URL;
   if (envUrl) return envUrl.replace(/\/$/, '');
   if (typeof window !== 'undefined' && window.location?.origin) {
-    // When running the Vite dev server (default http://localhost:5173),
-    // the API lives on the Express server at port 8080. Point there so
-    // chat requests don't 404 against the frontend origin.
     const { hostname, port, protocol } = window.location;
     if (hostname === 'localhost' && port === '5173') {
       return `${protocol}//${hostname}:8080`;
@@ -68,7 +66,7 @@ const fileToAttachment = (file) =>
         size: file.size,
         content: content.slice(0, 12000),
       });
-     };
+    };
     reader.onerror = () => reject(reader.error);
     if (isTextLike) {
       reader.readAsText(file);
@@ -116,13 +114,8 @@ export default function ChatInput() {
       setMessage((prev) => `${prev ? `${prev} ` : ''}${transcript}`.trim());
     };
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.onerror = () => {
-      setIsListening(false);
-    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
 
     recognitionRef.current = recognition;
     return () => recognition.stop();
@@ -135,7 +128,6 @@ export default function ChatInput() {
       content: message.trim() || 'See attached files for context.',
       attachments,
     };
-
     const updatedConversation = [...conversation, userMessage];
     setConversation(updatedConversation);
     setMessage('');
@@ -163,10 +155,9 @@ export default function ChatInput() {
         ...prev,
         {
           role: 'assistant',
-          content:
-            error?.message?.includes('OPENAI_API_KEY')
-              ? 'Server is missing the OpenAI API key. Please add it and try again.'
-              : 'Sorry, I could not reach the language model right now.',
+          content: error?.message?.includes('OPENAI_API_KEY')
+            ? 'Server is missing the OpenAI API key. Please add it and try again.'
+            : 'Sorry, I could not reach the language model right now.',
         },
       ]);
     } finally {
@@ -181,9 +172,7 @@ export default function ChatInput() {
     }
   };
 
-  const handleFileButtonClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleFileButtonClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
@@ -191,8 +180,8 @@ export default function ChatInput() {
     try {
       const processed = await Promise.all(files.map((file) => fileToAttachment(file)));
       setAttachments((prev) => [...prev, ...processed]);
-    } catch (err) {
-      console.error('Failed to read attachments', err);
+    } catch {
+      // ignore
     } finally {
       event.target.value = '';
     }
@@ -219,24 +208,35 @@ export default function ChatInput() {
   );
 
   return (
-    <Box style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      backgroundColor: 'var(--bg-primary)',
-      padding: '0 40px',
-      transition: 'background-color 0.3s ease'
-    }}>
-      <Box style={{ width: '100%' }}>
-        <Box style={{ textAlign: 'center', marginBottom: 40 }}>
-          <Title style={{ 
-            fontSize: 32, 
-            fontWeight: 400, 
-            color: 'var(--text-primary)',
-            margin: 0,
-            transition: 'color 0.3s ease'
-          }}>
+    <Box
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'var(--bg-primary)',
+        padding: '24px',
+        transition: 'background-color 0.3s ease',
+      }}
+    >
+      {/* Centered, constrained width container */}
+      <Box
+        style={{
+          width: '100%',
+          maxWidth: 'clamp(720px, 80vw, 980px)',
+          marginInline: 'auto',
+        }}
+      >
+        <Box style={{ textAlign: 'center', marginBottom: 32 }}>
+          <Title
+            style={{
+              fontSize: 32,
+              fontWeight: 400,
+              color: 'var(--text-primary)',
+              margin: 0,
+              transition: 'color 0.3s ease',
+            }}
+          >
             ChibitekAI
           </Title>
           <Text c="dimmed" mt={6}>
@@ -245,7 +245,7 @@ export default function ChatInput() {
         </Box>
 
         <Paper shadow="sm" radius="lg" p="md" withBorder>
-          <ScrollArea style={{ height: '50vh' }} pr="md">
+          <ScrollArea style={{ height: '56vh' }} pr="md">
             <Box style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {conversation.map((entry, index) => (
                 <Box
@@ -260,7 +260,7 @@ export default function ChatInput() {
                     p="sm"
                     withBorder
                     style={{
-                      maxWidth: '80%',
+                      maxWidth: '76%', // message bubble width cap
                       backgroundColor: entry.role === 'user' ? '#e7f5ff' : 'white',
                     }}
                   >
@@ -309,22 +309,10 @@ export default function ChatInput() {
               border: '1px solid #e9ecef',
             }}
           >
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="lg"
-              onClick={handleFileButtonClick}
-              style={{ flexShrink: 0 }}
-            >
+            <ActionIcon variant="subtle" color="gray" size="lg" onClick={handleFileButtonClick} style={{ flexShrink: 0 }}>
               <IconPlus size={20} />
             </ActionIcon>
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
+            <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
 
             <TextInput
               placeholder="Ask anything"
@@ -341,13 +329,8 @@ export default function ChatInput() {
                   padding: '8px 0',
                   border: 'none',
                   outline: 'none',
-                  '&:focus': {
-                    outline: 'none',
-                    border: 'none',
-                  },
-                  '&::placeholder': {
-                    color: '#adb5bd',
-                  },
+                  '&:focus': { outline: 'none', border: 'none' },
+                  '&::placeholder': { color: '#adb5bd' },
                 },
               }}
             />

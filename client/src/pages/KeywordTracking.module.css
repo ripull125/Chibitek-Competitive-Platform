@@ -1,0 +1,98 @@
+/* client/src/pages/KeywordTracking.module.css */
+
+:root {
+  --kt-green: #16a34a;
+  --kt-red:   #ef4444;
+  --kt-grey:  #9ca3af;
+}
+
+/* Layout */
+.wrap {
+  min-height: 100dvh;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card {
+  /* Slightly wider horizontally, slightly taller */
+  width: clamp(860px, 96vw, 1240px);
+  max-height: 94dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  border-color: rgba(100, 116, 139, 0.18);
+  box-shadow: 0 2px 12px rgba(20, 20, 20, 0.06);
+}
+
+.header { padding: 4px 6px 8px 6px; }
+
+.grid {
+  /* Make right panel a bit wider as well */
+  display: grid;
+  grid-template-columns: 1.1fr 1.35fr;
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+.panel { display: flex; flex-direction: column; gap: 12px; }
+.panelTitle { color: var(--mantine-color-dimmed); }
+.controls { margin-bottom: 4px; }
+
+/* Info icon target area slightly larger for touch */
+.infoIcon { width: 28px; height: 28px; }
+
+/* Trending list */
+.listHeader, .row {
+  display: grid;
+  grid-template-columns: 1fr 130px 100px;
+  align-items: center;
+}
+.listHeader {
+  padding: 6px 0 10px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.15);
+  color: var(--mantine-color-dimmed);
+  font-weight: 700;
+}
+.list { max-height: 500px; overflow: auto; }
+.row {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+}
+.row:last-child { border-bottom: 0; }
+
+.colTerm { padding-left: 2px; }
+.colVol, .colDelta { text-align: right; }
+
+.term { color: #2E6CF6; font-weight: 700; }
+.vol { text-align: right; }
+.delta { justify-content: flex-end; }
+
+/* Chart box (bigger) */
+.chartBox { height: 500px; width: 100%; }
+
+/* Info modal styles */
+.infoContent { padding-top: 4px; }
+.infoSection {
+  background: rgba(100, 116, 139, 0.06);
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+}
+.infoList { margin: 4px 0 0; padding-left: 18px; }
+.infoList li { margin: 6px 0; line-height: 1.45; }
+
+/* Dark mode polish */
+@media (prefers-color-scheme: dark) {
+  .card { box-shadow: 0 2px 18px rgba(0,0,0,.38); border-color: rgba(255,255,255,.08); }
+  .listHeader { border-bottom-color: rgba(255,255,255,.12); }
+  .row { border-bottom-color: rgba(255,255,255,.08); }
+  .infoSection {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+  }
+}
