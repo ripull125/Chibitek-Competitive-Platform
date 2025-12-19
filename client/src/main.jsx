@@ -13,6 +13,8 @@ import Reports from "./pages/Reports.jsx";
 import Chat from "./pages/Chat.jsx";
 import Settings from "./pages/Settings.jsx";
 import CompetitorLookup from "./pages/CompetitorLookup.jsx";
+import Profile from "./pages/Profile.jsx";
+import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
@@ -30,13 +32,15 @@ function AppLayout() {
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-              <Route path="/competitor-lookup" element={<CompetitorLookup />} />
+            <Route path="/competitor-lookup" element={<CompetitorLookup />} />
             <Route path="/placeholder" element={<Placeholder />} />
             <Route path="/keywords" element={<KeywordTracking />} />
             <Route path="/competitors" element={<CompetitorTracking />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/connected-integrations" element={<ConnectedIntegrations />} />
           </Routes>
         </ScrollArea>
       </main>
