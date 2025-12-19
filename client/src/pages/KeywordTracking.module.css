@@ -1,77 +1,98 @@
 /* client/src/pages/KeywordTracking.module.css */
 
-/* Arrow colors */
 :root {
-  --kt-green: #16a34a;  /* up */
-  --kt-red:   #ef4444;  /* down */
-  --kt-grey:  #9ca3af;  /* flat */
+  --kt-green: #16a34a;
+  --kt-red:   #ef4444;
+  --kt-grey:  #9ca3af;
 }
 
-/* Center the card both horizontally & vertically */
+/* Layout */
 .wrap {
   min-height: 100dvh;
-  padding: 16px;
+  padding: 20px;
   display: flex;
-  align-items: center;     /* vertical center */
-  justify-content: center; /* horizontal center */
+  align-items: center;
+  justify-content: center;
 }
 
-/* Neat, centered card with internal scroll when needed */
-.cardCenter {
-  width: clamp(720px, 90vw, 1000px);
-  max-height: 90dvh;
+.card {
+  /* Slightly wider horizontally, slightly taller */
+  width: clamp(860px, 96vw, 1240px);
+  max-height: 94dvh;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   overflow: hidden;
   border-color: rgba(100, 116, 139, 0.18);
-  box-shadow: 0 2px 10px rgba(20, 20, 20, 0.04);
+  box-shadow: 0 2px 12px rgba(20, 20, 20, 0.06);
 }
 
-/* Fixed-height chart area */
-.chartBox {
-  height: 190px;
-  width: 100%;
+.header { padding: 4px 6px 8px 6px; }
+
+.grid {
+  /* Make right panel a bit wider as well */
+  display: grid;
+  grid-template-columns: 1.1fr 1.35fr;
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: 1fr; }
 }
 
-/* Table consumes remaining height; scrolls */
-.tablePane {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 8px 8px 8px;
-}
+.panel { display: flex; flex-direction: column; gap: 12px; }
+.panelTitle { color: var(--mantine-color-dimmed); }
+.controls { margin-bottom: 4px; }
 
-/* Table styling */
-.table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.th {
-  font-weight: 700;
-  color: var(--mantine-color-dimmed);
+/* Info icon target area slightly larger for touch */
+.infoIcon { width: 28px; height: 28px; }
+
+/* Trending list */
+.listHeader, .row {
+  display: grid;
+  grid-template-columns: 1fr 130px 100px;
+  align-items: center;
+}
+.listHeader {
+  padding: 6px 0 10px 0;
   border-bottom: 1px solid rgba(100, 116, 139, 0.15);
-  padding: 10px 0;
+  color: var(--mantine-color-dimmed);
+  font-weight: 700;
 }
-.tr > td {
-  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+.list { max-height: 500px; overflow: auto; }
+.row {
   padding: 14px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
 }
-.tr:last-child > td { border-bottom: 0; }
+.row:last-child { border-bottom: 0; }
 
-.tdKeyword { width: 48%; }
-.tdNumber  { width: 14%; }
-.tdRank    { width: 19%; }
+.colTerm { padding-left: 2px; }
+.colVol, .colDelta { text-align: right; }
 
-.link { color: #2E6CF6; font-weight: 700; }
+.term { color: #2E6CF6; font-weight: 700; }
+.vol { text-align: right; }
+.delta { justify-content: flex-end; }
 
-/* a11y hidden heading */
-.visuallyHidden {
-  position: absolute !important;
-  height: 1px; width: 1px; overflow: hidden;
-  clip: rect(1px, 1px, 1px, 1px);
+/* Chart box (bigger) */
+.chartBox { height: 500px; width: 100%; }
+
+/* Info modal styles */
+.infoContent { padding-top: 4px; }
+.infoSection {
+  background: rgba(100, 116, 139, 0.06);
+  border: 1px solid rgba(100, 116, 139, 0.12);
+  border-radius: 12px;
+  padding: 12px;
 }
+.infoList { margin: 4px 0 0; padding-left: 18px; }
+.infoList li { margin: 6px 0; line-height: 1.45; }
 
 /* Dark mode polish */
 @media (prefers-color-scheme: dark) {
-  .cardCenter { box-shadow: 0 2px 16px rgba(0,0,0,.35); border-color: rgba(255,255,255,.08); }
-  .th { border-bottom-color: rgba(255,255,255,.12); }
-  .tr > td { border-bottom-color: rgba(255,255,255,.08); }
+  .card { box-shadow: 0 2px 18px rgba(0,0,0,.38); border-color: rgba(255,255,255,.08); }
+  .listHeader { border-bottom-color: rgba(255,255,255,.12); }
+  .row { border-bottom-color: rgba(255,255,255,.08); }
+  .infoSection {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+  }
 }

@@ -10,6 +10,9 @@ import {
   IconSettings,
   IconSwitchHorizontal,
   IconLogout,
+  IconTrendingUp,
+  IconLayoutDashboard,
+  IconHome2,
 } from "@tabler/icons-react";
 import { Image } from "@mantine/core";
 import classes from "./NavbarSimple.module.css";
@@ -19,10 +22,9 @@ import Logo from "./logo.png";
 const FADE_MS = 140;
 
 const linksData = [
-  { label: "Dashboard", icon: IconGauge, path: "/" },
+  { label: "Dashboard", icon: IconLayoutDashboard, path: "/" },
   { label: "Competitor Lookup", icon: IconSearch, path: "/competitor-lookup" },
-  { label: "Keyword Tracking", icon: IconSearch, path: "/keywords" },
-  { label: "Competitor Tracking", icon: IconBuildingFactory, path: "/competitors" },
+  { label: "Keyword Tracking", icon: IconTrendingUp, path: "/keywords" },
   { label: "Reports", icon: IconReport, path: "/reports" },
   { label: "Chat (AI)", icon: IconMessage, path: "/chat" },
   { label: "Settings", icon: IconSettings, path: "/settings" },
