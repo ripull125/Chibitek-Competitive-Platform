@@ -96,12 +96,6 @@ export default function Login() {
           <Button loading={loading} onClick={signInWithGoogle} size="md">
             Continue with Google
           </Button>
-
-          <Text size="xs" c="dimmed">
-            If you’re stuck in a redirect loop, verify the Supabase Auth URL
-            configuration and that this URL is listed in your Google OAuth
-            redirect URIs.
-          </Text>
         </Stack>
       </Paper>
     </Center>
