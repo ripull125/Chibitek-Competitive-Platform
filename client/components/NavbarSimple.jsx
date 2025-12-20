@@ -17,6 +17,9 @@ import {
 import { Image } from "@mantine/core";
 import classes from "./NavbarSimple.module.css";
 
+import { supabase } from "../src/supabaseClient";
+import { storeSession } from "../src/auth/session";
+
 import Logo from "./logo.png";
 
 const FADE_MS = 140;
@@ -61,6 +64,21 @@ export function NavbarSimple() {
     }, FADE_MS);
   };
 
+  const handleLogout = async () => {
+    try {
+      // Clear local snapshot first so UI gating reacts immediately.
+      storeSession(null);
+      await supabase?.auth?.signOut?.();
+    } finally {
+      navigate("/login", { replace: true });
+    }
+  };
+
+  const handleChangeAccount = async () => {
+    // For now, treat as logout + prompt login again.
+    await handleLogout();
+  };
+
   return (
     <nav className={classes.navbar} data-fading={isFading ? "1" : "0"}>
       <div className={classes.navbarMain}>
@@ -84,7 +102,7 @@ export function NavbarSimple() {
         <button
           type="button"
           className={classes.link}
-          onClick={() => { }}
+          onClick={handleChangeAccount}
         >
           <IconSwitchHorizontal className={classes.linkIcon} stroke={1.6} />
           <span className={classes.linkLabel}>Change account</span>
@@ -93,7 +111,7 @@ export function NavbarSimple() {
         <button
           type="button"
           className={classes.link}
-          onClick={() => { }}
+          onClick={handleLogout}
         >
           <IconLogout className={classes.linkIcon} stroke={1.6} />
           <span className={classes.linkLabel}>Logout</span>

@@ -5,6 +5,9 @@ import { MantineProvider, ScrollArea } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import RequireAuth from "./auth/RequireAuth.jsx";
+import Login from "./pages/Login.jsx";
+
 import DashboardPage from "./pages/DashboardPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import KeywordTracking from "./pages/KeywordTracking.jsx";
@@ -31,16 +34,86 @@ function AppLayout() {
       <main className="app-main">
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/competitor-lookup" element={<CompetitorLookup />} />
-            <Route path="/placeholder" element={<Placeholder />} />
-            <Route path="/keywords" element={<KeywordTracking />} />
-            <Route path="/competitors" element={<CompetitorTracking />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/connected-integrations" element={<ConnectedIntegrations />} />
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <DashboardPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/competitor-lookup"
+              element={
+                <RequireAuth>
+                  <CompetitorLookup />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/placeholder"
+              element={
+                <RequireAuth>
+                  <Placeholder />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/keywords"
+              element={
+                <RequireAuth>
+                  <KeywordTracking />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/competitors"
+              element={
+                <RequireAuth>
+                  <CompetitorTracking />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <RequireAuth>
+                  <Reports />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/chat"
+              element={
+                <RequireAuth>
+                  <Chat />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <Settings />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <Profile />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/connected-integrations"
+              element={
+                <RequireAuth>
+                  <ConnectedIntegrations />
+                </RequireAuth>
+              }
+            />
           </Routes>
         </ScrollArea>
       </main>
@@ -52,7 +125,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <MantineProvider defaultColorScheme="light">
       <BrowserRouter>
-        <AppLayout />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/*" element={<AppLayout />} />
+        </Routes>
       </BrowserRouter>
     </MantineProvider>
   </React.StrictMode>
