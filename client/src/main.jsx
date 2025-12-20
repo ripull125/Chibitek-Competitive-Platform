@@ -1,16 +1,20 @@
+// client/src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { MantineProvider } from "@mantine/core";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { MantineProvider, ScrollArea } from "@mantine/core";
+import "@mantine/core/styles.css";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import App from "./App.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
+import Placeholder from "./pages/Placeholder.jsx";
 import KeywordTracking from "./pages/KeywordTracking.jsx";
 import CompetitorTracking from "./pages/CompetitorTracking.jsx";
 import Reports from "./pages/Reports.jsx";
 import Chat from "./pages/Chat.jsx";
 import Settings from "./pages/Settings.jsx";
-import Login from "./pages/Login.jsx";
-import { supabase } from "./supabaseClient.js";
+import CompetitorLookup from "./pages/CompetitorLookup.jsx";
+import Profile from "./pages/Profile.jsx";
+import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
@@ -58,65 +62,29 @@ function AppLayout() {
   const isLoginRoute = location.pathname === "/login";
 
   return (
-    <div className={isLoginRoute ? "login-layout" : "app-layout"}>
-      {/* Show sidebar only when not on login route and user is authenticated */}
-      {!isLoginRoute && authed && <NavbarSimple />}
+    <div className="app-layout">
+      {/* Fixed sidebar (does not scroll with page) */}
+      <aside className="app-sidebar">
+        <NavbarSimple />
+      </aside>
 
-      {/* Right content area */}
-      <div className="app-main" style={isLoginRoute ? { width: "100%" } : undefined}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <AuthGate>
-                <App />
-              </AuthGate>
-            }
-          />
-          <Route
-            path="/keywords"
-            element={
-              <AuthGate>
-                <KeywordTracking />
-              </AuthGate>
-            }
-          />
-          <Route
-            path="/competitors"
-            element={
-              <AuthGate>
-                <CompetitorTracking />
-              </AuthGate>
-            }
-          />
-          <Route
-            path="/reports"
-            element={
-              <AuthGate>
-                <Reports />
-              </AuthGate>
-            }
-          />
-          <Route
-            path="/chat"
-            element={
-              <AuthGate>
-                <Chat />
-              </AuthGate>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <AuthGate>
-                <Settings />
-              </AuthGate>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
+      {/* Only this pane scrolls */}
+      <main className="app-main">
+        <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/competitor-lookup" element={<CompetitorLookup />} />
+            <Route path="/placeholder" element={<Placeholder />} />
+            <Route path="/keywords" element={<KeywordTracking />} />
+            <Route path="/competitors" element={<CompetitorTracking />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/connected-integrations" element={<ConnectedIntegrations />} />
+          </Routes>
+        </ScrollArea>
+      </main>
     </div>
   );
 }

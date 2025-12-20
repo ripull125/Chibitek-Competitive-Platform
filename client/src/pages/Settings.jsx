@@ -1,99 +1,127 @@
-import { useState } from "react";
+// client/src/pages/Settings.jsx
+// — Bold title + slightly larger sizing —
+import { useState, useMemo } from "react";
 import {
   Title,
   Paper,
-  Group,
   Text,
   Button,
-  SegmentedControl,
   Stack,
-  SimpleGrid,
   Container,
+  Box,
+  Select,
+  Group,
 } from "@mantine/core";
+import { IconWorld } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
+import classes from "./Settings.module.css";
+import "../utils/ui.css"; // provides .pageTitle (regular)
+
+function SettingsCard({ label, title, description, children }) {
+  return (
+    <Paper withBorder radius="lg" p="md" className={classes.card}>
+      <Stack gap={12} className={classes.cardInner}>
+        <Text className={classes.sectionLabel}>{label}</Text>
+        <Text className={classes.rowTitle}>{title}</Text>
+        {description ? <Text className={classes.subText}>{description}</Text> : null}
+        {children}
+      </Stack>
+    </Paper>
+  );
+}
 
 export default function Settings() {
-  const [language, setLanguage] = useState("english");
+  const [language, setLanguage] = useState("en");
+  const navigate = useNavigate();
 
-  console.log("Settings page – card layout loaded");
+  const languageLabel = useMemo(() => {
+    const map = { en: "English", ja: "Japanese", fr: "French", de: "German", es: "Spanish" };
+    return map[language] || "English";
+  }, [language]);
 
   return (
-    <Container fluid px="xl" py="lg" style={{ width: "100%" }}>
-      <Stack gap="xl">
-        <Title order={1}>Settings</Title>
+    <Box className={classes.page}>
+      <Container size="lg" className={classes.shell}>
+        <Box className={classes.header}>
+          {/* Bold only here; other pages keep regular .pageTitle */}
+          <Title order={2} className={`pageTitle ${classes.titleBold}`}>Settings</Title>
+        </Box>
 
-        <SimpleGrid
-          cols={2}
-          spacing="xl"
-          breakpoints={[{ maxWidth: "md", cols: 1 }]}
-        >
-          {/* ACCOUNT */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Account
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Profile</Text>
-                <Text fz="sm" c="dimmed">
-                  Manage personal details
-                </Text>
-              </div>
-              <Button variant="light">Manage</Button>
+        <Box className={classes.grid}>
+          <SettingsCard
+            label="ACCOUNT"
+            title="Profile"
+            description="Manage personal details"
+          >
+            <Button
+              variant="light"
+              radius="md"
+              size="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/profile")}
+            >
+              Manage
+            </Button>
+          </SettingsCard>
+
+          <SettingsCard
+            label="DATA SOURCES"
+            title="Connected integrations"
+            description="Control connected platforms"
+          >
+            <Button
+              variant="light"
+              radius="md"
+              size="md"
+              className={classes.actionBtn}
+              onClick={() => navigate("/connected-integrations")}
+            >
+              Manage
+            </Button>
+          </SettingsCard>
+
+          <SettingsCard label="LANGUAGE" title="Language">
+            <Select
+              value={language}
+              onChange={(v) => v && setLanguage(v)}
+              data={[
+                { value: "en", label: "English" },
+                { value: "ja", label: "Japanese" },
+                { value: "fr", label: "French" },
+                { value: "de", label: "German" },
+                { value: "es", label: "Spanish" },
+              ]}
+              placeholder="Choose language"
+              radius="md"
+              size="md"
+              leftSection={<IconWorld size={18} />}
+              classNames={{
+                root: classes.selectRoot,
+                input: classes.selectInput,
+                dropdown: classes.selectDropdown,
+                option: classes.selectOption,
+                section: classes.selectSection,
+              }}
+              comboboxProps={{ transitionProps: { transition: "pop", duration: 140 }, shadow: "md", radius: "md" }}
+              aria-label="Interface language"
+            />
+            <Group gap={8}>
+              <Text size="sm" c="dimmed">Current:</Text>
+              <Text size="sm" fw={700}>{languageLabel}</Text>
             </Group>
-          </Paper>
+          </SettingsCard>
 
-          {/* DATA SOURCES */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Data sources
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Connected integrations</Text>
-                <Text fz="sm" c="dimmed">
-                  Control connected platforms
-                </Text>
-              </div>
-              <Button variant="light">Manage</Button>
-            </Group>
-          </Paper>
-
-          {/* LANGUAGE */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Language
-            </Text>
-            <Stack gap="xs">
-              <Text fw={500}>Language</Text>
-              <SegmentedControl
-                value={language}
-                onChange={setLanguage}
-                data={[
-                  { label: "English", value: "english" },
-                  { label: "Japanese", value: "japanese" },
-                ]}
-                radius="xl"
-              />
-            </Stack>
-          </Paper>
-
-          {/* TUTORIAL */}
-          <Paper radius="md" shadow="xs" p="lg">
-            <Text fz="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">
-              Tutorial
-            </Text>
-            <Group justify="space-between" align="center">
-              <div>
-                <Text fw={500}>Take the tour</Text>
-                <Text fz="sm" c="dimmed">
-                  Quick walkthrough of features
-                </Text>
-              </div>
-              <Button variant="light">Start</Button>
-            </Group>
-          </Paper>
-        </SimpleGrid>
-      </Stack>
-    </Container>
+          <SettingsCard
+            label="TUTORIAL"
+            title="Take the tour"
+            description="Quick walkthrough of features"
+          >
+            <Button variant="light" radius="md" size="md" className={classes.actionBtn}>
+              Start
+            </Button>
+          </SettingsCard>
+        </Box>
+      </Container>
+    </Box>
   );
 }
