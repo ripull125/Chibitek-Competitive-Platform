@@ -1,7 +1,7 @@
 // client/src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { MantineProvider, ScrollArea } from "@mantine/core";
+import { MantineProvider, ScrollArea, ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
@@ -22,15 +22,16 @@ import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
 
+// Keep <html> synced with OS theme
+import ThemeManager from "./utils/ThemeManager.js";
+new ThemeManager();
+
 function AppLayout() {
   return (
     <div className="app-layout">
-      {/* Fixed sidebar (does not scroll with page) */}
       <aside className="app-sidebar">
         <NavbarSimple />
       </aside>
-
-      {/* Only this pane scrolls */}
       <main className="app-main">
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
@@ -123,7 +124,9 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <MantineProvider defaultColorScheme="light">
+    {/* Ensures correct scheme before first paint */}
+    <ColorSchemeScript defaultColorScheme="auto" />
+    <MantineProvider defaultColorScheme="auto">
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
