@@ -106,6 +106,8 @@ export default function ChatInput() {
   const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [savedConversations, setSavedConversations] = useState([]);
   const [saveNotice, setSaveNotice] = useState('');
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
@@ -231,7 +233,7 @@ export default function ChatInput() {
     [attachments]
   );
 
-  const handleSaveConversation = async () => {
+  const handleSaveConversation = async (titleOverride) => {
     if (!conversation.length) return;
     setIsSaving(true);
     setSaveNotice('');
@@ -240,7 +242,7 @@ export default function ChatInput() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: buildConversationTitle(conversation),
+          title: titleOverride || buildConversationTitle(conversation),
           conversation,
         }),
       });
@@ -255,6 +257,16 @@ export default function ChatInput() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleOpenSaveModal = () => {
+    setSaveTitle(buildConversationTitle(conversation));
+    setSaveModalOpen(true);
+  };
+
+  const handleConfirmSave = async () => {
+    await handleSaveConversation(saveTitle.trim() || buildConversationTitle(conversation));
+    setSaveModalOpen(false);
   };
 
   const handleNewConversation = () => {
@@ -359,7 +371,7 @@ export default function ChatInput() {
               <Menu.Dropdown>
                 <Menu.Item
                   leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleSaveConversation}
+                  onClick={handleOpenSaveModal}
                   disabled={isSaving}
                 >
                   {isSaving ? 'Saving...' : 'Save conversation'}
@@ -530,6 +542,22 @@ export default function ChatInput() {
             No saved conversations yet.
           </Text>
         )}
+      </Modal>
+      <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title="Name this chat" centered>
+        <TextInput
+          label="Chat name"
+          placeholder="e.g. Acme competitor research"
+          value={saveTitle}
+          onChange={(event) => setSaveTitle(event.currentTarget.value)}
+        />
+        <Group justify="flex-end" mt="md">
+          <Button variant="subtle" onClick={() => setSaveModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmSave} loading={isSaving}>
+            Save
+          </Button>
+        </Group>
       </Modal>
     </Box>
   );
