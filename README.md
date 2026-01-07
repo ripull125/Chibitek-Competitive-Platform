@@ -1,4 +1,4 @@
-# Chibitek-Competitive-Intelligence-Service
+# Chibitek-Competitive-Platform
 An AI-powered web app that automatically collects competitor marketing content, analyzes it using NLP, and delivers insights to help Chibitek identify trends and differentiate its messaging.
 
 Form: Cloud-hosted web app.
