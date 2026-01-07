@@ -215,3 +215,74 @@ app.post('/api/chat', async (req, res) => {
     return res.status(500).json({ error: 'Chat request failed.' });
   }
 });
+
+app.post('/api/chat/conversations', async (req, res) => {
+  const { title, conversation } = req.body || {};
+  if (!Array.isArray(conversation) || !conversation.length) {
+    return res.status(400).json({ error: 'conversation must be a non-empty array' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .insert({
+        title: title || 'New chat',
+        conversation,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Save conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ conversation: data });
+  } catch (err) {
+    console.error('Save conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to save conversation.' });
+  }
+});
+
+app.get('/api/chat/conversations', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .select('id, title, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error('List conversations error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ conversations: data || [] });
+  } catch (err) {
+    console.error('List conversations failed:', err);
+    return res.status(500).json({ error: 'Failed to load conversations.' });
+  }
+});
+
+app.get('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Fetch conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ conversation: data });
+  } catch (err) {
+    console.error('Fetch conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to load conversation.' });
+  }
+});
