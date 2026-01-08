@@ -4,15 +4,26 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Button,
   Group,
   Loader,
+  Menu,
+  Modal,
   Paper,
   ScrollArea,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconPlus, IconMicrophone, IconMicrophoneOff, IconSend } from '@tabler/icons-react';
+import {
+  IconDeviceFloppy,
+  IconFolderOpen,
+  IconMicrophone,
+  IconMicrophoneOff,
+  IconPlus,
+  IconRefresh,
+  IconSend,
+} from '@tabler/icons-react';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
 
@@ -75,6 +86,14 @@ const fileToAttachment = (file) =>
     }
   });
 
+const buildConversationTitle = (entries) => {
+  const firstUserMessage = entries.find((entry) => entry.role === 'user' && entry.content);
+  if (!firstUserMessage) return 'New chat';
+  const trimmed = firstUserMessage.content.trim();
+  if (!trimmed) return 'New chat';
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
+};
+
 export default function ChatInput() {
   const persisted = useMemo(() => loadPersistedChat(), []);
   const [message, setMessage] = useState(persisted?.message ?? '');
@@ -82,6 +101,13 @@ export default function ChatInput() {
   const [attachments, setAttachments] = useState(persisted?.attachments ?? []);
   const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingList, setIsLoadingList] = useState(false);
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
+  const [savedConversations, setSavedConversations] = useState([]);
+  const [saveNotice, setSaveNotice] = useState('');
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
@@ -207,6 +233,96 @@ export default function ChatInput() {
     [attachments]
   );
 
+  const handleSaveConversation = async (titleOverride) => {
+    if (!conversation.length) return;
+    setIsSaving(true);
+    setSaveNotice('');
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: titleOverride || buildConversationTitle(conversation),
+          conversation,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to save${reason}`);
+      }
+      setSaveNotice('Conversation saved.');
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to save conversation.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenSaveModal = () => {
+    setSaveTitle(buildConversationTitle(conversation));
+    setSaveModalOpen(true);
+  };
+
+  const handleConfirmSave = async () => {
+    await handleSaveConversation(saveTitle.trim() || buildConversationTitle(conversation));
+    setSaveModalOpen(false);
+  };
+
+  const handleNewConversation = () => {
+    setMessage('');
+    setAttachments([]);
+    setConversation(defaultConversation);
+  };
+
+  const handleOpenLoadModal = async () => {
+    setLoadModalOpen(true);
+    setIsLoadingList(true);
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/conversations`);
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to load conversations${reason}`);
+      }
+      const data = await response.json();
+      setSavedConversations(data.conversations || []);
+    } catch (error) {
+      setSavedConversations([]);
+      setSaveNotice(error.message || 'Failed to load conversations.');
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
+  const handleLoadConversation = async (conversationId) => {
+    if (!conversationId) return;
+    setIsLoadingList(true);
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`);
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to load chat${reason}`);
+      }
+      const data = await response.json();
+      const loadedConversation = data?.conversation?.conversation || data?.conversation;
+      if (Array.isArray(loadedConversation)) {
+        setConversation(loadedConversation);
+        setMessage('');
+        setAttachments([]);
+        setLoadModalOpen(false);
+        setSaveNotice('');
+      } else {
+        throw new Error('Saved conversation is invalid.');
+      }
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to load conversation.');
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
   return (
     <Box
       style={{
@@ -242,6 +358,33 @@ export default function ChatInput() {
           <Text c="dimmed" mt={6}>
             Chat with the model, attach files for context, or speak your prompt.
           </Text>
+          {saveNotice ? (
+            <Text size="sm" c="dimmed" mt={6}>
+              {saveNotice}
+            </Text>
+          ) : null}
+          <Group justify="center" mt="md">
+            <Menu shadow="md" width={240}>
+              <Menu.Target>
+                <Button variant="light">Chat options</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  onClick={handleOpenSaveModal}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save conversation'}
+                </Menu.Item>
+                <Menu.Item leftSection={<IconFolderOpen size={16} />} onClick={handleOpenLoadModal}>
+                  Load saved chat
+                </Menu.Item>
+                <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleNewConversation}>
+                  Start a new chat
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
         </Box>
 
         <Paper shadow="sm" radius="lg" p="md" withBorder>
@@ -360,6 +503,62 @@ export default function ChatInput() {
           </Box>
         </Paper>
       </Box>
+      <Modal
+        opened={loadModalOpen}
+        onClose={() => setLoadModalOpen(false)}
+        title="Saved conversations"
+        centered
+      >
+        {isLoadingList ? (
+          <Group gap="xs">
+            <Loader size="sm" />
+            <Text c="dimmed">Loading...</Text>
+          </Group>
+        ) : savedConversations.length ? (
+          <Box style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {savedConversations.map((item) => (
+              <Paper
+                key={item.id}
+                withBorder
+                p="sm"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+              >
+                <Box>
+                  <Text size="sm" fw={500}>
+                    {item.title || 'Untitled chat'}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                  </Text>
+                </Box>
+                <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
+                  Open
+                </Button>
+              </Paper>
+            ))}
+          </Box>
+        ) : (
+          <Text c="dimmed" size="sm">
+            No saved conversations yet.
+          </Text>
+        )}
+      </Modal>
+      <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title="Name this chat" centered>
+        <TextInput
+          label="Chat name"
+          placeholder="e.g. Acme competitor research"
+          value={saveTitle}
+          onChange={(event) => setSaveTitle(event.currentTarget.value)}
+        />
+        <Group justify="flex-end" mt="md">
+          <Button variant="subtle" onClick={() => setSaveModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmSave} loading={isSaving}>
+            Save
+          </Button>
+        </Group>
+      </Modal>
     </Box>
   );
 }
