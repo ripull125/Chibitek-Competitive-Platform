@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
-import { Scraping } from './scraper.js';
+//import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 
@@ -39,7 +39,7 @@ const loadCachedPayload = async () => {
   }
 };
 
-app.get('/scrape', async (req, res) => {
+/* app.get('/scrape', async (req, res) => {
   try {
     if (req.query.refresh !== 'true') {
       const existing = await loadCachedPayload();
@@ -80,7 +80,7 @@ app.get('/scrape', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Scraping failed' });
   }
-});
+}); */
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
