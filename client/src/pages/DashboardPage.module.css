@@ -141,18 +141,7 @@
   .vDots { flex-direction: row; }
 }
 
-@media (prefers-color-scheme: dark) {
-  .card {
-    background: var(--mantine-color-dark-7);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 2px 14px rgba(0,0,0,.28);
-  }
-  .viewport {
-    background: var(--mantine-color-dark-7);
-    border-color: rgba(255,255,255,0.08);
-    box-shadow: 0 2px 14px rgba(0,0,0,.28);
-  }
-}
+
 
 /* Extra: slightly taller left card on slide 2 to fill any gap */
 .tall { min-height: 420px; }

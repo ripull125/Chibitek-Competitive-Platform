@@ -25,9 +25,7 @@ import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
 
-// Keep <html> synced with OS theme
-import ThemeManager from "./utils/ThemeManager.js";
-new ThemeManager();
+
 
 function AppLayout() {
   return (
@@ -127,9 +125,9 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="auto" />
+    <ColorSchemeScript defaultColorScheme="light" />
     <I18nextProvider i18n={i18n}>
-      <MantineProvider defaultColorScheme="auto">
+      <MantineProvider defaultColorScheme="light">
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
