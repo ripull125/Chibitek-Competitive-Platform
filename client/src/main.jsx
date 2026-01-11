@@ -1,6 +1,9 @@
 // client/src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { I18nextProvider } from "react-i18next";
+import i18n from "./i18n/i18n";
+
 import { MantineProvider, ScrollArea, ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -124,15 +127,16 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    {/* Ensures correct scheme before first paint */}
     <ColorSchemeScript defaultColorScheme="auto" />
-    <MantineProvider defaultColorScheme="auto">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/*" element={<AppLayout />} />
-        </Routes>
-      </BrowserRouter>
-    </MantineProvider>
+    <I18nextProvider i18n={i18n}>
+      <MantineProvider defaultColorScheme="auto">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/*" element={<AppLayout />} />
+          </Routes>
+        </BrowserRouter>
+      </MantineProvider>
+    </I18nextProvider>
   </React.StrictMode>
 );

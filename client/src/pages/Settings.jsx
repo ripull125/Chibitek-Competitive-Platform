@@ -1,6 +1,7 @@
 // client/src/pages/Settings.jsx
-// — Bold title + slightly larger sizing —
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { useAppLanguage } from "../i18n/useAppLanguage";
 import {
   Title,
   Paper,
@@ -31,27 +32,26 @@ function SettingsCard({ label, title, description, children }) {
 }
 
 export default function Settings() {
-  const [language, setLanguage] = useState("en");
+  const { t } = useTranslation();
+  const { language, setLanguage } = useAppLanguage();
   const navigate = useNavigate();
 
-  const languageLabel = useMemo(() => {
-    const map = { en: "English", ja: "Japanese", fr: "French", de: "German", es: "Spanish" };
-    return map[language] || "English";
-  }, [language]);
+  const languageLabel = useMemo(() => t(`languages.${language}`), [language, t]);
 
   return (
     <Box className={classes.page}>
       <Container size="lg" className={classes.shell}>
         <Box className={classes.header}>
-          {/* Bold only here; other pages keep regular .pageTitle */}
-          <Title order={2} className={`pageTitle ${classes.titleBold}`}>Settings</Title>
+          <Title order={2} className={`pageTitle ${classes.titleBold}`}>
+            {t("settings.title")}
+          </Title>
         </Box>
 
         <Box className={classes.grid}>
           <SettingsCard
-            label="ACCOUNT"
-            title="Profile"
-            description="Manage personal details"
+            label={t("settings.accountLabel")}
+            title={t("settings.profileTitle")}
+            description={t("settings.profileDesc")}
           >
             <Button
               variant="light"
@@ -60,14 +60,14 @@ export default function Settings() {
               className={classes.actionBtn}
               onClick={() => navigate("/profile")}
             >
-              Manage
+              {t("common.manage")}
             </Button>
           </SettingsCard>
 
           <SettingsCard
-            label="DATA SOURCES"
-            title="Connected integrations"
-            description="Control connected platforms"
+            label={t("settings.dataSourcesLabel")}
+            title={t("settings.integrationsTitle")}
+            description={t("settings.integrationsDesc")}
           >
             <Button
               variant="light"
@@ -76,22 +76,22 @@ export default function Settings() {
               className={classes.actionBtn}
               onClick={() => navigate("/connected-integrations")}
             >
-              Manage
+              {t("common.manage")}
             </Button>
           </SettingsCard>
 
-          <SettingsCard label="LANGUAGE" title="Language">
+          <SettingsCard label={t("settings.languageLabel")} title={t("settings.languageTitle")}>
             <Select
               value={language}
               onChange={(v) => v && setLanguage(v)}
               data={[
-                { value: "en", label: "English" },
-                { value: "ja", label: "Japanese" },
-                { value: "fr", label: "French" },
-                { value: "de", label: "German" },
-                { value: "es", label: "Spanish" },
+                { value: "en", label: t("languages.en") },
+                { value: "ja", label: t("languages.ja") },
+                { value: "fr", label: t("languages.fr") },
+                { value: "de", label: t("languages.de") },
+                { value: "es", label: t("languages.es") },
               ]}
-              placeholder="Choose language"
+              placeholder={t("common.chooseLanguage")}
               radius="md"
               size="md"
               leftSection={<IconWorld size={18} />}
@@ -102,22 +102,30 @@ export default function Settings() {
                 option: classes.selectOption,
                 section: classes.selectSection,
               }}
-              comboboxProps={{ transitionProps: { transition: "pop", duration: 140 }, shadow: "md", radius: "md" }}
-              aria-label="Interface language"
+              comboboxProps={{
+                transitionProps: { transition: "pop", duration: 140 },
+                shadow: "md",
+                radius: "md",
+              }}
+              aria-label={t("settings.languageTitle")}
             />
             <Group gap={8}>
-              <Text size="sm" c="dimmed">Current:</Text>
-              <Text size="sm" fw={700}>{languageLabel}</Text>
+              <Text size="sm" c="dimmed">
+                {t("common.current")}
+              </Text>
+              <Text size="sm" fw={700}>
+                {languageLabel}
+              </Text>
             </Group>
           </SettingsCard>
 
           <SettingsCard
-            label="TUTORIAL"
-            title="Take the tour"
-            description="Quick walkthrough of features"
+            label={t("settings.tutorialLabel")}
+            title={t("settings.tutorialTitle")}
+            description={t("settings.tutorialDesc")}
           >
             <Button variant="light" radius="md" size="md" className={classes.actionBtn}>
-              Start
+              {t("common.start")} 
             </Button>
           </SettingsCard>
         </Box>

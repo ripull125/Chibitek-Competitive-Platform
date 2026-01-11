@@ -1,18 +1,15 @@
 // client/components/NavbarSimple.jsx
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  IconGauge,
   IconSearch,
-  IconBuildingFactory,
   IconReport,
   IconMessage,
   IconSettings,
-  IconSwitchHorizontal,
   IconLogout,
   IconTrendingUp,
   IconLayoutDashboard,
-  IconHome2,
 } from "@tabler/icons-react";
 import { Image } from "@mantine/core";
 import classes from "./NavbarSimple.module.css";
@@ -25,15 +22,16 @@ import Logo from "./logo.png";
 const FADE_MS = 140;
 
 const linksData = [
-  { label: "Dashboard", icon: IconLayoutDashboard, path: "/" },
-  { label: "Competitor Lookup", icon: IconSearch, path: "/competitor-lookup" },
-  { label: "Keyword Tracking", icon: IconTrendingUp, path: "/keywords" },
-  { label: "Reports", icon: IconReport, path: "/reports" },
-  { label: "Chat (AI)", icon: IconMessage, path: "/chat" },
-  { label: "Settings", icon: IconSettings, path: "/settings" },
+  { key: "dashboard", icon: IconLayoutDashboard, path: "/" },
+  { key: "competitorLookup", icon: IconSearch, path: "/competitor-lookup" },
+  { key: "keywordTracking", icon: IconTrendingUp, path: "/keywords" },
+  { key: "reports", icon: IconReport, path: "/reports" },
+  { key: "chat", icon: IconMessage, path: "/chat" },
+  { key: "settings", icon: IconSettings, path: "/settings" },
 ];
 
 function NavItem({ item, active, onClick }) {
+  const { t } = useTranslation();
   const Icon = item.icon;
 
   return (
@@ -44,12 +42,13 @@ function NavItem({ item, active, onClick }) {
       onClick={onClick}
     >
       <Icon className={classes.linkIcon} stroke={1.6} />
-      <span className={classes.linkLabel}>{item.label}</span>
+      <span className={classes.linkLabel}>{t(`nav.${item.key}`)}</span>
     </button>
   );
 }
 
 export function NavbarSimple() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [isFading, setIsFading] = useState(false);
@@ -66,7 +65,6 @@ export function NavbarSimple() {
 
   const handleLogout = async () => {
     try {
-      // Clear local snapshot first so UI gating reacts immediately.
       storeSession(null);
       await supabase?.auth?.signOut?.();
     } finally {
@@ -75,7 +73,6 @@ export function NavbarSimple() {
   };
 
   const handleChangeAccount = async () => {
-    // For now, treat as logout + prompt login again.
     await handleLogout();
   };
 
@@ -89,7 +86,7 @@ export function NavbarSimple() {
         <div className={classes.links}>
           {linksData.map((item) => (
             <NavItem
-              key={item.label}
+              key={item.path}
               item={item}
               active={location.pathname === item.path}
               onClick={() => handleNavigate(item.path)}
@@ -99,22 +96,13 @@ export function NavbarSimple() {
       </div>
 
       <div className={classes.footer}>
-        <button
-          type="button"
-          className={classes.link}
-          onClick={handleChangeAccount}
-        >
-          <IconSwitchHorizontal className={classes.linkIcon} stroke={1.6} />
-          <span className={classes.linkLabel}>Change account</span>
+        <button type="button" className={classes.link} onClick={handleChangeAccount}>
+          <span className={classes.linkLabel}>{t("nav.changeAccount")}</span>
         </button>
 
-        <button
-          type="button"
-          className={classes.link}
-          onClick={handleLogout}
-        >
+        <button type="button" className={classes.link} onClick={handleLogout}>
           <IconLogout className={classes.linkIcon} stroke={1.6} />
-          <span className={classes.linkLabel}>Logout</span>
+          <span className={classes.linkLabel}>{t("nav.logout")}</span>
         </button>
       </div>
     </nav>
