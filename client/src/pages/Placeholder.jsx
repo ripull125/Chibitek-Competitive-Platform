@@ -4,7 +4,6 @@ import { supabase } from "../supabaseClient";
 import DownloadJSON from "../../components/DownloadJSON";
 import DownloadTXT from "../../components/DownloadTXT";
 import DownloadCSV from "../../components/DownloadCSV";
-import ThemeManager from "../utils/ThemeManager";
 
 // Import the RechartsTest chart
 // import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
@@ -14,9 +13,7 @@ const Placeholder = () => {
   const [records, setRecords] = useState([]);
   const [data, setData] = useState({ heading: "", paragraphs: [], books: [] });
 
-  useEffect(() => {
-    new ThemeManager();
-  }, []);
+  
 
   const backendUrl = "http://localhost:8080";
 

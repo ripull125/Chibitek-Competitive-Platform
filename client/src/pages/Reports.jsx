@@ -15,7 +15,7 @@ export default function Reports() {
       return;
     }
 
-    const input = chartRef.current;
+    const input = chartRef.current; 
 
     if (!input) return;
 

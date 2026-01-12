@@ -320,7 +320,7 @@ export default function ChatInput() {
       setSaveNotice(error.message || 'Failed to load conversation.');
     } finally {
       setIsLoadingList(false);
-    }
+    } 
   };
 
   return (

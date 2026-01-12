@@ -16,16 +16,12 @@ import {
   Text,
   TextInput,
   Title,
-  Tooltip,
 } from "@mantine/core";
 import {
   IconBrandFacebook,
   IconBrandInstagram,
-  IconBrandLinkedin,
-  IconBrandReddit,
   IconBrandTiktok,
   IconBrandX,
-  IconBrandYoutube,
   IconPlugConnected,
   IconPlugConnectedX,
   IconRefresh,
@@ -34,7 +30,7 @@ import {
 import "../utils/ui.css"; // shared title
 
 function formatTime(d) {
-  if (!d) return "—";
+  if (!d) return "Never";
   const dt = typeof d === "string" ? new Date(d) : d;
   return dt.toLocaleString();
 }
@@ -62,27 +58,6 @@ const CATALOG = [
     needsToken: false,
   },
   {
-    key: "reddit",
-    name: "Reddit",
-    desc: "Submissions and comments from subreddits/users.",
-    icon: IconBrandReddit,
-    needsToken: false,
-  },
-  {
-    key: "youtube",
-    name: "YouTube",
-    desc: "Channel videos and metrics.",
-    icon: IconBrandYoutube,
-    needsToken: false,
-  },
-  {
-    key: "linkedin",
-    name: "LinkedIn",
-    desc: "Company and profile public data.",
-    icon: IconBrandLinkedin,
-    needsToken: false,
-  },
-  {
     key: "facebook",
     name: "Facebook",
     desc: "Public pages and posts.",
@@ -92,9 +67,7 @@ const CATALOG = [
 ];
 
 export default function ConnectedIntegrations() {
-  const [search, setSearch] = useState("");
-  const [banner, setBanner] = useState(null); // { color, message }
-  const [providers, setProviders] = useState(
+  const [platforms, setPlatforms] = useState(
     CATALOG.map((p) => ({
       ...p,
       connected: false,
@@ -111,180 +84,89 @@ export default function ConnectedIntegrations() {
     token: "",
   });
 
-  const [confirmModal, setConfirmModal] = useState({
+  const [confirmDisconnect, setConfirmDisconnect] = useState({
     open: false,
     providerKey: null,
   });
 
+  const [banner, setBanner] = useState(null);
+  const [search, setSearch] = useState("");
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return providers;
-    return providers.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.key.toLowerCase().includes(q) ||
-        p.desc.toLowerCase().includes(q)
-    );
-  }, [search, providers]);
-
-  function openConnect(p) {
-    setConnectModal({
-      open: true,
-      providerKey: p.key,
-      account: p.account || "",
-      token: p.token || "",
+    if (!q) return platforms;
+    return platforms.filter((p) => {
+      const hay = `${p.name} ${p.desc} ${p.key}`.toLowerCase();
+      return hay.includes(q);
     });
+  }, [platforms, search]);
+
+  function setPlatformPatch(key, patch) {
+    setPlatforms((prev) =>
+      prev.map((p) => (p.key === key ? { ...p, ...patch } : p))
+    );
+  }
+
+  async function handleSync(key) {
+    setBanner(null);
+    setPlatformPatch(key, { lastSync: new Date() });
+    setBanner({ color: "green", message: "Synced successfully." });
+  }
+
+  async function handleConnectOpen(key) {
+    setBanner(null);
+    setConnectModal({ open: true, providerKey: key, account: "", token: "" });
   }
 
   function closeConnect() {
     setConnectModal({ open: false, providerKey: null, account: "", token: "" });
   }
 
-  function openDisconnect(p) {
-    setConfirmModal({ open: true, providerKey: p.key });
+  async function handleConnectConfirm() {
+    const key = connectModal.providerKey;
+    if (!key) return;
+
+    const prov = platforms.find((p) => p.key === key);
+    if (!prov) return;
+
+    if (!connectModal.account.trim()) {
+      setBanner({ color: "red", message: "Please enter an account / handle." });
+      return;
+    }
+
+    setPlatformPatch(key, {
+      connected: true,
+      account: connectModal.account.trim(),
+      token: connectModal.token.trim(),
+      lastSync: new Date(),
+    });
+
+    closeConnect();
+    setBanner({ color: "green", message: "Connected successfully." });
+  }
+
+  function handleDisconnectOpen(key) {
+    setBanner(null);
+    setConfirmDisconnect({ open: true, providerKey: key });
   }
 
   function closeDisconnect() {
-    setConfirmModal({ open: false, providerKey: null });
+    setConfirmDisconnect({ open: false, providerKey: null });
   }
 
-  function updateProvider(key, patch) {
-    setProviders((prev) =>
-      prev.map((p) => (p.key === key ? { ...p, ...patch } : p))
-    );
-  }
+  async function handleDisconnectConfirm() {
+    const key = confirmDisconnect.providerKey;
+    if (!key) return;
 
-  async function handleConnectSubmit(e) {
-    e.preventDefault();
-    const key = connectModal.providerKey;
-    const prov = providers.find((p) => p.key === key);
-    if (!prov) return;
-
-    const account = connectModal.account.trim();
-    if (!account) {
-      setBanner({ color: "red", message: "Account/handle is required." });
-      return;
-    }
-    // Why: simulate successful connection; replace with real API call if available.
-    updateProvider(key, {
-      connected: true,
-      account,
-      token: connectModal.token || "",
-      lastSync: new Date().toISOString(),
-    });
-    setBanner({
-      color: "green",
-      message: `${prov.name} connected as ${account}.`,
-    });
-    closeConnect();
-  }
-
-  function handleDisconnectConfirm() {
-    const key = confirmModal.providerKey;
-    const prov = providers.find((p) => p.key === key);
-    if (!prov) return;
-    updateProvider(key, {
+    setPlatformPatch(key, {
       connected: false,
       account: "",
       token: "",
       lastSync: null,
     });
-    setBanner({ color: "orange", message: `${prov.name} disconnected.` });
+
     closeDisconnect();
-  }
-
-  function handleManualSync(p) {
-    if (!p.connected) return;
-    updateProvider(p.key, { lastSync: new Date().toISOString() });
-    setBanner({ color: "blue", message: `Synced ${p.name}.` });
-  }
-
-  function ProviderCard({ p }) {
-    const Icon = p.icon;
-    return (
-      <Card withBorder radius="md" shadow="sm" p="md">
-        <Group justify="space-between" align="flex-start" mb="xs">
-          <Group>
-            <Box
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                display: "grid",
-                placeItems: "center",
-              }}
-              aria-hidden
-            >
-              <Icon size={28} />
-            </Box>
-            <Stack gap={0}>
-              <Text fw={600}>{p.name}</Text>
-              <Text size="sm" c="dimmed">
-                {p.desc}
-              </Text>
-            </Stack>
-          </Group>
-          <Badge
-            variant={p.connected ? "light" : "outline"}
-            color={p.connected ? "green" : "gray"}
-            radius="sm"
-          >
-            {p.connected ? "Connected" : "Disconnected"}
-          </Badge>
-        </Group>
-
-        <Divider my="sm" />
-
-        <Stack gap={6} mb="md">
-          <Text size="sm">
-            <Text span c="dimmed">
-              Account:
-            </Text>{" "}
-            {p.account || "—"}
-          </Text>
-          <Text size="sm">
-            <Text span c="dimmed">
-              Last sync:
-            </Text>{" "}
-            {formatTime(p.lastSync)}
-          </Text>
-        </Stack>
-
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Tooltip label="Sync now" withArrow>
-              <ActionIcon
-                variant="subtle"
-                onClick={() => handleManualSync(p)}
-                disabled={!p.connected}
-                aria-label="Sync now"
-              >
-                <IconRefresh size={18} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-          <Group gap="xs">
-            {p.connected ? (
-              <Button
-                variant="light"
-                color="red"
-                leftSection={<IconPlugConnectedX size={16} />}
-                onClick={() => openDisconnect(p)}
-              >
-                Disconnect
-              </Button>
-            ) : (
-              <Button
-                leftSection={<IconPlugConnected size={16} />}
-                onClick={() => openConnect(p)}
-              >
-                Connect
-              </Button>
-            )}
-          </Group>
-        </Group>
-      </Card>
-    );
+    setBanner({ color: "green", message: "Disconnected." });
   }
 
   return (
@@ -317,91 +199,161 @@ export default function ConnectedIntegrations() {
               onChange={(e) => setSearch(e.currentTarget.value)}
               style={{ minWidth: 260 }}
             />
+            <Button
+              variant="light"
+              leftSection={<IconRefresh size={16} />}
+              onClick={() => setBanner({ color: "blue", message: "Refreshed." })}
+            >
+              Refresh
+            </Button>
           </Group>
 
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-            {filtered.map((p) => (
-              <ProviderCard key={p.key} p={p} />
-            ))}
+          <Divider />
+
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+            {filtered.map((prov) => {
+              const Icon = prov.icon;
+              return (
+                <Card key={prov.key} withBorder radius="md" p="lg">
+                  <Group justify="space-between" align="flex-start">
+                    <Group align="flex-start">
+                      <Box mt={2}>
+                        <Icon size={28} />
+                      </Box>
+                      <Box>
+                        <Group gap="xs">
+                          <Text fw={600}>{prov.name}</Text>
+                          {prov.connected ? (
+                            <Badge color="green" variant="light">
+                              Connected
+                            </Badge>
+                          ) : (
+                            <Badge color="gray" variant="light">
+                              Not connected
+                            </Badge>
+                          )}
+                        </Group>
+                        <Text c="dimmed" size="sm" mt={4}>
+                          {prov.desc}
+                        </Text>
+                        {prov.connected && (
+                          <Stack gap={4} mt="sm">
+                            <Text size="sm">
+                              <b>Account:</b> {prov.account || "—"}
+                            </Text>
+                            <Text size="sm">
+                              <b>Last sync:</b> {formatTime(prov.lastSync)}
+                            </Text>
+                          </Stack>
+                        )}
+                      </Box>
+                    </Group>
+
+                    <Group gap="xs">
+                      {prov.connected ? (
+                        <>
+                          <ActionIcon
+                            variant="light"
+                            onClick={() => handleSync(prov.key)}
+                            title="Sync"
+                          >
+                            <IconRefresh size={18} />
+                          </ActionIcon>
+                          <Button
+                            color="red"
+                            variant="light"
+                            leftSection={<IconPlugConnectedX size={16} />}
+                            onClick={() => handleDisconnectOpen(prov.key)}
+                          >
+                            Disconnect
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="light"
+                          leftSection={<IconPlugConnected size={16} />}
+                          onClick={() => handleConnectOpen(prov.key)}
+                        >
+                          Connect
+                        </Button>
+                      )}
+                    </Group>
+                  </Group>
+                </Card>
+              );
+            })}
           </SimpleGrid>
         </Stack>
       </Card>
 
-      {/* Connect modal */}
       <Modal
         opened={connectModal.open}
         onClose={closeConnect}
-        title="Connect platform"
+        title="Connect integration"
         centered
-        radius="md"
       >
         {(() => {
-          const prov = providers.find((p) => p.key === connectModal.providerKey);
+          const prov = platforms.find((p) => p.key === connectModal.providerKey);
           if (!prov) return null;
+
           return (
-            <form onSubmit={handleConnectSubmit}>
-              <Stack gap="md">
-                <Text size="sm" c="dimmed">
-                  {prov.name}
-                </Text>
+            <Stack>
+              <Text c="dimmed" size="sm">
+                Connect your <b>{prov.name}</b> account.
+              </Text>
+
+              <TextInput
+                label="Account / handle / URL"
+                placeholder={prov.key === "twitter" ? "@acme_corp" : "your account"}
+                value={connectModal.account}
+                onChange={(e) =>
+                  setConnectModal((m) => ({ ...m, account: e.currentTarget.value }))
+                }
+                withAsterisk
+              />
+
+              {prov.needsToken && (
                 <TextInput
-                  label="Account / handle / URL"
-                  placeholder={
-                    prov.key === "twitter"
-                      ? "@acme_corp"
-                      : prov.key === "youtube"
-                      ? "https://youtube.com/@acme"
-                      : "your account"
-                  }
-                  value={connectModal.account}
+                  label="Access token / API key"
+                  placeholder="paste your token"
+                  value={connectModal.token}
                   onChange={(e) =>
-                    setConnectModal((m) => ({ ...m, account: e.currentTarget.value }))
+                    setConnectModal((m) => ({ ...m, token: e.currentTarget.value }))
                   }
                   withAsterisk
                 />
-                {prov.needsToken && (
-                  <TextInput
-                    label="Access token / API key"
-                    placeholder="paste your token"
-                    value={connectModal.token}
-                    onChange={(e) =>
-                      setConnectModal((m) => ({ ...m, token: e.currentTarget.value }))
-                    }
-                    withAsterisk
-                  />
-                )}
-                <Group justify="flex-end" mt="sm">
-                  <Button variant="default" onClick={closeConnect}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Connect</Button>
-                </Group>
-              </Stack>
-            </form>
+              )}
+
+              <Group justify="flex-end">
+                <Button variant="default" onClick={closeConnect}>
+                  Cancel
+                </Button>
+                <Button onClick={handleConnectConfirm}>Connect</Button>
+              </Group>
+            </Stack>
           );
         })()}
       </Modal>
 
-      {/* Disconnect confirm */}
       <Modal
-        opened={confirmModal.open}
+        opened={confirmDisconnect.open}
         onClose={closeDisconnect}
         title="Disconnect integration"
         centered
-        radius="md"
       >
         {(() => {
-          const prov = providers.find((p) => p.key === confirmModal.providerKey);
+          const prov = platforms.find((p) => p.key === confirmDisconnect.providerKey);
           if (!prov) return null;
+
           return (
-            <Stack gap="md">
+            <Stack>
               <Text>
-                Are you sure you want to disconnect{" "}
-                <Text span fw={600}>
-                  {prov.name}
-                </Text>
-                ? This will stop future syncs.
+                Disconnect <b>{prov.name}</b>?
               </Text>
+              <Text c="dimmed" size="sm">
+                You can reconnect later.
+              </Text>
+
               <Group justify="flex-end">
                 <Button variant="default" onClick={closeDisconnect}>
                   Cancel

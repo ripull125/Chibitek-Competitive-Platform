@@ -1,5 +1,6 @@
 // client/src/pages/KeywordTracking.jsx
 import "../utils/ui.css";
+
 import React, { forwardRef } from "react";
 import {
   Card, Title, Group, Text, Anchor, Select, Modal, ActionIcon,
@@ -16,7 +17,7 @@ import classes from "./KeywordTracking.module.css";
 
 /* Formatting */
 const formatK = (n) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString());
-const formatPct = (v) => `${Math.round(v * 100)}%`;
+const formatPct = (v) => `${Math.round(v * 100)}%`; 
 
 /* Rank delta badge (directional only) */
 function DeltaBadge({ delta }) {

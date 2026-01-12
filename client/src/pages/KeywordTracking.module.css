@@ -86,13 +86,4 @@
 .infoList { margin: 4px 0 0; padding-left: 18px; }
 .infoList li { margin: 6px 0; line-height: 1.45; }
 
-/* Dark mode polish */
-@media (prefers-color-scheme: dark) {
-  .card { box-shadow: 0 2px 18px rgba(0,0,0,.38); border-color: rgba(255,255,255,.08); }
-  .listHeader { border-bottom-color: rgba(255,255,255,.12); }
-  .row { border-bottom-color: rgba(255,255,255,.08); }
-  .infoSection {
-    background: rgba(255,255,255,0.04);
-    border-color: rgba(255,255,255,0.12);
-  }
-}
+
