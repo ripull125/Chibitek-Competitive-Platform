@@ -118,28 +118,18 @@ export async function getUserIdByUsername(username) {
   }
 }
 
-export async function fetchPostsByUserId(userId, maxResults = 5) {
-  const clamped = Math.min(100, Math.max(5, maxResults));
+export async function fetchPostsByUserId(userId) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/users/${userId}/tweets`,
+    params: {
+      max_results: 5, 
+      exclude: "replies,retweets",
+      "tweet.fields": "created_at,public_metrics,lang",
+    },
+  });
 
-  try {
-    const res = await requestWithTokenFallback({
-      method: "get",
-      url: `/users/${userId}/tweets`,
-      params: { max_results: clamped },
-    });
+  const tweets = res.data?.data || [];
 
-    return res.data?.data || [];
-  } catch (err) {
-    if (err.response) {
-      throw new Error(
-        `X API tweet fetch failed: ${err.response.status} ${JSON.stringify(
-          err.response.data
-        )}`
-      );
-    }
-    if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-      throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
-    }
-    throw err;
-  }
+  return tweets.length > 0 ? [tweets[0]] : [];
 }

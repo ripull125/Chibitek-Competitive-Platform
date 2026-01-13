@@ -135,44 +135,47 @@ export default function CompetitorLookup() {
   }
 
   function PostCard({ post }) {
-    const pid = post?.id ?? "—";
-    const text = post?.text ?? "";
-    return (
-      <Card withBorder radius="md" shadow="sm">
-        <Group justify="space-between" mb="xs">
-          <Group gap="xs">
-            <Badge radius="sm" variant="light" title="Tweet ID">
-              {pid}
-            </Badge>
-            <Tooltip label="Copy tweet ID" withArrow>
-              <ActionIcon
-                aria-label="Copy tweet ID"
-                variant="subtle"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(String(pid));
-                  } catch {
-                  }
-                }}
-              >
-                <IconCopy size={16} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-          <Group gap="xs">
-            <IconBrandX size={16} />
-            <Text size="sm" c="dimmed">
-              Tweet
-            </Text>
-          </Group>
-        </Group>
+  if (!post?.text) return null;
 
-        <ScrollArea.Autosize mah={160} type="auto">
-          <Text style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{text}</Text>
-        </ScrollArea.Autosize>
-      </Card>
-    );
-  }
+  const metrics = post.public_metrics || {};
+
+  return (
+    <Card withBorder radius="md" shadow="sm">
+      <Group justify="space-between" mb="xs">
+        <Group gap="xs">
+          <Badge radius="sm" variant="light">
+            {post.id}
+          </Badge>
+        </Group>
+        <Group gap="xs">
+          <IconBrandX size={16} />
+          <Text size="sm" c="dimmed">
+            Tweet
+          </Text>
+        </Group>
+      </Group>
+
+      <ScrollArea.Autosize mah={160}>
+        <Text style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {post.text}
+        </Text>
+      </ScrollArea.Autosize>
+
+      <Group gap="md" mt="sm">
+        <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
+        <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
+        <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
+        <Badge variant="light">🔖 {metrics.quote_count ?? 0}</Badge>
+      </Group>
+
+      <Text size="xs" c="dimmed" mt="xs">
+        {post.created_at
+          ? new Date(post.created_at).toLocaleString()
+          : "Unknown time"}
+      </Text>
+    </Card>
+  );
+}
 
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
