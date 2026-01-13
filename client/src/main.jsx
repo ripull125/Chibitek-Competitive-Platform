@@ -21,6 +21,7 @@ import Settings from "./pages/Settings.jsx";
 import CompetitorLookup from "./pages/CompetitorLookup.jsx";
 import Profile from "./pages/Profile.jsx";
 import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
+import SavedPosts from "./pages/SavedPosts.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
@@ -49,6 +50,14 @@ function AppLayout() {
               element={
                 <RequireAuth>
                   <CompetitorLookup />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/saved-posts"
+              element={
+                <RequireAuth>
+                  <SavedPosts />
                 </RequireAuth>
               }
             />

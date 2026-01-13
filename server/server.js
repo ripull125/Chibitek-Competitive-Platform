@@ -286,3 +286,92 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
     return res.status(500).json({ error: 'Failed to load conversation.' });
   }
 });
+
+app.post("/api/x/fetch-and-save/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    const userId = await getUserIdByUsername(username);
+
+    const PLATFORM_X = 1;
+
+    const { data: competitor } = await supabase
+      .from("competitors")
+      .upsert(
+        {
+          platform_id: PLATFORM_X,
+          platform_user_id: userId,
+          display_name: username,
+          profile_url: `https://x.com/${username}`,
+        },
+        { onConflict: "platform_id,platform_user_id" }
+      )
+      .select()
+      .single();
+
+    const [tweet] = await fetchPostsByUserId(userId);
+
+    if (!tweet) {
+      return res.json({ saved: false, reason: "No tweet found" });
+    }
+
+    const normalized = normalizeXPost(tweet, {
+      platformId: PLATFORM_X,
+      competitorId: competitor.id,
+    });
+
+    const { data: post } = await supabase
+      .from("posts")
+      .upsert(normalized.post, {
+        onConflict: "platform_id,platform_post_id",
+      })
+      .select()
+      .single();
+
+    await supabase.from("post_metrics").insert({
+      post_id: post.id,
+      snapshot_at: new Date(),
+      ...normalized.metrics,
+    });
+
+    res.json({ saved: true, post_id: post.id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.get("/api/posts", async (req, res) => {
+  const { data, error } = await supabase
+    .from("posts")
+    .select(`
+      id,
+      content,
+      published_at,
+      post_metrics (
+        likes,
+        shares,
+        comments,
+        snapshot_at
+      )
+    `)
+    .order("published_at", { ascending: false })
+    .limit(50);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const posts = data.map((p) => {
+    const latest = p.post_metrics?.[0] || {};
+    return {
+      id: p.id,
+      content: p.content,
+      published_at: p.published_at,
+      likes: latest.likes ?? 0,
+      shares: latest.shares ?? 0,
+      comments: latest.comments ?? 0,
+    };
+  });
+
+  res.json({ posts });
+});
