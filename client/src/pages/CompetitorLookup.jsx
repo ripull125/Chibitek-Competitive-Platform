@@ -27,12 +27,14 @@ import {
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
+import { convertXInput } from "./DataConverter";
 
 export default function CompetitorLookup() {
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [convertedData, setConvertedData] = useState(null);
 
   const configuredBackend = import.meta.env.VITE_BACKEND_URL || "";
   const localBackend = "http://localhost:8080";
@@ -83,6 +85,7 @@ export default function CompetitorLookup() {
     e?.preventDefault?.();
     setError(null);
     setResult(null);
+    setConvertedData(null);
     const u = username.trim();
     if (!u) {
       setError("Please enter a username.");
@@ -92,6 +95,16 @@ export default function CompetitorLookup() {
     try {
       const data = await tryFetch(u);
       setResult(data);
+      
+      // Convert the data using DataConverter
+      try {
+        const converted = convertXInput(data);
+        setConvertedData(converted);
+        console.log('Converted data:', converted);
+      } catch (conversionError) {
+        console.error('Error converting data:', conversionError);
+        setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
+      }
     } catch (e) {
       setError(e?.message || "Unknown error");
     } finally {
@@ -253,6 +266,35 @@ export default function CompetitorLookup() {
                 </Group>
               </Stack>
             </Card>
+
+            {convertedData && convertedData.length > 0 && (
+              <>
+                <Divider label="Converted Data" />
+                <Card withBorder radius="md">
+                  <Stack gap="md">
+                    <Title order={5}>Universal Data Format</Title>
+                    {convertedData.map((item, idx) => (
+                      <Card key={idx} withBorder radius="sm" p="sm">
+                        <Group gap="md" wrap="wrap">
+                          <Group gap="xs">
+                            <Text fw={500}>Name/Source:</Text>
+                            <Badge variant="light">{item["Name/Source"]}</Badge>
+                          </Group>
+                          <Group gap="xs">
+                            <Text fw={500}>Engagement:</Text>
+                            <Badge variant="light" color="green">{item.Engagement}</Badge>
+                          </Group>
+                        </Group>
+                        <Text size="sm" mt="xs" style={{ whiteSpace: "pre-wrap" }}>
+                          <Text fw={500} span>Message:</Text> {item.Message.substring(0, 150)}
+                          {item.Message.length > 150 ? "..." : ""}
+                        </Text>
+                      </Card>
+                    ))}
+                  </Stack>
+                </Card>
+              </>
+            )}
 
             <Divider label="Posts" />
 
