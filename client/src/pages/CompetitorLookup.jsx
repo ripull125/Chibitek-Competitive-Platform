@@ -137,42 +137,54 @@ export default function CompetitorLookup() {
   function PostCard({ post }) {
   if (!post?.text) return null;
 
-  const metrics = post.public_metrics || {};
+  const metrics = post.public_metrics || [];
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+      const resp = await fetch("http://localhost:8080/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // important if auth/session-based
+        body: JSON.stringify({
+          postId: post.id,
+          content: post.text,
+          likes: metrics.like_count ?? 0,
+          shares: metrics.retweet_count ?? 0,
+          comments: metrics.reply_count ?? 0,
+          published_at: post.created_at,
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error("Failed to save post");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Card withBorder radius="md" shadow="sm">
-      <Group justify="space-between" mb="xs">
-        <Group gap="xs">
-          <Badge radius="sm" variant="light">
-            {post.id}
-          </Badge>
+      <Group justify="space-between" mt="sm">
+        <Group gap="md">
+          <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
+          <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
+          <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
         </Group>
-        <Group gap="xs">
-          <IconBrandX size={16} />
-          <Text size="sm" c="dimmed">
-            Tweet
-          </Text>
-        </Group>
+
+        <Button
+          size="xs"
+          variant="light"
+          loading={saving}
+          onClick={handleSave}
+        >
+          Save
+        </Button>
       </Group>
-
-      <ScrollArea.Autosize mah={160}>
-        <Text style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-          {post.text}
-        </Text>
-      </ScrollArea.Autosize>
-
-      <Group gap="md" mt="sm">
-        <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
-        <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
-        <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
-        <Badge variant="light">🔖 {metrics.quote_count ?? 0}</Badge>
-      </Group>
-
-      <Text size="xs" c="dimmed" mt="xs">
-        {post.created_at
-          ? new Date(post.created_at).toLocaleString()
-          : "Unknown time"}
-      </Text>
     </Card>
   );
 }

@@ -54,7 +54,7 @@ function AppLayout() {
               }
             />
             <Route
-              path="/saved-posts"
+              path="/savedPosts"
               element={
                 <RequireAuth>
                   <SavedPosts />

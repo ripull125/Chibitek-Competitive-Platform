@@ -342,36 +342,51 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 });
 
 
-app.get("/api/posts", async (req, res) => {
-  const { data, error } = await supabase
-    .from("posts")
-    .select(`
-      id,
-      content,
-      published_at,
-      post_metrics (
-        likes,
-        shares,
-        comments,
-        snapshot_at
+app.post("/api/posts", async (req, res) => {
+  const {
+    platform_id,
+    competitor_id,
+    platform_post_id,
+    content,
+    published_at,
+    likes,
+    shares,
+    comments,
+  } = req.body;
+
+  if (!platform_post_id || !content) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    const { data: post, error: postError } = await supabase
+      .from("posts")
+      .upsert(
+        {
+          platform_id,
+          competitor_id,
+          platform_post_id,
+          content,
+          published_at,
+        },
+        { onConflict: "platform_id,platform_post_id" }
       )
-    `)
-    .order("published_at", { ascending: false })
-    .limit(50);
+      .select()
+      .single();
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (postError) throw postError;
 
-  const posts = data.map((p) => {
-    const latest = p.post_metrics?.[0] || {};
-    return {
-      id: p.id,
-      content: p.content,
-      published_at: p.published_at,
-      likes: latest.likes ?? 0,
-      shares: latest.shares ?? 0,
-      comments: latest.comments ?? 0,
-    };
-  });
+    await supabase.from("post_metrics").insert({
+      post_id: post.id,
+      snapshot_at: new Date(),
+      likes,
+      shares,
+      comments,
+    });
 
-  res.json({ posts });
+    res.json({ saved: true, post_id: post.id });
+  } catch (err) {
+    console.error("Save post failed:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
