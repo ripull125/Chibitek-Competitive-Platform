@@ -13,7 +13,7 @@ import {
   ScrollArea,
   SimpleGrid,
   Stack,
-  Text, 
+  Text,
   TextInput,
   Title,
   Tooltip,
@@ -135,59 +135,66 @@ export default function CompetitorLookup() {
   }
 
   function PostCard({ post }) {
-  if (!post?.text) return null;
+    if (!post?.text) return null;
 
-  const metrics = post.public_metrics || [];
-  const [saving, setSaving] = useState(false);
+    const metrics = post.public_metrics || [];
+    const [saving, setSaving] = useState(false);
 
-  async function handleSave() {
-    try {
-      setSaving(true);
-      const resp = await fetch("http://localhost:8080/api/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // important if auth/session-based
-        body: JSON.stringify({
-          postId: post.id,
-          content: post.text,
-          likes: metrics.like_count ?? 0,
-          shares: metrics.retweet_count ?? 0,
-          comments: metrics.reply_count ?? 0,
-          published_at: post.created_at,
-        }),
-      });
+    async function handleSave() {
+      try {
+        setSaving(true);
+        const resp = await fetch("http://localhost:8080/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            platform_id: 1,                 // X
+            platform_user_id: result.userId,
+            username: result.username,
+            platform_post_id: post.id,
+            content: post.text,
+            published_at: post.created_at,
+            likes: metrics.like_count ?? 0,
+            shares: metrics.retweet_count ?? 0,
+            comments: metrics.reply_count ?? 0,
+          }),
+        });
 
-      if (!resp.ok) {
-        throw new Error("Failed to save post");
+
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          throw new Error(`Failed to save post: ${resp.status} ${errorText}`);
+        }
+
+        await resp.json();
+        console.log("Post saved successfully");
+      } catch (e) {
+        console.error("Error saving post:", e);
+      } finally {
+        setSaving(false);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
     }
-  }
 
-  return (
-    <Card withBorder radius="md" shadow="sm">
-      <Group justify="space-between" mt="sm">
-        <Group gap="md">
-          <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
-          <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
-          <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Group justify="space-between" mt="sm">
+          <Group gap="md">
+            <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
+            <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
+            <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
+          </Group>
+
+          <Button
+            size="xs"
+            variant="light"
+            loading={saving}
+            onClick={handleSave}
+          >
+            Save
+          </Button>
         </Group>
-
-        <Button
-          size="xs"
-          variant="light"
-          loading={saving}
-          onClick={handleSave}
-        >
-          Save
-        </Button>
-      </Group>
-    </Card>
-  );
-}
+      </Card>
+    );
+  }
 
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
