@@ -71,10 +71,28 @@ export default function CompetitorLookup() {
       }
     }
 
-    const details = attempts.map((a) => `• ${a.base}: ${a.error}`).join("\n");
+    const notFoundAttempt = attempts.find(a => {
+      const errorLower = a.error.toLowerCase();
+      return (
+        a.error.includes("404") ||
+        errorLower.includes("not found") ||
+        errorLower.includes("user does not exist") ||
+        errorLower.includes("no user found")
+      );
+    });
+
+    if (notFoundAttempt) {
+      const err = new Error(
+        `Username "@${trimmed}" not found. Please check the spelling and try again.`
+      );
+      err.type = "not_found";
+      throw err;
+    }
+
     const err = new Error(
-      `All backends failed. Check that your server is running and CORS is allowed.\n${details}`
+      `Couldn't connect to the server. Please make sure it's running and try again.`
     );
+    err.type = "backend_error";
     err.attempts = attempts;
     throw err;
   }
@@ -239,12 +257,15 @@ export default function CompetitorLookup() {
         {error && (
           <Alert
             variant="light"
-            color="red"
-            title="Request failed"
+            color={error.includes("not found") ? "yellow" : "orange"}
+            title={error.includes("not found") ? "Username not found" : "Connection error"}
             icon={<IconAlertCircle />}
-            styles={{ label: { fontWeight: 600 } }}
+            styles={{
+              label: { fontWeight: 500 },
+              message: { fontSize: "14px" }
+            }}
           >
-            <Text style={{ whiteSpace: "pre-wrap" }}>{error}</Text>
+            <Text>{error}</Text>
           </Alert>
         )}
 
