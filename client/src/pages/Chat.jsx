@@ -113,6 +113,8 @@ export default function ChatInput() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
+  const [currentConversationId, setCurrentConversationId] = useState(null);
+
 
   useEffect(() => {
     hasHydratedRef.current = true;
@@ -275,6 +277,7 @@ export default function ChatInput() {
     setMessage('');
     setAttachments([]);
     setConversation(defaultConversation);
+    setCurrentConversationId(null);
   };
 
   const handleOpenLoadModal = async () => {
@@ -315,6 +318,7 @@ export default function ChatInput() {
         setAttachments([]);
         setLoadModalOpen(false);
         setSaveNotice('');
+        setCurrentConversationId(conversationId);
       } else {
         throw new Error('Saved conversation is invalid.');
       }
@@ -350,6 +354,15 @@ export default function ChatInput() {
 
       // Update UI immediately without refetch
       setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+
+      if (conversationId === currentConversationId) {
+        setConversation(defaultConversation);
+        setMessage('');
+        setAttachments([]);
+        setCurrentConversationId(null);
+      }
+
+      
       setSaveNotice('Conversation deleted.');
     } catch (error) {
       setSaveNotice(error.message || 'Failed to delete conversation.');
