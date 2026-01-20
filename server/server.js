@@ -412,3 +412,32 @@ app.post("/api/posts", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get("/api/posts", async (req, res) => {
+  try {
+    const { data: posts, error } = await supabase
+      .from("posts")
+      .select(`
+        id,
+        content,
+        published_at,
+        post_metrics(likes, shares, comments)
+      `)
+      .order("published_at", { ascending: false });
+
+    if (error) throw error;
+
+    const formattedPosts = posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      published_at: post.published_at,
+      likes: post.post_metrics?.[0]?.likes || 0,
+      shares: post.post_metrics?.[0]?.shares || 0,
+      comments: post.post_metrics?.[0]?.comments || 0,
+    }));
+
+    res.json({ posts: formattedPosts });
+  } catch (err) {
+    console.error("Fetch posts failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
