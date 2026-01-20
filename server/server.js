@@ -16,7 +16,12 @@ import { suggestKeywordsForBooks } from './keywords.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  /* credentials: true, */
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}))
 app.use(express.json({ limit: '10mb' }));
 
 const { OPENAI_API_KEY } = process.env;
@@ -284,5 +289,155 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   } catch (err) {
     console.error('Fetch conversation failed:', err);
     return res.status(500).json({ error: 'Failed to load conversation.' });
+  }
+});
+
+app.post("/api/x/fetch-and-save/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    const userId = await getUserIdByUsername(username);
+
+    const PLATFORM_X = 1;
+
+    const { data: competitor } = await supabase
+      .from("competitors")
+      .upsert(
+        {
+          platform_id: PLATFORM_X,
+          platform_user_id: userId,
+          display_name: username,
+          profile_url: `https://x.com/${username}`,
+        },
+        { onConflict: "platform_id,platform_user_id" }
+      )
+      .select()
+      .single();
+
+    const [tweet] = await fetchPostsByUserId(userId);
+
+    if (!tweet) {
+      return res.json({ saved: false, reason: "No tweet found" });
+    }
+
+    const normalized = normalizeXPost(tweet, {
+      platformId: PLATFORM_X,
+      competitorId: competitor.id,
+    });
+
+    const { data: post } = await supabase
+      .from("posts")
+      .upsert(normalized.post, {
+        onConflict: "platform_id,platform_post_id",
+      })
+      .select()
+      .single();
+
+    await supabase.from("post_metrics").insert({
+      post_id: post.id,
+      snapshot_at: new Date(),
+      ...normalized.metrics,
+    });
+
+    res.json({ saved: true, post_id: post.id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.post("/api/posts", async (req, res) => {
+  const {
+    platform_id,
+    platform_user_id,
+    username,
+    platform_post_id,
+    content,
+    published_at,
+    likes,
+    shares,
+    comments,
+  } = req.body;
+
+  if (!platform_id || !platform_user_id || !platform_post_id) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    const { data: competitor, error: competitorError } = await supabase
+      .from("competitors")
+      .upsert(
+        {
+          platform_id,
+          platform_user_id,
+          display_name: username,
+          profile_url: `https://x.com/${username}`,
+        },
+        { onConflict: "platform_id,platform_user_id" }
+      )
+      .select()
+      .single();
+
+    if (competitorError) throw competitorError;
+
+    const { data: post, error: postError } = await supabase
+      .from("posts")
+      .upsert(
+        {
+          platform_id,
+          competitor_id: competitor.id,
+          platform_post_id,
+          content,
+          published_at,
+        },
+        { onConflict: "platform_id,platform_post_id" }
+      )
+      .select()
+      .single();
+
+    if (postError) throw postError;
+
+    await supabase.from("post_metrics").insert({
+      post_id: post.id,
+      snapshot_at: new Date(),
+      likes,
+      shares,
+      comments,
+    });
+
+    res.json({ saved: true, post_id: post.id });
+  } catch (err) {
+    console.error("Save post failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get("/api/posts", async (req, res) => {
+  try {
+    const { data: posts, error } = await supabase
+      .from("posts")
+      .select(`
+        id,
+        content,
+        published_at,
+        post_metrics(likes, shares, comments)
+      `)
+      .order("published_at", { ascending: false });
+
+    if (error) throw error;
+
+    const formattedPosts = posts.map((post) => ({
+      id: post.id,
+      content: post.content,
+      published_at: post.published_at,
+      likes: post.post_metrics?.[0]?.likes || 0,
+      shares: post.post_metrics?.[0]?.shares || 0,
+      comments: post.post_metrics?.[0]?.comments || 0,
+    }));
+
+    res.json({ posts: formattedPosts });
+  } catch (err) {
+    console.error("Fetch posts failed:", err);
+    res.status(500).json({ error: err.message });
   }
 });
