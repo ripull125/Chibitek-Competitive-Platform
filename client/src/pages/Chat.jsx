@@ -24,6 +24,8 @@ import {
   IconRefresh,
   IconSend,
 } from '@tabler/icons-react';
+import { IconTrash } from '@tabler/icons-react';
+
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
 
@@ -323,6 +325,40 @@ export default function ChatInput() {
     } 
   };
 
+  const handleDeleteConversation = async (conversationId) => {
+    if (!conversationId) return;
+
+    setIsLoadingList(true);
+    setSaveNotice('');
+
+    try {
+      const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: {
+          // Only needed if you set SCRAPER_AUTH on the server
+          ...(import.meta.env.VITE_SCRAPER_AUTH
+            ? { 'x-scraper-auth': import.meta.env.VITE_SCRAPER_AUTH }
+            : {}),
+        },
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to delete${reason}`);
+      }
+
+      // Update UI immediately without refetch
+      setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      setSaveNotice('Conversation deleted.');
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to delete conversation.');
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
+
   return (
     <Box
       style={{
@@ -531,9 +567,27 @@ export default function ChatInput() {
                     {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
                   </Text>
                 </Box>
-                <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                  Open
-                </Button>
+                <Group gap="xs">
+                  <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
+                    Open
+                  </Button>
+
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    leftSection={<IconTrash size={14} />}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        `Delete "${item.title || 'Untitled chat'}"? This can’t be undone.`
+                      );
+                      if (ok) handleDeleteConversation(item.id);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </Group>
+
               </Paper>
             ))}
           </Box>

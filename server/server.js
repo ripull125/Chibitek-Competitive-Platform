@@ -101,9 +101,6 @@ app.get("/api/x/fetch/:username", async (req, res) => {
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
 
 app.use(express.json());
 
@@ -285,4 +282,39 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
     console.error('Fetch conversation failed:', err);
     return res.status(500).json({ error: 'Failed to load conversation.' });
   }
+});
+
+// Delete a saved conversation by id
+app.delete('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+
+  // Optional: protect deletes with the same header you already use elsewhere
+  // If you DON'T want protection, delete this whole block.
+  const providedAuth = req.get('x-scraper-auth') || req.headers['x-scraper-auth'];
+  if (process.env.SCRAPER_AUTH && providedAuth !== process.env.SCRAPER_AUTH) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  try {
+    const { error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Delete conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ status: 'deleted', id });
+  } catch (err) {
+    console.error('Delete conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to delete conversation.' });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
