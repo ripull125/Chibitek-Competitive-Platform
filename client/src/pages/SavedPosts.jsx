@@ -7,11 +7,17 @@ import {
   Badge,
   Group,
   LoadingOverlay,
+  Button,
+  ActionIcon,
+  Tooltip,
+  Modal,
 } from "@mantine/core";
+import { IconTrash } from "@tabler/icons-react";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
 
   useEffect(() => {
     fetch("http://localhost:8080/api/posts")
@@ -19,6 +25,36 @@ export default function SavedPosts() {
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
   }, []);
+
+  function openDeleteConfirm(postId) {
+    setDeleteModal({ open: true, postId });
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteModal({ open: false, postId: null });
+  }
+
+  async function handleDelete() {
+    const postId = deleteModal.postId;
+    closeDeleteConfirm();
+
+    try {
+      const resp = await fetch(`http://localhost:8080/api/posts/${postId}`, {
+        method: "DELETE",
+      });
+
+      if (!resp.ok) {
+        const error = await resp.json();
+        throw new Error(error.error || "Failed to delete post");
+      }
+
+      // Remove from local state
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    } catch (err) {
+      console.error("Delete failed:", err);
+      alert("Failed to delete post: " + err.message);
+    }
+  }
 
   return (
     <Card p="lg" withBorder radius="md" style={{ position: "relative" }}>
@@ -29,7 +65,20 @@ export default function SavedPosts() {
         {posts.map((p) => (
           <Card key={p.id} withBorder radius="md">
             <Stack gap="xs">
-              <Text fw={500}>{p.content}</Text>
+              <Group justify="space-between" align="flex-start">
+                <Text fw={500} style={{ flex: 1 }}>
+                  {p.content}
+                </Text>
+                <Tooltip label="Delete post" withArrow>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    onClick={() => openDeleteConfirm(p.id)}
+                  >
+                    <IconTrash size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
 
               <Group>
                 <Badge>❤️ {p.likes}</Badge>
@@ -44,6 +93,25 @@ export default function SavedPosts() {
           </Card>
         ))}
       </Stack>
+
+      <Modal
+        opened={deleteModal.open}
+        onClose={closeDeleteConfirm}
+        title="Confirm Delete"
+        centered
+      >
+        <Stack gap="lg">
+          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeDeleteConfirm}>
+              Cancel
+            </Button>
+            <Button color="red" onClick={handleDelete}>
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Card>
   );
 }
