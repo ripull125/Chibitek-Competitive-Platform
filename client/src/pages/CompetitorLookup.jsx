@@ -39,39 +39,49 @@ export default function CompetitorLookup() {
 
   const backends = useMemo(() => {
     const arr = [localBackend];
-    if (configuredBackend && configuredBackend !== localBackend) arr.push(configuredBackend);
+    if (configuredBackend && configuredBackend !== localBackend)
+      arr.push(configuredBackend);
     return arr;
   }, [configuredBackend]);
 
   async function tryFetch(usernameToFetch) {
-    const trimmed = String(usernameToFetch || "").trim().replace(/^@/, "");
+    const trimmed = String(usernameToFetch || "")
+      .trim()
+      .replace(/^@/, "");
     if (!trimmed) throw new Error("Please enter a username.");
     const attempts = [];
 
     for (const base of backends) {
-      const url = `${base.replace(/\/+$/, "")}/api/x/fetch/${encodeURIComponent(trimmed)}`;
+      const url = `${base.replace(/\/+$/, "")}/api/x/fetch/${encodeURIComponent(
+        trimmed
+      )}`;
       try {
         const resp = await fetch(url, { method: "GET" });
         const ct = resp.headers.get("content-type") || "";
         if (!ct.includes("application/json")) {
           const text = await resp.text();
-          throw new Error(`Expected JSON from ${base}, got: ${text.slice(0, 300)}`);
+          throw new Error(
+            `Expected JSON from ${base}, got: ${text.slice(0, 300)}`
+          );
         }
         const json = await resp.json();
         if (!resp.ok) {
           const msg =
             json?.error ||
-            `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
+            `Request failed ${resp.status} ${
+              resp.statusText || ""
+            }`.trim();
           throw new Error(msg);
         }
         return { ...json, _usedBackend: base };
       } catch (e) {
-        // Only record the why; continue to next backend.
         attempts.push({ base, error: e?.message || String(e) });
       }
     }
 
-    const details = attempts.map((a) => `• ${a.base}: ${a.error}`).join("\n");
+    const details = attempts
+      .map((a) => `• ${a.base}: ${a.error}`)
+      .join("\n");
     const err = new Error(
       `All backends failed. Check that your server is running and CORS is allowed.\n${details}`
     );
@@ -122,8 +132,7 @@ export default function CompetitorLookup() {
                 await navigator.clipboard.writeText(String(value ?? ""));
                 handlers.open();
                 setTimeout(handlers.close, 900);
-              } catch {
-              }
+              } catch {}
             }}
             variant="subtle"
           >
@@ -147,7 +156,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platform_id: 1,                 // X
+            platform_id: 1,
             platform_user_id: result.userId,
             username: result.username,
             platform_post_id: post.id,
@@ -159,10 +168,11 @@ export default function CompetitorLookup() {
           }),
         });
 
-
         if (!resp.ok) {
           const errorText = await resp.text();
-          throw new Error(`Failed to save post: ${resp.status} ${errorText}`);
+          throw new Error(
+            `Failed to save post: ${resp.status} ${errorText}`
+          );
         }
 
         await resp.json();
@@ -199,8 +209,15 @@ export default function CompetitorLookup() {
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
   return (
-    <Card withBorder radius="lg" shadow="sm" p="lg" style={{ position: "relative" }}>
+    <Card
+      withBorder
+      radius="lg"
+      shadow="sm"
+      p="lg"
+      style={{ position: "relative" }}
+    >
       <LoadingOverlay visible={loading} zIndex={1000} />
+
       <Stack gap="lg">
         <Group justify="space-between" align="baseline">
           <Group>
@@ -225,11 +242,13 @@ export default function CompetitorLookup() {
               leftSection={<IconUser size={16} />}
               aria-label="Username to lookup"
               autoComplete="off"
+              data-tour="competitor-lookup-input"
             />
             <Button
               type="submit"
               leftSection={<IconSearch size={16} />}
               disabled={!username.trim() || loading}
+              data-tour="competitor-lookup-submit"
             >
               Lookup
             </Button>
@@ -249,53 +268,60 @@ export default function CompetitorLookup() {
         )}
 
         {result && (
-          <Stack gap="lg">
-            <Card withBorder radius="md">
-              <Stack gap="xs">
-                <Title order={4}>Summary</Title>
-                <Group gap="md" wrap="wrap">
-                  <Group gap="xs">
-                    <Text fw={500}>Username:</Text>
-                    <Code>{result.username || "—"}</Code>
+          <div data-tour="competitor-lookup-results">
+            <Stack gap="lg">
+              <Card withBorder radius="md">
+                <Stack gap="xs">
+                  <Title order={4}>Summary</Title>
+                  <Group gap="md" wrap="wrap">
+                    <Group gap="xs">
+                      <Text fw={500}>Username:</Text>
+                      <Code>{result.username || "—"}</Code>
+                    </Group>
+                    <Copyable value={result.userId} label="User ID" />
+                    <Group gap="xs">
+                      <Text fw={500}>Backend:</Text>
+                      <BackendBadge base={result._usedBackend} />
+                    </Group>
+                    <Group gap="xs">
+                      <Text fw={500}>Posts:</Text>
+                      <Badge variant="light" radius="sm">
+                        {posts.length}
+                      </Badge>
+                    </Group>
                   </Group>
-                  <Copyable value={result.userId} label="User ID" />
-                  <Group gap="xs">
-                    <Text fw={500}>Backend:</Text>
-                    <BackendBadge base={result._usedBackend} />
-                  </Group>
-                  <Group gap="xs">
-                    <Text fw={500}>Posts:</Text>
-                    <Badge variant="light" radius="sm">
-                      {posts.length}
-                    </Badge>
-                  </Group>
-                </Group>
-              </Stack>
-            </Card>
+                </Stack>
+              </Card>
 
-            <Divider label="Posts" />
+              <Divider label="Posts" />
 
-            {posts.length === 0 ? (
-              <Alert variant="light" color="gray" title="No posts returned">
-                The API did not return any tweets for this user.
-              </Alert>
-            ) : (
-              <SimpleGrid
-                cols={{ base: 1, sm: 2, lg: 3 }}
-                spacing="md"
-                verticalSpacing="md"
-              >
-                {posts.map((p) => (
-                  <PostCard key={p?.id ?? Math.random()} post={p} />
-                ))}
-              </SimpleGrid>
-            )}
+              {posts.length === 0 ? (
+                <Alert
+                  variant="light"
+                  color="gray"
+                  title="No posts returned"
+                >
+                  The API did not return any tweets for this user.
+                </Alert>
+              ) : (
+                <SimpleGrid
+                  cols={{ base: 1, sm: 2, lg: 3 }}
+                  spacing="md"
+                  verticalSpacing="md"
+                >
+                  {posts.map((p) => (
+                    <PostCard key={p?.id ?? Math.random()} post={p} />
+                  ))}
+                </SimpleGrid>
+              )}
 
-            <Divider label="Raw response" />
-            <Card withBorder radius="md">
-              <Code block>{JSON.stringify(result, null, 2)}</Code>
-            </Card>
-          </Stack>
+              <Divider label="Raw response" />
+
+              <Card withBorder radius="md">
+                <Code block>{JSON.stringify(result, null, 2)}</Code>
+              </Card>
+            </Stack>
+          </div>
         )}
       </Stack>
     </Card>
