@@ -148,7 +148,8 @@ export default function Settings() {
                 radius="md"
                 size="md"
                 className={classes.actionBtn}
-                onClick={handleStartTutorial}
+                onClick={() => tour.start()}
+
               >
                 {t("common.start")}
               </Button>
