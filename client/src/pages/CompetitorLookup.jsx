@@ -101,6 +101,33 @@ export default function CompetitorLookup() {
         const converted = convertXInput(data);
         setConvertedData(converted);
         console.log('Converted data:', converted);
+        
+        // Save last 10 posts to localStorage
+        const postsToSave = (data.posts || []).slice(0, 10).map((post, index) => {
+          const metrics = post.public_metrics || {};
+          const engagement = 
+            (metrics.like_count || 0) +
+            (metrics.retweet_count || 0) +
+            (metrics.reply_count || 0);
+          return {
+            id: post.id,
+            username: data.username,
+            content: post.text,
+            engagement: engagement,
+            likes: metrics.like_count || 0,
+            shares: metrics.retweet_count || 0,
+            comments: metrics.reply_count || 0,
+            timestamp: post.created_at,
+          };
+        });
+        
+        // Get existing posts from localStorage and prepend new ones
+        const existingPosts = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
+        const allPosts = [...postsToSave, ...existingPosts];
+        // Keep only the last 10 overall
+        const recentTen = allPosts.slice(0, 10);
+        localStorage.setItem('recentCompetitorPosts', JSON.stringify(recentTen));
+        
       } catch (conversionError) {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
@@ -332,11 +359,6 @@ export default function CompetitorLookup() {
                 ))}
               </SimpleGrid>
             )}
-
-            <Divider label="Raw response" />
-            <Card withBorder radius="md">
-              <Code block>{JSON.stringify(result, null, 2)}</Code>
-            </Card>
           </Stack>
         )}
       </Stack>
