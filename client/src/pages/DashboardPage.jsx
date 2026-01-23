@@ -95,63 +95,20 @@ const COMP_FEED = [
   { who: "Kodex", platform: "LinkedIn", title: "AI Security launch recap", kw: "ai security", eng: 910 },
 ];
 
-const TOP_POSTS = [
-  { who: "Chibitek", platform: "LinkedIn", title: "AI Security launch recap", eng: 980 },
-  { who: "Chibitek", platform: "X", title: "Endpoint MDR myths", eng: 488 },
-  { who: "Chibitek", platform: "Instagram", title: "SOC night shift", eng: 420 },
-];
-
-const BRIEFS = [
-  {
-    kw: "AI security",
-    idea: "Platform roundup with customer quote",
-    platform: "LinkedIn",
-    cta: "Draft brief",
-    to: "/keywords?term=AI%20security",
-  },
-  {
-    kw: "24/7 SOC",
-    idea: "Behind-the-scenes reel (night ops)",
-    platform: "Instagram",
-    cta: "Draft brief",
-    to: "/keywords?term=24%2F7%20SOC",
-  },
-];
-
 /* ---------- Card shell ---------- */
 function CardSection({ title, subtitle, right, children, className, pad = "xl" }) {
   return (
-    <Card
-      withBorder
-      shadow="xs"
-      radius="lg"
-      p={pad}
-      className={`${classes.card} ${className || ""}`}
-    >
+    <Card withBorder shadow="xs" radius="lg" p={pad} className={`${classes.card} ${className || ""}`}>
       {(title || subtitle || right) && (
         <>
-          <Group
-            justify="space-between"
-            align="flex-start"
-            className={classes.cardHeader}
-          >
+          <Group justify="space-between" align="flex-start" className={classes.cardHeader}>
             <Stack gap={4}>
               {title && (
-                <Text
-                  className={classes.cardTitle}
-                  fw={800}
-                  tt="uppercase"
-                  size="xs"
-                  c="dimmed"
-                >
+                <Text className={classes.cardTitle} fw={800} tt="uppercase" size="xs" c="dimmed">
                   {title}
                 </Text>
               )}
-              {subtitle && (
-                <Text size="xs" c="dimmed">
-                  {subtitle}
-                </Text>
-              )}
+              {subtitle && <Text size="xs" c="dimmed">{subtitle}</Text>}
             </Stack>
             {right}
           </Group>
@@ -171,18 +128,12 @@ function KPIStrip() {
         <div className={classes.kpis}>
           {KPI.map((k) => (
             <div key={k.label} className={classes.kpi}>
-              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>
-                {k.label}
-              </Text>
+              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{k.label}</Text>
               <Group gap="xs" align="end" wrap="nowrap">
                 <Title order={2} className={classes.kpiValue}>
                   {typeof k.value === "number" ? fmtK(k.value) : k.value}
                 </Title>
-                <Badge
-                  radius="sm"
-                  variant="light"
-                  className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}
-                >
+                <Badge radius="sm" variant="light" className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}>
                   {k.delta >= 0 ? `+${k.delta}%` : `${k.delta}%`}
                 </Badge>
               </Group>
@@ -203,21 +154,14 @@ function OpportunityAlerts() {
           {ALERTS.map((a, i) => {
             const Icon = a.icon;
             return (
-              <Group
-                key={i}
-                justify="space-between"
-                align="center"
-                className={classes.rowPad}
-              >
+              <Group key={i} justify="space-between" align="center" className={classes.rowPad}>
                 <Group gap="sm">
                   <ThemeIcon variant="light" radius="lg" size={36}>
                     <Icon size={18} />
                   </ThemeIcon>
                   <Stack gap={2}>
                     <Text fw={800}>{a.title}</Text>
-                    <Text size="sm" c="dimmed">
-                      {a.detail}
-                    </Text>
+                    <Text size="sm" c="dimmed">{a.detail}</Text>
                   </Stack>
                 </Group>
                 <Button
@@ -261,9 +205,7 @@ function EffectivenessScatter() {
               <Scatter
                 data={EFFECTIVENESS}
                 name="Keywords"
-                onClick={(data) =>
-                  navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)
-                }
+                onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
               />
             </ScatterChart>
           </ResponsiveContainer>
@@ -278,21 +220,37 @@ export default function DashboardPage() {
   const [page, setPage] = React.useState(0);
   const [dir, setDir] = React.useState(1);
 
-  const go = (next) => {
-    setDir(next > page ? 1 : -1);
-    setPage(Math.max(0, Math.min(1, next)));
-  };
+  const go = React.useCallback((next) => {
+    setPage((prev) => {
+      const clamped = Math.max(0, Math.min(1, next));
+      setDir(clamped > prev ? 1 : -1);
+      return clamped;
+    });
+  }, []);
+
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
+  }, []);
+
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("chibitek:dashboard", { detail: { page } }));
+  }, [page]);
+
+  React.useEffect(() => {
+    const onTour = (e) => {
+      const d = e?.detail;
+      if (!d) return;
+      if (d.type === "setDashboardSlide") go(d.page);
+    };
+    window.addEventListener("chibitek:tour", onTour);
+    return () => window.removeEventListener("chibitek:tour", onTour);
+  }, [go]);
 
   return (
     <div className={classes.page}>
-      {/* Stable anchor so Joyride ALWAYS has a first target */}
-      <div data-tour="dashboard-anchor" />
-
       <div className={classes.shell}>
         <header className={classes.header}>
-          <Title order={2} className={classes.title}>
-            Dashboard
-          </Title>
+          <Title order={2} className={classes.title}>Dashboard</Title>
         </header>
 
         <div className={classes.sliderWrap}>
@@ -306,15 +264,9 @@ export default function DashboardPage() {
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
                   <div className={classes.grid}>
-                    <div className={`${classes.col} ${classes.span12}`}>
-                      <KPIStrip />
-                    </div>
-                    <div className={`${classes.col} ${classes.span5}`}>
-                      <OpportunityAlerts />
-                    </div>
-                    <div className={`${classes.col} ${classes.span7}`}>
-                      <EffectivenessScatter />
-                    </div>
+                    <div className={`${classes.col} ${classes.span12}`}><KPIStrip /></div>
+                    <div className={`${classes.col} ${classes.span5}`}><OpportunityAlerts /></div>
+                    <div className={`${classes.col} ${classes.span7}`}><EffectivenessScatter /></div>
                   </div>
                 </Box>
               )}
@@ -328,23 +280,34 @@ export default function DashboardPage() {
             >
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
-                  <div className={classes.grid}>
-                    <div className={`${classes.col} ${classes.span7}`}>
-                      <CardSection title="Competitor moves">
+                  {/* CENTERED SLIDE 2 CONTENT */}
+                  <div
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 16,
+                    }}
+                  >
+                    {/* Tight wrapper so spotlight hugs the card, no gutters */}
+                    <div
+                      data-tour="dashboard-slide-2"
+                      style={{
+                        width: "min(920px, 96%)",
+                        borderRadius: 16,
+                      }}
+                    >
+                      <CardSection title="Competitor moves" subtitle="Recent high-engagement posts by competitors">
                         <Stack gap="md">
                           {COMP_FEED.map((p, idx) => (
-                            <Group
-                              key={idx}
-                              justify="space-between"
-                              align="center"
-                              className={classes.rowPad}
-                            >
-                              <Group gap="sm" wrap="nowrap" align="center">
-                                <Avatar size={22} radius="xl" />
+                            <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
+                              <Group gap="sm" wrap="nowrap" align="center" className={classes.feedLeft}>
+                                <Avatar size={22} radius="xl" className={classes.brandDot} />
                                 <Text fw={700}>{p.who}</Text>
                                 <Badge variant="light">{p.platform}</Badge>
                                 <Text c="dimmed">—</Text>
-                                <Text>{p.title}</Text>
+                                <Text className={classes.linkText}>{p.title}</Text>
                               </Group>
                               <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
                             </Group>
@@ -366,22 +329,15 @@ export default function DashboardPage() {
                 size="lg"
                 onClick={() => go(page - 1)}
                 disabled={page === 0}
+                className={classes.navBtn}
               >
                 <IconArrowUp size={18} />
               </ActionIcon>
             </Tooltip>
 
             <div className={classes.vDots}>
-              <span
-                className={`${classes.dot} ${
-                  page === 0 ? classes.dotActive : ""
-                }`}
-              />
-              <span
-                className={`${classes.dot} ${
-                  page === 1 ? classes.dotActive : ""
-                }`}
-              />
+              <span className={`${classes.dot} ${page === 0 ? classes.dotActive : ""}`} />
+              <span className={`${classes.dot} ${page === 1 ? classes.dotActive : ""}`} />
             </div>
 
             <Tooltip label="Next">
@@ -391,6 +347,7 @@ export default function DashboardPage() {
                 size="lg"
                 onClick={() => go(page + 1)}
                 disabled={page === 1}
+                className={classes.navBtn}
               >
                 <IconArrowDown size={18} />
               </ActionIcon>
