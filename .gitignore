@@ -2,7 +2,8 @@ node_modules/
 frontend/node_modules/
 dist/
 .vite/
-# .gitignore
+
 .env
+.env.production
 .DS_Store
 recharts/scraped-data.json
