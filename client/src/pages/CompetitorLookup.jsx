@@ -27,6 +27,7 @@ import {
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
+import { apiBase, apiUrl } from "../utils/api";
 
 export default function CompetitorLookup() {
   const [username, setUsername] = useState("");
@@ -34,14 +35,11 @@ export default function CompetitorLookup() {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
 
-  const configuredBackend = import.meta.env.VITE_BACKEND_URL || "";
-  const localBackend = "http://localhost:8080";
-
   const backends = useMemo(() => {
-    const arr = [localBackend];
-    if (configuredBackend && configuredBackend !== localBackend) arr.push(configuredBackend);
-    return arr;
-  }, [configuredBackend]);
+    const bases = new Set();
+    if (apiBase) bases.add(apiBase);
+    return Array.from(bases);
+  }, []);
 
   async function tryFetch(usernameToFetch) {
     const trimmed = String(usernameToFetch || "").trim().replace(/^@/, "");
@@ -143,7 +141,7 @@ export default function CompetitorLookup() {
     async function handleSave() {
       try {
         setSaving(true);
-        const resp = await fetch("http://localhost:8080/api/posts", {
+        const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

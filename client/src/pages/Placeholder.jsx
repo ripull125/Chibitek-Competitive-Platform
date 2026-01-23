@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import DownloadJSON from "../../components/DownloadJSON";
 import DownloadTXT from "../../components/DownloadTXT";
 import DownloadCSV from "../../components/DownloadCSV";
+import { apiUrl } from "../utils/api";
 
 // Import the RechartsTest chart
 // import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
@@ -15,11 +16,9 @@ const Placeholder = () => {
 
   
 
-  const backendUrl = "http://localhost:8080";
-
   const fetchRecords = async () => {
     try {
-      const res = await fetch(`${backendUrl}/read`);
+      const res = await fetch(apiUrl("/read"));
       const json = await res.json();
       if (json.records) {
         setRecords(json.records);
@@ -32,7 +31,7 @@ const Placeholder = () => {
   const submitMessage = async () => {
     if (!message) return;
     try {
-      await fetch(`${backendUrl}/write`, {
+      await fetch(apiUrl("/write"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message })
@@ -50,7 +49,7 @@ const Placeholder = () => {
     const message = `${book.title} - ${keywords} - Price: ${price}`;
 
     try {
-      const res = await fetch(`${backendUrl}/write`, {
+      const res = await fetch(apiUrl("/write"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message })
@@ -74,7 +73,7 @@ const Placeholder = () => {
     if (!ok) return;
 
     try {
-      const res = await fetch(`${backendUrl}/api/delete`, {
+      const res = await fetch(apiUrl("/api/delete"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -98,7 +97,7 @@ const Placeholder = () => {
   useEffect(() => {
     fetchRecords();
 
-    fetch(`${backendUrl}/scrape?ts=${Date.now()}`, { cache: "no-store" })
+    fetch(apiUrl(`/scrape?ts=${Date.now()}`), { cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {
         setData(json);
