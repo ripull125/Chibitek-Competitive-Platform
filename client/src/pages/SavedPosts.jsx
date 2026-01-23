@@ -8,13 +8,14 @@ import {
   Group,
   LoadingOverlay,
 } from "@mantine/core";
+import { apiUrl } from "../utils/api";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8080/api/posts")
+    fetch(apiUrl("/api/posts"))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));

@@ -1,15 +1,9 @@
-// React can't directly work with puppeteer so it has to go through a
-// server that calls another file with puppeteer
-
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import fs from 'fs/promises';
-import path from 'path';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
-//import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 
@@ -26,66 +20,6 @@ app.use(express.json({ limit: '10mb' }));
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
-
-let cachedPayload = null;
-const scrapedDataPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
-
-const loadCachedPayload = async () => {
-  if (cachedPayload) return cachedPayload;
-  try {
-    const existing = await fs.readFile(scrapedDataPath, 'utf8');
-    cachedPayload = JSON.parse(existing);
-    return cachedPayload;
-  } catch (err) {
-    if (err.code !== 'ENOENT') {
-      console.error('Failed to read cached scrape payload:', err);
-    }
-    return null;
-  }
-};
-
-/* app.get('/scrape', async (req, res) => {
-  try {
-    if (req.query.refresh !== 'true') {
-      const existing = await loadCachedPayload();
-      if (existing) {
-        return res.json(existing);
-      }
-    }
-
-    const data = await Scraping();
-    const booksWithKeywords = await suggestKeywordsForBooks(data.books || []);
-    const payload = { ...data, books: booksWithKeywords };
-    cachedPayload = payload;
-    const { data: inserted, error } = await supabase
-      .from('posts')
-      .insert({
-        platform_id: 1,
-        competitor_id: 1,
-        platform_post_id: data.url,
-        url: data.url,
-        content: data.heading + ' ' + (data.paragraphs || []).join(' ')
-      });
-    if (error) {
-      console.error('Insert error:', error);
-    }
-
-    // Write a copy of the scraped payload to recharts/scraped-data.json
-    (async () => {
-      try {
-        await fs.mkdir(path.dirname(scrapedDataPath), { recursive: true });
-        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 5), 'utf8');
-      } catch (err) {
-        console.error('Failed to write scraped payload to recharts:', err);
-      }
-    })();
-
-    res.json(payload);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Scraping failed' });
-  }
-}); */
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
