@@ -10,6 +10,7 @@ import {
   Divider,
   Group,
   List,
+  ScrollArea,
   Stack,
   Text,
   ThemeIcon,
@@ -265,6 +266,73 @@ function NextActions() {
   );
 }
 
+function RecentPosts() {
+  const [recentPosts, setRecentPosts] = React.useState([]);
+
+  React.useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
+    const chartData = stored.map((post, index) => ({
+      index: index + 1,
+      engagement: post.engagement,
+      username: post.username,
+      content: post.content,
+    }));
+    setRecentPosts(chartData);
+  }, []);
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div style={{
+          backgroundColor: '#fff',
+          border: '1px solid #ccc',
+          borderRadius: '4px',
+          padding: '8px 12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+        }}>
+          <Text size="sm" fw={500}>{data.username}</Text>
+          <Text size="sm">Post #{data.index}</Text>
+          <Text size="sm">Engagement: {data.engagement}</Text>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <CardSection
+      title="Recent posts"
+      subtitle="Last 10 posts retrieved from Competitor Lookup"
+      right={<IconChartDots className={classes.cardIcon} />}
+    >
+      {recentPosts.length > 0 ? (
+        <div className={classes.chartBox}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="index" name="Post Index" type="number" />
+              <YAxis dataKey="engagement" name="Engagement" />
+              <RechartsTooltip
+                cursor={{ strokeDasharray: "3 3" }}
+                contentStyle={{ borderRadius: 8 }}
+                content={<CustomTooltip />}
+              />
+              <Scatter
+                data={recentPosts}
+                name="Posts"
+                fill="#ff6b6b"
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <Text c="dimmed">No recent posts yet. Retrieve posts from Competitor Lookup to see them here.</Text>
+      )}
+    </CardSection>
+  );
+}
+
 /* ---------- Page ---------- */
 export default function DashboardPage() {
   const [page, setPage] = React.useState(0);
@@ -313,11 +381,14 @@ export default function DashboardPage() {
             >
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
-                  <div className={classes.grid}>
-                    <div className={`${classes.col} ${classes.span7}`}><CompetitorMoves /></div>
-                    <div className={`${classes.col} ${classes.span5}`}><TopPosts /></div>
-                    <div className={`${classes.col} ${classes.span12}`}><NextActions /></div>
-                  </div>
+                  <ScrollArea style={{ height: "100%" }}>
+                    <div className={classes.grid}>
+                      <div className={`${classes.col} ${classes.span7}`}><CompetitorMoves /></div>
+                      <div className={`${classes.col} ${classes.span5}`}><TopPosts /></div>
+                      <div className={`${classes.col} ${classes.span12}`}><RecentPosts /></div>
+                      <div className={`${classes.col} ${classes.span12}`}><NextActions /></div>
+                    </div>
+                  </ScrollArea>
                 </Box>
               )}
             </Transition>

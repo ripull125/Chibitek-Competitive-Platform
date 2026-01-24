@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   IconSearch,
+  IconBookmark,
   IconReport,
   IconMessage,
   IconSettings,
@@ -24,6 +25,7 @@ const FADE_MS = 140;
 const linksData = [
   { key: "dashboard", icon: IconLayoutDashboard, path: "/" },
   { key: "competitorLookup", icon: IconSearch, path: "/competitor-lookup" },
+  { key: "savedPosts", icon: IconBookmark, path: "/savedPosts"},
   { key: "keywordTracking", icon: IconTrendingUp, path: "/keywords" },
   { key: "reports", icon: IconReport, path: "/reports" },
   { key: "chat", icon: IconMessage, path: "/chat" },
