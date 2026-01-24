@@ -13,6 +13,7 @@ import {
   Modal,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
+import { apiUrl } from "../utils/api";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
@@ -20,7 +21,7 @@ export default function SavedPosts() {
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
 
   useEffect(() => {
-    fetch("http://localhost:8080/api/posts")
+    fetch(apiUrl("/api/posts"))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));

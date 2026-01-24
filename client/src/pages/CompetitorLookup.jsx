@@ -27,21 +27,21 @@ import {
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
+import { convertXInput } from "./DataConverter";
+import { apiBase, apiUrl } from "../utils/api";
 
 export default function CompetitorLookup() {
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-
-  const configuredBackend = import.meta.env.VITE_BACKEND_URL || "";
-  const localBackend = "http://localhost:8080";
+  const [convertedData, setConvertedData] = useState(null);
 
   const backends = useMemo(() => {
-    const arr = [localBackend];
-    if (configuredBackend && configuredBackend !== localBackend) arr.push(configuredBackend);
-    return arr;
-  }, [configuredBackend]);
+    const bases = new Set();
+    if (apiBase) bases.add(apiBase);
+    return Array.from(bases);
+  }, []);
 
   async function tryFetch(usernameToFetch) {
     const trimmed = String(usernameToFetch || "").trim().replace(/^@/, "");
@@ -101,6 +101,7 @@ export default function CompetitorLookup() {
     e?.preventDefault?.();
     setError(null);
     setResult(null);
+    setConvertedData(null);
     const u = username.trim();
     if (!u) {
       setError("Please enter a username.");
@@ -110,6 +111,43 @@ export default function CompetitorLookup() {
     try {
       const data = await tryFetch(u);
       setResult(data);
+      
+      // Convert the data using DataConverter
+      try {
+        const converted = convertXInput(data);
+        setConvertedData(converted);
+        console.log('Converted data:', converted);
+        
+        // Save last 10 posts to localStorage
+        const postsToSave = (data.posts || []).slice(0, 10).map((post, index) => {
+          const metrics = post.public_metrics || {};
+          const engagement = 
+            (metrics.like_count || 0) +
+            (metrics.retweet_count || 0) +
+            (metrics.reply_count || 0);
+          return {
+            id: post.id,
+            username: data.username,
+            content: post.text,
+            engagement: engagement,
+            likes: metrics.like_count || 0,
+            shares: metrics.retweet_count || 0,
+            comments: metrics.reply_count || 0,
+            timestamp: post.created_at,
+          };
+        });
+        
+        // Get existing posts from localStorage and prepend new ones
+        const existingPosts = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
+        const allPosts = [...postsToSave, ...existingPosts];
+        // Keep only the last 10 overall
+        const recentTen = allPosts.slice(0, 10);
+        localStorage.setItem('recentCompetitorPosts', JSON.stringify(recentTen));
+        
+      } catch (conversionError) {
+        console.error('Error converting data:', conversionError);
+        setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
+      }
     } catch (e) {
       setError(e?.message || "Unknown error");
     } finally {
@@ -161,7 +199,7 @@ export default function CompetitorLookup() {
     async function handleSave() {
       try {
         setSaving(true);
-        const resp = await fetch("http://localhost:8080/api/posts", {
+        const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -294,6 +332,35 @@ export default function CompetitorLookup() {
               </Stack>
             </Card>
 
+            {convertedData && convertedData.length > 0 && (
+              <>
+                <Divider label="Converted Data" />
+                <Card withBorder radius="md">
+                  <Stack gap="md">
+                    <Title order={5}>Universal Data Format</Title>
+                    {convertedData.map((item, idx) => (
+                      <Card key={idx} withBorder radius="sm" p="sm">
+                        <Group gap="md" wrap="wrap">
+                          <Group gap="xs">
+                            <Text fw={500}>Name/Source:</Text>
+                            <Badge variant="light">{item["Name/Source"]}</Badge>
+                          </Group>
+                          <Group gap="xs">
+                            <Text fw={500}>Engagement:</Text>
+                            <Badge variant="light" color="green">{item.Engagement}</Badge>
+                          </Group>
+                        </Group>
+                        <Text size="sm" mt="xs" style={{ whiteSpace: "pre-wrap" }}>
+                          <Text fw={500} span>Message:</Text> {item.Message.substring(0, 150)}
+                          {item.Message.length > 150 ? "..." : ""}
+                        </Text>
+                      </Card>
+                    ))}
+                  </Stack>
+                </Card>
+              </>
+            )}
+
             <Divider label="Posts" />
 
             {posts.length === 0 ? (
@@ -311,11 +378,6 @@ export default function CompetitorLookup() {
                 ))}
               </SimpleGrid>
             )}
-
-            <Divider label="Raw response" />
-            <Card withBorder radius="md">
-              <Code block>{JSON.stringify(result, null, 2)}</Code>
-            </Card>
           </Stack>
         )}
       </Stack>
