@@ -375,3 +375,25 @@ app.get("/api/posts", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.delete("/api/posts/:id", async (req, res) => {
+  const postId = req.params.id;
+
+  try {
+    // Delete associated metrics first
+    await supabase.from("post_metrics").delete().eq("post_id", postId);
+
+    // Then delete the post
+    const { error: postError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", postId);
+
+    if (postError) throw postError;
+
+    res.json({ deleted: true, post_id: postId });
+  } catch (err) {
+    console.error("Delete post failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
