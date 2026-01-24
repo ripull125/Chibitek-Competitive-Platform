@@ -113,7 +113,7 @@ export default function ChatInput() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
-  const [currentConversationId, setCurrentConversationId] = useState(null);
+  const [currentConversationId, setCurrentConversationId] = useState(persisted?.currentConversationId ?? null);
 
 
   useEffect(() => {
@@ -123,12 +123,12 @@ export default function ChatInput() {
   useEffect(() => {
     if (!hasHydratedRef.current || typeof window === 'undefined') return;
     try {
-      const toStore = JSON.stringify({ message, conversation, attachments });
+      const toStore = JSON.stringify({ message, conversation, attachments, currentConversationId });
       window.localStorage.setItem(CHAT_STORAGE_KEY, toStore);
     } catch (err) {
       console.warn('Failed to persist chat', err);
     }
-  }, [message, conversation, attachments]);
+  }, [message, conversation, attachments, currentConversationId]);
 
   useEffect(() => {
     if (!SpeechRecognition) return undefined;
@@ -335,6 +335,8 @@ export default function ChatInput() {
     setIsLoadingList(true);
     setSaveNotice('');
 
+    const remainingConversations = savedConversations.filter((c) => c.id !== conversationId);
+
     try {
       const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`, {
         method: 'DELETE',
@@ -353,13 +355,14 @@ export default function ChatInput() {
       }
 
       // Update UI immediately without refetch
-      setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      setSavedConversations(remainingConversations);
 
       if (conversationId === currentConversationId) {
         setConversation(defaultConversation);
         setMessage('');
         setAttachments([]);
         setCurrentConversationId(null);
+        setLoadModalOpen(false);
       }
 
       
