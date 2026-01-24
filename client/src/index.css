@@ -93,3 +93,7 @@ html, body, #root { background: var(--mantine-color-body); color: var(--mantine-
 :root {
   color-scheme: light;
 }
+
+:root[data-mantine-color-scheme="dark"] {
+  color-scheme: dark;
+}

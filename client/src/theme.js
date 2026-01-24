@@ -16,17 +16,18 @@ export const theme = createTheme({
 
   colors: {
     // dark[7] -> body background, dark[0] -> text
+    // Base matches Reddit dark background (#0e1113).
     dark: [
-      "#E8EEF6",
-      "#CAD5E3",
-      "#AAB8CA",
-      "#7F90A8",
-      "#54657F",
-      "#33415C",
-      "#1E2A3D",
-      "#0F172A",
-      "#0B1220",
-      "#070C16",
+      "#E7EAEC",
+      "#C9D0D6",
+      "#ABB5BE",
+      "#8E9BA6",
+      "#72838F",
+      "#576875",
+      "#3D4D5A",
+      "#0E1113",
+      "#0B0E10",
+      "#07090A",
     ],
   },
 

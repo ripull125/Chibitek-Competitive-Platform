@@ -30,6 +30,9 @@ const resources = {
         integrationsDesc: "Control connected platforms",
         languageLabel: "LANGUAGE",
         languageTitle: "Language",
+        appearanceLabel: "APPEARANCE",
+        darkModeTitle: "Dark mode",
+        darkModeDesc: "Use a darker theme across the app",
         tutorialLabel: "TUTORIAL",
         tutorialTitle: "Take the tour",
         tutorialDesc: "Quick walkthrough of features"
@@ -73,6 +76,9 @@ const resources = {
         integrationsDesc: "接続済みプラットフォームを管理",
         languageLabel: "言語",
         languageTitle: "言語",
+        appearanceLabel: "外観",
+        darkModeTitle: "ダークモード",
+        darkModeDesc: "アプリ全体を暗いテーマにする",
         tutorialLabel: "チュートリアル",
         tutorialTitle: "ツアーを開始",
         tutorialDesc: "機能の簡単な案内"
@@ -116,6 +122,9 @@ const resources = {
         integrationsDesc: "Gérer les plateformes connectées",
         languageLabel: "LANGUE",
         languageTitle: "Langue",
+        appearanceLabel: "APPARENCE",
+        darkModeTitle: "Mode sombre",
+        darkModeDesc: "Utiliser un thème sombre dans l’application",
         tutorialLabel: "TUTORIEL",
         tutorialTitle: "Faire la visite",
         tutorialDesc: "Aperçu rapide des fonctionnalités"
@@ -159,6 +168,9 @@ const resources = {
         integrationsDesc: "Verbundene Plattformen steuern",
         languageLabel: "SPRACHE",
         languageTitle: "Sprache",
+        appearanceLabel: "DARSTELLUNG",
+        darkModeTitle: "Dunkelmodus",
+        darkModeDesc: "Dunkles Design in der App verwenden",
         tutorialLabel: "TUTORIAL",
         tutorialTitle: "Tour starten",
         tutorialDesc: "Kurzer Überblick über Funktionen"
@@ -202,6 +214,9 @@ const resources = {
         integrationsDesc: "Controlar plataformas conectadas",
         languageLabel: "IDIOMA",
         languageTitle: "Idioma",
+        appearanceLabel: "APARIENCIA",
+        darkModeTitle: "Modo oscuro",
+        darkModeDesc: "Usar un tema oscuro en la app",
         tutorialLabel: "TUTORIAL",
         tutorialTitle: "Iniciar el tour",
         tutorialDesc: "Recorrido rápido de funciones"

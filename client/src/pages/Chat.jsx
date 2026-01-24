@@ -14,6 +14,8 @@ import {
   Text,
   TextInput,
   Title,
+  useMantineColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconDeviceFloppy,
@@ -83,6 +85,9 @@ const buildConversationTitle = (entries) => {
 };
 
 export default function ChatInput() {
+  const theme = useMantineTheme();
+  const { colorScheme } = useMantineColorScheme();
+  const isDark = colorScheme === 'dark';
   const persisted = useMemo(() => loadPersistedChat(), []);
   const [message, setMessage] = useState(persisted?.message ?? '');
   const [conversation, setConversation] = useState(persisted?.conversation ?? defaultConversation);
@@ -318,7 +323,7 @@ export default function ChatInput() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--mantine-color-body)',
         padding: '24px',
         transition: 'background-color 0.3s ease',
       }}
@@ -336,9 +341,7 @@ export default function ChatInput() {
             style={{
               fontSize: 32,
               fontWeight: 400,
-              color: 'var(--text-primary)',
               margin: 0,
-              transition: 'color 0.3s ease',
             }}
           >
             ChibitekAI
@@ -392,7 +395,14 @@ export default function ChatInput() {
                     withBorder
                     style={{
                       maxWidth: '76%', // message bubble width cap
-                      backgroundColor: entry.role === 'user' ? '#e7f5ff' : 'white',
+                      backgroundColor:
+                        entry.role === 'user'
+                          ? isDark
+                            ? theme.colors.blue[9]
+                            : theme.colors.blue[0]
+                          : isDark
+                            ? theme.colors.dark[6]
+                            : theme.white,
                     }}
                   >
                     <Text size="xs" c="dimmed" mb={4}>
@@ -434,10 +444,10 @@ export default function ChatInput() {
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              backgroundColor: 'white',
+              backgroundColor: isDark ? theme.colors.dark[6] : theme.white,
               borderRadius: 50,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #e9ecef',
+              boxShadow: isDark ? '0 8px 18px rgba(0, 0, 0, 0.35)' : '0 2px 8px rgba(0, 0, 0, 0.08)',
+              border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${theme.colors.gray[3]}`,
             }}
           >
             <ActionIcon variant="subtle" color="gray" size="lg" onClick={handleFileButtonClick} style={{ flexShrink: 0 }}>
@@ -461,7 +471,7 @@ export default function ChatInput() {
                   border: 'none',
                   outline: 'none',
                   '&:focus': { outline: 'none', border: 'none' },
-                  '&::placeholder': { color: '#adb5bd' },
+                  '&::placeholder': { color: 'var(--mantine-color-dimmed)' },
                 },
               }}
             />

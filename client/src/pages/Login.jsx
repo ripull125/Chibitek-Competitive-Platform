@@ -9,6 +9,7 @@ import {
   onAuthStateChange,
   storeSession,
 } from "../auth/session";
+import classes from "./Login.module.css";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -83,8 +84,8 @@ export default function Login() {
   };
 
   return (
-    <Center h="100dvh" style={{ background: "var(--mantine-color-gray-0)" }}>
-      <Paper radius="md" p="xl" withBorder style={{ width: 420, maxWidth: "92vw" }}>
+    <Center h="100dvh" className={classes.page}>
+      <Paper radius="md" p="xl" withBorder className={classes.card}>
         <Stack gap="md">
           <Title order={2}>Sign in</Title>
           <Text c="dimmed">

@@ -8,6 +8,9 @@ import { MantineProvider, ScrollArea, ColorSchemeScript } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import { theme } from "./theme";
+import { applyColorScheme, getStoredColorScheme, useAppColorScheme } from "./useAppColorScheme";
+
 import RequireAuth from "./auth/RequireAuth.jsx";
 import Login from "./pages/Login.jsx";
 
@@ -25,6 +28,10 @@ import SavedPosts from "./pages/SavedPosts.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
+import "./App.css";
+
+const initialColorScheme = getStoredColorScheme();
+applyColorScheme(initialColorScheme);
 
 
 
@@ -132,11 +139,16 @@ function AppLayout() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="light" />
+function AppRoot() {
+  const { colorScheme } = useAppColorScheme();
+
+  return (
     <I18nextProvider i18n={i18n}>
-      <MantineProvider defaultColorScheme="light">
+      <MantineProvider
+        theme={theme}
+        defaultColorScheme={colorScheme}
+        colorScheme={colorScheme}
+      >
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -145,5 +157,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         </BrowserRouter>
       </MantineProvider>
     </I18nextProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ColorSchemeScript defaultColorScheme={initialColorScheme} />
+    <AppRoot />
   </React.StrictMode>
 );

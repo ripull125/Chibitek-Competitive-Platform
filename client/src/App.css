@@ -1,59 +1,30 @@
 /* Theme Variables */
 :root {
-  /* Light Mode Colors (Default) */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e0e0e0;
-  
-  --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-tertiary: #6a6a6a;
-  
-  --nav-bg: #ffffff;
-  --nav-text: #1a1a1a;
-  --nav-hover: #f0f0f0;
-  --nav-active: #e0e0e0;
-  
-  --border-color: #d0d0d0;
-  --shadow: rgba(0, 0, 0, 0.1);
-  
-  --accent-primary: #2563eb;
-  --accent-secondary: #3b82f6;
-  
-  --button-bg: #2563eb;
-  --button-text: #ffffff;
-  --button-hover: #1d4ed8;
-  
-  --card-bg: #ffffff;
-  --card-border: #e0e0e0;
-}
+  --bg-primary: var(--mantine-color-body);
+  --bg-secondary: var(--mantine-color-default);
+  --bg-tertiary: var(--mantine-color-default-hover);
 
-.dark-mode {
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2a2a2a;
-  --bg-tertiary: #3a3a3a;
-  
-  --text-primary: #f0f0f0;
-  --text-secondary: #d0d0d0;
-  --text-tertiary: #b0b0b0;
-  
-  --nav-bg: #1f1f1f;
-  --nav-text: #f0f0f0;
-  --nav-hover: #2a2a2a;
-  --nav-active: #3a3a3a;
-  
-  --border-color: #404040;
-  --shadow: rgba(0, 0, 0, 0.3);
-  
-  --accent-primary: #3b82f6;
-  --accent-secondary: #60a5fa;
-  
-  --button-bg: #3b82f6;
-  --button-text: #ffffff;
-  --button-hover: #2563eb;
-  
-  --card-bg: #2a2a2a;
-  --card-border: #404040;
+  --text-primary: var(--mantine-color-text);
+  --text-secondary: var(--mantine-color-dimmed);
+  --text-tertiary: var(--mantine-color-dimmed);
+
+  --nav-bg: var(--mantine-color-body);
+  --nav-text: var(--mantine-color-text);
+  --nav-hover: var(--mantine-color-default-hover);
+  --nav-active: var(--mantine-color-default);
+
+  --border-color: var(--mantine-color-default-border);
+  --shadow: rgba(0, 0, 0, 0.1);
+
+  --accent-primary: var(--mantine-primary-color-filled);
+  --accent-secondary: var(--mantine-primary-color-filled-hover);
+
+  --button-bg: var(--mantine-primary-color-filled);
+  --button-text: var(--mantine-color-white);
+  --button-hover: var(--mantine-primary-color-filled-hover);
+
+  --card-bg: var(--mantine-color-body);
+  --card-border: var(--mantine-color-default-border);
 }
 
 /* Apply theme to body and root */
@@ -64,10 +35,11 @@ body {
 }
 
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left;
   background-color: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -121,14 +93,6 @@ body {
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
-.mantine-Text-root {
-  color: var(--text-primary);
-}
-
-.mantine-Title-root {
-  color: var(--text-primary);
-}
-
 .mantine-Input-input {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
@@ -142,4 +106,11 @@ body {
 
 .mantine-Button-root {
   transition: all 0.2s ease;
+}
+
+:root[data-mantine-color-scheme="dark"] .mantine-Card-root,
+:root[data-mantine-color-scheme="dark"] .mantine-Paper-root {
+  background: color-mix(in srgb, var(--mantine-color-body) 92%, #0e1113 8%);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.35);
 }

@@ -12,11 +12,13 @@ import {
   Box,
   Select,
   Group,
+  Switch,
 } from "@mantine/core";
 import { IconWorld } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import classes from "./Settings.module.css";
 import "../utils/ui.css"; // provides .pageTitle (regular)
+import { useAppColorScheme } from "../useAppColorScheme";
 
 function SettingsCard({ label, title, description, children }) {
   return (
@@ -34,6 +36,7 @@ function SettingsCard({ label, title, description, children }) {
 export default function Settings() {
   const { t } = useTranslation();
   const { language, setLanguage } = useAppLanguage();
+  const { colorScheme, setColorScheme } = useAppColorScheme();
   const navigate = useNavigate();
 
   const languageLabel = useMemo(() => t(`languages.${language}`), [language, t]);
@@ -117,6 +120,21 @@ export default function Settings() {
                 {languageLabel}
               </Text>
             </Group>
+          </SettingsCard>
+
+          <SettingsCard
+            label={t("settings.appearanceLabel")}
+            title={t("settings.darkModeTitle")}
+            description={t("settings.darkModeDesc")}
+          >
+            <Switch
+              size="md"
+              checked={colorScheme === "dark"}
+              onChange={(event) =>
+                setColorScheme(event.currentTarget.checked ? "dark" : "light")
+              }
+              aria-label={t("settings.darkModeTitle")}
+            />
           </SettingsCard>
 
           <SettingsCard
