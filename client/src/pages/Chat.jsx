@@ -26,23 +26,11 @@ import {
 } from '@tabler/icons-react';
 import { IconTrash } from '@tabler/icons-react';
 
+import { apiBase } from '../utils/api';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
 
-const resolveBackendUrl = () => {
-  const envUrl = import.meta.env.e_BACKEND_URL;
-  if (envUrl) return envUrl.replace(/\/$/, '');
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    const { hostname, port, protocol } = window.location;
-    if (hostname === 'localhost' && port === '5173') {
-      return `${protocol}//${hostname}:8080`;
-    }
-    return window.location.origin;
-  }
-  return '';
-};
-
-const backendUrl = resolveBackendUrl();
+const backendUrl = apiBase;
 
 const SpeechRecognition =
   typeof window !== 'undefined'

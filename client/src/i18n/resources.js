@@ -12,6 +12,7 @@ const resources = {
       nav: {
         dashboard: "Dashboard",
         competitorLookup: "Competitor Lookup",
+        savedPosts: "Saved Posts",
         keywordTracking: "Keyword Tracking",
         reports: "Reports",
         chat: "Chat (AI)",
