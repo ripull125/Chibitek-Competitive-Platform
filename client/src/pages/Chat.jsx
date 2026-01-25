@@ -28,7 +28,6 @@ import {
 import { apiUrl } from '../utils/api';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
-const CHAT_DELETE_ENABLED = import.meta.env.VITE_ENABLE_CHAT_DELETE === 'true';
 
 // use `apiUrl(path)` to build API URLs so `client/src/utils/api.js` handles routing
 
@@ -317,10 +316,6 @@ export default function ChatInput() {
   };
 
   const handleDeleteConversation = async (conversationId) => {
-    if (!CHAT_DELETE_ENABLED) {
-      setSaveNotice('Delete is disabled in this environment.');
-      return;
-    }
     if (!conversationId) return;
 
     const previousList = savedConversations;
@@ -579,17 +574,15 @@ export default function ChatInput() {
                   <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
                     Open
                   </Button>
-                  {CHAT_DELETE_ENABLED ? (
-                    <ActionIcon
-                      size="xs"
-                      color="red"
-                      variant="subtle"
-                      onClick={() => handleDeleteConversation(item.id)}
-                      title="Delete saved conversation"
-                    >
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  ) : null}
+                  <ActionIcon
+                    size="xs"
+                    color="red"
+                    variant="subtle"
+                    onClick={() => handleDeleteConversation(item.id)}
+                    title="Delete saved conversation"
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
                 </Group>
               </Paper>
             ))}
