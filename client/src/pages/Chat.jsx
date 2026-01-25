@@ -18,17 +18,18 @@ import {
 import {
   IconDeviceFloppy,
   IconFolderOpen,
+  IconTrash,
   IconMicrophone,
   IconMicrophoneOff,
   IconPlus,
   IconRefresh,
   IconSend,
 } from '@tabler/icons-react';
-import { apiBase } from '../utils/api';
+import { apiUrl } from '../utils/api';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
 
-const backendUrl = apiBase;
+// use `apiUrl(path)` to build API URLs so `client/src/utils/api.js` handles routing
 
 const SpeechRecognition =
   typeof window !== 'undefined'
@@ -150,7 +151,7 @@ export default function ChatInput() {
 
     try {
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
-      const response = await fetch(`${backendUrl}/api/chat`, {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payloadMessages, attachments }),
@@ -226,7 +227,7 @@ export default function ChatInput() {
     setIsSaving(true);
     setSaveNotice('');
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`, {
+      const response = await fetch(apiUrl('/api/chat/conversations'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -267,7 +268,7 @@ export default function ChatInput() {
     setLoadModalOpen(true);
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`);
+      const response = await fetch(apiUrl('/api/chat/conversations'));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -287,7 +288,7 @@ export default function ChatInput() {
     if (!conversationId) return;
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`);
+      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -308,7 +309,32 @@ export default function ChatInput() {
       setSaveNotice(error.message || 'Failed to load conversation.');
     } finally {
       setIsLoadingList(false);
-    } 
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!conversationId) return;
+    if (!window.confirm('Delete this saved conversation? This cannot be undone.')) return;
+
+    const previous = savedConversations;
+    setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setIsLoadingList(true);
+    try {
+      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to delete conversation${reason}`);
+      }
+      setSaveNotice('Conversation deleted.');
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to delete conversation.');
+      setSavedConversations(previous);
+    } finally {
+      setIsLoadingList(false);
+    }
   };
 
   return (
@@ -519,9 +545,20 @@ export default function ChatInput() {
                     {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
                   </Text>
                 </Box>
-                <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                  Open
-                </Button>
+                <Group spacing="xs">
+                  <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
+                    Open
+                  </Button>
+                  <ActionIcon
+                    size="xs"
+                    color="red"
+                    variant="subtle"
+                    onClick={() => handleDeleteConversation(item.id)}
+                    title="Delete saved conversation"
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                </Group>
               </Paper>
             ))}
           </Box>

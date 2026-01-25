@@ -226,6 +226,23 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  try {
+    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    if (error) {
+      console.error('Delete conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ deleted: true, id });
+  } catch (err) {
+    console.error('Delete conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to delete conversation.' });
+  }
+});
+
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
     const username = req.params.username;
@@ -380,10 +397,7 @@ app.delete("/api/posts/:id", async (req, res) => {
   const postId = req.params.id;
 
   try {
-    // Delete associated metrics first
     await supabase.from("post_metrics").delete().eq("post_id", postId);
-
-    // Then delete the post
     const { error: postError } = await supabase
       .from("posts")
       .delete()
