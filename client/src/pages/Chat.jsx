@@ -28,6 +28,7 @@ import {
 import { apiUrl } from '../utils/api';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
+const CHAT_DELETE_ENABLED = import.meta.env.VITE_ENABLE_CHAT_DELETE === 'true';
 
 // use `apiUrl(path)` to build API URLs so `client/src/utils/api.js` handles routing
 
@@ -97,6 +98,7 @@ export default function ChatInput() {
   const [saveNotice, setSaveNotice] = useState('');
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
@@ -262,6 +264,7 @@ export default function ChatInput() {
     setMessage('');
     setAttachments([]);
     setConversation(defaultConversation);
+    setCurrentConversationId(null);
   };
 
   const handleOpenLoadModal = async () => {
@@ -300,6 +303,7 @@ export default function ChatInput() {
         setConversation(loadedConversation);
         setMessage('');
         setAttachments([]);
+        setCurrentConversationId(conversationId);
         setLoadModalOpen(false);
         setSaveNotice('');
       } else {
@@ -313,16 +317,35 @@ export default function ChatInput() {
   };
 
   const handleDeleteConversation = async (conversationId) => {
+    if (!CHAT_DELETE_ENABLED) {
+      setSaveNotice('Delete is disabled in this environment.');
+      return;
+    }
     if (!conversationId) return;
-    if (!window.confirm('Delete this saved conversation? This cannot be undone.')) return;
 
-    const previous = savedConversations;
+    const previousList = savedConversations;
+    const previousConversation = conversation;
+    const previousMessage = message;
+    const previousAttachments = attachments;
+    const previousCurrentId = currentConversationId;
+
     setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (currentConversationId === conversationId) {
+      handleNewConversation();
+    }
+
     setIsLoadingList(true);
     try {
-      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+      let response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
         method: 'DELETE',
       });
+
+      if (response.status === 404 || response.status === 405) {
+        response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}/delete`), {
+          method: 'POST',
+        });
+      }
+
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -331,11 +354,18 @@ export default function ChatInput() {
       setSaveNotice('Conversation deleted.');
     } catch (error) {
       setSaveNotice(error.message || 'Failed to delete conversation.');
-      setSavedConversations(previous);
+      setSavedConversations(previousList);
+      if (previousCurrentId === conversationId) {
+        setConversation(previousConversation);
+        setMessage(previousMessage);
+        setAttachments(previousAttachments);
+        setCurrentConversationId(previousCurrentId);
+      }
     } finally {
       setIsLoadingList(false);
     }
   };
+
 
   return (
     <Box
@@ -549,15 +579,17 @@ export default function ChatInput() {
                   <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
                     Open
                   </Button>
-                  <ActionIcon
-                    size="xs"
-                    color="red"
-                    variant="subtle"
-                    onClick={() => handleDeleteConversation(item.id)}
-                    title="Delete saved conversation"
-                  >
-                    <IconTrash size={14} />
-                  </ActionIcon>
+                  {CHAT_DELETE_ENABLED ? (
+                    <ActionIcon
+                      size="xs"
+                      color="red"
+                      variant="subtle"
+                      onClick={() => handleDeleteConversation(item.id)}
+                      title="Delete saved conversation"
+                    >
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  ) : null}
                 </Group>
               </Paper>
             ))}
