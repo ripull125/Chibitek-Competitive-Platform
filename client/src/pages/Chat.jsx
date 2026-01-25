@@ -18,17 +18,19 @@ import {
 import {
   IconDeviceFloppy,
   IconFolderOpen,
+  IconTrash,
   IconMicrophone,
   IconMicrophoneOff,
   IconPlus,
   IconRefresh,
   IconSend,
 } from '@tabler/icons-react';
-import { apiBase } from '../utils/api';
+import { apiUrl } from '../utils/api';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
+const CHAT_DELETE_ENABLED = import.meta.env.VITE_ENABLE_CHAT_DELETE === 'true';
 
-const backendUrl = apiBase;
+// use `apiUrl(path)` to build API URLs so `client/src/utils/api.js` handles routing
 
 const SpeechRecognition =
   typeof window !== 'undefined'
@@ -96,6 +98,7 @@ export default function ChatInput() {
   const [saveNotice, setSaveNotice] = useState('');
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
@@ -150,7 +153,7 @@ export default function ChatInput() {
 
     try {
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
-      const response = await fetch(`${backendUrl}/api/chat`, {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payloadMessages, attachments }),
@@ -226,7 +229,7 @@ export default function ChatInput() {
     setIsSaving(true);
     setSaveNotice('');
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`, {
+      const response = await fetch(apiUrl('/api/chat/conversations'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,13 +264,14 @@ export default function ChatInput() {
     setMessage('');
     setAttachments([]);
     setConversation(defaultConversation);
+    setCurrentConversationId(null);
   };
 
   const handleOpenLoadModal = async () => {
     setLoadModalOpen(true);
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`);
+      const response = await fetch(apiUrl('/api/chat/conversations'));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -287,7 +291,7 @@ export default function ChatInput() {
     if (!conversationId) return;
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`);
+      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -299,6 +303,7 @@ export default function ChatInput() {
         setConversation(loadedConversation);
         setMessage('');
         setAttachments([]);
+        setCurrentConversationId(conversationId);
         setLoadModalOpen(false);
         setSaveNotice('');
       } else {
@@ -308,8 +313,59 @@ export default function ChatInput() {
       setSaveNotice(error.message || 'Failed to load conversation.');
     } finally {
       setIsLoadingList(false);
-    } 
+    }
   };
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!CHAT_DELETE_ENABLED) {
+      setSaveNotice('Delete is disabled in this environment.');
+      return;
+    }
+    if (!conversationId) return;
+
+    const previousList = savedConversations;
+    const previousConversation = conversation;
+    const previousMessage = message;
+    const previousAttachments = attachments;
+    const previousCurrentId = currentConversationId;
+
+    setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (currentConversationId === conversationId) {
+      handleNewConversation();
+    }
+
+    setIsLoadingList(true);
+    try {
+      let response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+        method: 'DELETE',
+      });
+
+      if (response.status === 404 || response.status === 405) {
+        response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}/delete`), {
+          method: 'POST',
+        });
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to delete conversation${reason}`);
+      }
+      setSaveNotice('Conversation deleted.');
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to delete conversation.');
+      setSavedConversations(previousList);
+      if (previousCurrentId === conversationId) {
+        setConversation(previousConversation);
+        setMessage(previousMessage);
+        setAttachments(previousAttachments);
+        setCurrentConversationId(previousCurrentId);
+      }
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
 
   return (
     <Box
@@ -519,9 +575,22 @@ export default function ChatInput() {
                     {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
                   </Text>
                 </Box>
-                <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                  Open
-                </Button>
+                <Group spacing="xs">
+                  <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
+                    Open
+                  </Button>
+                  {CHAT_DELETE_ENABLED ? (
+                    <ActionIcon
+                      size="xs"
+                      color="red"
+                      variant="subtle"
+                      onClick={() => handleDeleteConversation(item.id)}
+                      title="Delete saved conversation"
+                    >
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  ) : null}
+                </Group>
               </Paper>
             ))}
           </Box>
