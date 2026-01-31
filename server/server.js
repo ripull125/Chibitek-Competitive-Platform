@@ -130,6 +130,8 @@ The AI saves time and supports confident action
 `;
 
 let cachedPayload = null;
+let latestContextCache = null;
+let latestContextFetchedAt = 0;
 const scrapedDataPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
 
 const loadCachedPayload = async () => {
@@ -144,6 +146,74 @@ const loadCachedPayload = async () => {
     }
     return null;
   }
+};
+
+const fetchLatestPostsContext = async () => {
+  const ordered = await supabase
+    .from('posts')
+    .select('platform_id, competitor_id, platform_post_id, url, content, created_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (!ordered.error && Array.isArray(ordered.data)) {
+    return ordered.data;
+  }
+
+  if (ordered.error) {
+    console.error('Failed to load posts ordered by created_at:', ordered.error);
+  }
+
+  const fallback = await supabase
+    .from('posts')
+    .select('platform_id, competitor_id, platform_post_id, url, content')
+    .limit(50);
+
+  if (fallback.error) {
+    console.error('Failed to load posts for context:', fallback.error);
+    return [];
+  }
+
+  return Array.isArray(fallback.data) ? fallback.data : [];
+};
+
+const buildLatestContext = async () => {
+  const refreshMs = Number(process.env.LLM_CONTEXT_REFRESH_MS || 5 * 60 * 1000);
+  if (latestContextCache && Date.now() - latestContextFetchedAt < refreshMs) {
+    return latestContextCache;
+  }
+
+  const [posts, scrapedPayload] = await Promise.all([
+    fetchLatestPostsContext(),
+    loadCachedPayload(),
+  ]);
+
+  const postsSummary = posts.map((post) => ({
+    competitor_id: post.competitor_id,
+    platform_id: post.platform_id,
+    url: post.url,
+    content: String(post.content || '').slice(0, 500),
+    created_at: post.created_at,
+  }));
+
+  const scrapedSummary = scrapedPayload
+    ? {
+        url: scrapedPayload.url,
+        heading: scrapedPayload.heading,
+        books: (scrapedPayload.books || []).slice(0, 25),
+      }
+    : null;
+
+  latestContextCache = JSON.stringify(
+    {
+      generated_at: new Date().toISOString(),
+      posts: postsSummary,
+      scraped: scrapedSummary,
+    },
+    null,
+    2
+  );
+  latestContextFetchedAt = Date.now();
+  return latestContextCache;
 };
 
 /* app.get('/scrape', async (req, res) => {
@@ -272,6 +342,7 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const { messages = [], attachments = [] } = req.body || {};
+    const latestContext = await buildLatestContext();
 
     const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
 
@@ -300,6 +371,10 @@ app.post('/api/chat', async (req, res) => {
             role: 'system',
             content: systemPrompt,
           },
+          {
+            role: 'system',
+            content: `Latest internal data (JSON):\n${latestContext}`,
+          },
           ...userMessages,
         ],
       }),
@@ -317,7 +392,7 @@ app.post('/api/chat', async (req, res) => {
     const reply = data.choices?.[0]?.message?.content || 'No response from model.';
     return res.json({ reply });
   } catch (error) {
-    console.error('Chat completion error:', error);
+    console.error('Chat completion /error:', error);
     return res.status(500).json({ error: 'Chat request failed.' });
   }
 });
