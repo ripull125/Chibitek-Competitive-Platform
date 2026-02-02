@@ -9,6 +9,26 @@ import { suggestKeywordsForBooks } from './keywords.js';
 
 dotenv.config();
 
+function extractYouTubeVideoId(input) {
+  if (!input) return null;
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+
+  try {
+    const url = new URL(input);
+    if (url.hostname.includes("youtube.com")) {
+      return url.searchParams.get("v");
+    }
+    if (url.hostname === "youtu.be") {
+      return url.pathname.slice(1);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -438,6 +458,89 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.json({ deleted: true, post_id: postId });
   } catch (err) {
     console.error("Delete post failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/youtube/transcript", async (req, res) => {
+  try {
+    const { video } = req.query;
+    const videoId = extractYouTubeVideoId(video);
+
+    if (!videoId) {
+      return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
+    }
+
+    if (!process.env.YOUTUBE_API_KEY) {
+      return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
+    }
+
+    const listRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
+    );
+
+    const listData = await listRes.json();
+
+    if (!listData.items?.length) {
+      return res.json({
+        available: false,
+        reason: "No captions found",
+        videoId,
+      });
+    }
+
+    const caption =
+      listData.items.find(
+        (c) =>
+          c.snippet.trackKind === "standard" &&
+          c.snippet.language.startsWith("en") &&
+          !c.snippet.isDraft
+      ) ||
+      listData.items.find(
+        (c) =>
+          c.snippet.trackKind === "ASR" &&
+          c.snippet.language.startsWith("en")
+      );
+
+    if (!caption) {
+      return res.json({
+        available: false,
+        reason: "No usable English captions",
+        videoId,
+      });
+    }
+
+    const timedTextUrl = new URL("https://video.google.com/timedtext");
+    timedTextUrl.searchParams.set("v", videoId);
+    timedTextUrl.searchParams.set("lang", caption.snippet.language);
+    timedTextUrl.searchParams.set("fmt", "srt");
+
+    const captionRes = await fetch(timedTextUrl.toString());
+
+    if (!captionRes.ok) {
+      throw new Error("Failed to fetch transcript via timedtext");
+    }
+
+    const rawSrt = await captionRes.text();
+
+
+    const transcript = rawSrt
+      .replace(/\d+\n/g, "")
+      .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*?\n/g, "")
+      .replace(/\n+/g, " ")
+      .replace(/\[.*?\]/g, "")
+      .trim();
+
+    res.json({
+      videoId,
+      available: true,
+      language: caption.snippet.language,
+      trackKind: caption.snippet.trackKind,
+      transcript,
+      raw: rawSrt,
+    });
+  } catch (err) {
+    console.error("YouTube transcript error:", err);
     res.status(500).json({ error: err.message });
   }
 });
