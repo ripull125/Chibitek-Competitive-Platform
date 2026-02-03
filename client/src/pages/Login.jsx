@@ -5,6 +5,8 @@ import { supabase } from "../supabaseClient";
 import {
   getStoredSession,
   getSupabaseSession,
+  isAuthorizedEmail,
+  isSessionAuthorized,
   isSessionValid,
   onAuthStateChange,
   storeSession,
@@ -17,6 +19,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const unauthorizedMessage = "You are not authorized to access this application.";
+
   const nextPath = useMemo(() => {
     return searchParams.get("next") || location.state?.from || "/";
   }, [location.state?.from, searchParams]);
@@ -25,6 +29,13 @@ export default function Login() {
     // Quick path: if we already have a valid stored session, allow entry.
     const stored = getStoredSession();
     if (isSessionValid(stored)) {
+      const storedEmail = stored?.user?.email;
+      if (!isAuthorizedEmail(storedEmail)) {
+        storeSession(null);
+        if (supabase?.auth?.signOut) supabase.auth.signOut();
+        setErrorMsg(unauthorizedMessage);
+        return;
+      }
       navigate(nextPath, { replace: true });
       return;
     }
@@ -35,12 +46,24 @@ export default function Login() {
       const sess = await getSupabaseSession();
       if (!mounted) return;
       if (sess) {
+        if (!isSessionAuthorized(sess)) {
+          storeSession(null);
+          if (supabase?.auth?.signOut) supabase.auth.signOut();
+          setErrorMsg(unauthorizedMessage);
+          return;
+        }
         storeSession(sess);
         navigate(nextPath, { replace: true });
       }
     })();
 
     const sub = onAuthStateChange((_event, session) => {
+      if (session && !isSessionAuthorized(session)) {
+        storeSession(null);
+        if (supabase?.auth?.signOut) supabase.auth.signOut();
+        setErrorMsg(unauthorizedMessage);
+        return;
+      }
       storeSession(session);
       if (session) navigate(nextPath, { replace: true });
     });
@@ -49,7 +72,10 @@ export default function Login() {
       mounted = false;
       sub?.unsubscribe?.();
     };
-  }, [navigate, nextPath]);
+    if (searchParams.get("unauthorized")) {
+      setErrorMsg(unauthorizedMessage);
+    }
+  }, [navigate, nextPath, searchParams]);
 
   const signInWithGoogle = async () => {
     setErrorMsg("");
