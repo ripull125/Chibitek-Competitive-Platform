@@ -475,6 +475,32 @@ app.get("/api/youtube/transcript", async (req, res) => {
       return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
     }
 
+    const videoMetaRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
+    );
+
+    const videoMetaData = await videoMetaRes.json();
+
+    if (!videoMetaData.items?.length) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    const videoItem = videoMetaData.items[0];
+
+    const videoInfo = {
+      title: videoItem.snippet.title,
+      description: videoItem.snippet.description,
+      publishedAt: videoItem.snippet.publishedAt,
+      channelId: videoItem.snippet.channelId,
+      channelTitle: videoItem.snippet.channelTitle,
+      thumbnails: videoItem.snippet.thumbnails,
+      stats: {
+        views: Number(videoItem.statistics.viewCount || 0),
+        likes: Number(videoItem.statistics.likeCount || 0),
+        comments: Number(videoItem.statistics.commentCount || 0),
+      },
+    };
+
     const listRes = await fetch(
       `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
     );
@@ -483,9 +509,11 @@ app.get("/api/youtube/transcript", async (req, res) => {
 
     if (!listData.items?.length) {
       return res.json({
-        available: false,
-        reason: "No captions found",
         videoId,
+        available: false,
+        transcriptAvailable: false,
+        reason: "No captions found",
+        video: videoInfo,
       });
     }
 
@@ -504,9 +532,11 @@ app.get("/api/youtube/transcript", async (req, res) => {
 
     if (!caption) {
       return res.json({
-        available: false,
-        reason: "No usable English captions",
         videoId,
+        available: true,
+        transcriptAvailable: false,
+        reason: "No usable English captions",
+        video: videoInfo,
       });
     }
 
@@ -517,30 +547,32 @@ app.get("/api/youtube/transcript", async (req, res) => {
 
     const captionRes = await fetch(timedTextUrl.toString());
 
-    if (!captionRes.ok) {
-      throw new Error("Failed to fetch transcript via timedtext");
+    let rawSrt = "";
+    let transcript = "";
+
+    if (captionRes.ok) {
+      rawSrt = await captionRes.text();
+
+      transcript = rawSrt
+        .replace(/\d+\n/g, "")
+        .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*?\n/g, "")
+        .replace(/\n+/g, " ")
+        .replace(/\[.*?\]/g, "")
+        .trim();
     }
 
-    const rawSrt = await captionRes.text();
-
-
-    const transcript = rawSrt
-      .replace(/\d+\n/g, "")
-      .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*?\n/g, "")
-      .replace(/\n+/g, " ")
-      .replace(/\[.*?\]/g, "")
-      .trim();
-
-    res.json({
+    return res.json({
       videoId,
       available: true,
+      transcriptAvailable: transcript.length > 0,
       language: caption.snippet.language,
       trackKind: caption.snippet.trackKind,
       transcript,
       raw: rawSrt,
+      video: videoInfo,
     });
   } catch (err) {
     console.error("YouTube transcript error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
