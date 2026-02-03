@@ -82,7 +82,6 @@ async function requestWithTokenFallback(requestConfig) {
     }
   }
 
-  // All tokens failed — throw an aggregated error with per-token diagnostics (tokens masked)
   const summary = attempts.map(a => ({ index: a.index, token: a.token, success: a.success, status: a.status || null, errorCode: a.errorCode || null, body: a.body || a.message || null }));
   const agg = new Error(`All bearer tokens failed for request ${requestConfig.method || 'GET'} ${requestConfig.url}. Attempts: ${JSON.stringify(summary, null, 2)}`);
   // attach attempts array for programmatic access if caller wants it
@@ -111,7 +110,7 @@ export async function getUserIdByUsername(username) {
         )}`
       );
     }
-    // Improve network error visibility
+    // in case of connection error
     if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
       throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
     }
