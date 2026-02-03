@@ -49,7 +49,6 @@ export default function SavedPosts() {
         throw new Error(error.error || "Failed to delete post");
       }
 
-      // Remove from local state
       setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch (err) {
       console.error("Delete failed:", err);
@@ -60,39 +59,84 @@ export default function SavedPosts() {
   return (
     <Card p="lg" withBorder radius="md" style={{ position: "relative" }}>
       <LoadingOverlay visible={loading} />
+
       <Stack>
         <Title order={2}>Saved Posts</Title>
 
-        {posts.map((p) => (
-          <Card key={p.id} withBorder radius="md">
-            <Stack gap="xs">
-              <Group justify="space-between" align="flex-start">
-                <Text fw={500} style={{ flex: 1 }}>
-                  {p.content}
+        {posts.map((p) => {
+          const isX = p.platform_id === 1;
+          const isYouTube = p.platform_id === 8;
+
+          return (
+            <Card key={p.id} withBorder radius="md">
+              <Stack gap="xs">
+                <Group justify="space-between" align="flex-start">
+                  {/* ─────────────────────────────
+                     YOUTUBE POST LAYOUT
+                  ───────────────────────────── */}
+                  {isYouTube ? (
+                    <div style={{ flex: 1 }}>
+                      <Text fw={600} size="lg">
+                        {p.extra?.title || "Untitled Video"}{" "}
+                        <Text span fw={400} c="dimmed">
+                          — {p.extra?.channelTitle || "Unknown Creator"}
+                        </Text>
+                      </Text>
+
+                      <Text size="sm" c="dimmed" mt="xs">
+                        {p.extra?.description
+                          ? p.extra.description.length > 200
+                            ? `${p.extra.description.slice(0, 200)}…`
+                            : p.extra.description
+                          : "No description available"}
+                      </Text>
+
+                      {/* Transcript */}
+                      <Text size="sm" mt="sm">
+                        <Text span fw={500}>
+                          Transcript:{" "}
+                        </Text>
+                        {p.content
+                          ? p.content.length > 300
+                            ? `${p.content.slice(0, 300)}…`
+                            : p.content
+                          : "No transcript available"}
+                      </Text>
+                    </div>
+                  ) : (
+                    /* ─────────────────────────────
+                       X POST LAYOUT 
+                    ───────────────────────────── */
+                    <Text fw={500} style={{ flex: 1 }}>
+                      {p.content}
+                    </Text>
+                  )}
+
+                  <Tooltip label="Delete post" withArrow>
+                    <ActionIcon
+                      color="red"
+                      variant="subtle"
+                      onClick={() => openDeleteConfirm(p.id)}
+                    >
+                      <IconTrash size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+
+                <Group>
+                  <Badge>❤️ {p.likes}</Badge>
+                  {isX && <Badge>🔁 {p.shares}</Badge>}
+                  <Badge>💬 {p.comments}</Badge>
+                  {isYouTube && <Badge>👀 {p.extra?.views || 0}</Badge>}
+                </Group>
+
+                <Text size="xs" c="dimmed">
+                  {new Date(p.published_at).toLocaleString()}
                 </Text>
-                <Tooltip label="Delete post" withArrow>
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    onClick={() => openDeleteConfirm(p.id)}
-                  >
-                    <IconTrash size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-
-              <Group>
-                <Badge>❤️ {p.likes}</Badge>
-                <Badge>🔁 {p.shares}</Badge>
-                <Badge>💬 {p.comments}</Badge>
-              </Group>
-
-              <Text size="xs" c="dimmed">
-                {new Date(p.published_at).toLocaleString()}
-              </Text>
-            </Stack>
-          </Card>
-        ))}
+              </Stack>
+            </Card>
+          );
+        })}
       </Stack>
 
       <Modal
@@ -102,7 +146,10 @@ export default function SavedPosts() {
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Text>
+            Are you sure you want to delete this post? This action cannot be
+            undone.
+          </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeDeleteConfirm}>
               Cancel

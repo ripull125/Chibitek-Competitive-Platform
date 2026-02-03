@@ -319,6 +319,47 @@ export default function CompetitorLookup() {
   function YouTubeCard({ data }) {
     if (!data) return null;
 
+    const [saving, setSaving] = useState(false);
+
+    async function handleSave() {
+      try {
+        setSaving(true);
+        const resp = await fetch(apiUrl("/api/posts"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            platform_id: 8, 
+            platform_user_id: data.video.channelId,
+            username: data.video.channelTitle,
+            platform_post_id: data.videoId,
+            content: data.transcript || data.video.description,
+            published_at: data.video.publishedAt,
+            likes: data.video.stats.likes || 0,
+            shares: 0, 
+            comments: data.video.stats.comments || 0,
+            title: data.video.title,
+            description: data.video.description,
+            channelTitle: data.video.channelTitle,
+            videoId: data.videoId,
+            views: data.video.stats.views,
+          }),
+        });
+
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          throw new Error(`Failed to save video: ${resp.status} ${errorText}`);
+        }
+
+        await resp.json();
+        // Optionally show success message
+      } catch (e) {
+        console.error("Error saving video:", e);
+        // Optionally show error
+      } finally {
+        setSaving(false);
+      }
+    }
+
     return (
       <Card withBorder radius="md" shadow="sm">
         <Stack gap="md">
@@ -372,6 +413,17 @@ export default function CompetitorLookup() {
               </Alert>
             )}
           </div>
+
+          <Group justify="flex-end">
+            <Button
+              size="xs"
+              variant="light"
+              loading={saving}
+              onClick={handleSave}
+            >
+              Save Video
+            </Button>
+          </Group>
         </Stack>
       </Card>
     );

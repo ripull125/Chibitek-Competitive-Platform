@@ -366,6 +366,12 @@ app.post("/api/posts", async (req, res) => {
   }
 
   try {
+    const profileUrl = platform_id === 1
+      ? `https://x.com/${username}`
+      : platform_id === 8
+        ? `https://www.youtube.com/channel/${platform_user_id}`
+        : null;
+
     const { data: competitor, error: competitorError } = await supabase
       .from("competitors")
       .upsert(
@@ -373,7 +379,7 @@ app.post("/api/posts", async (req, res) => {
           platform_id,
           platform_user_id,
           display_name: username,
-          profile_url: `https://x.com/${username}`,
+          profile_url: profileUrl,
         },
         { onConflict: "platform_id,platform_user_id" }
       )
@@ -407,6 +413,25 @@ app.post("/api/posts", async (req, res) => {
       comments,
     });
 
+    // For YouTube, save additional details
+    if (platform_id === 8) {
+      const { title, description, channelTitle, videoId, views } = req.body;
+      console.log('Saving YouTube details:', { title, description, channelTitle, videoId, views });
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          title,
+          description,
+          channelTitle,
+          videoId,
+          views,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving post details:', detailsError);
+      }
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error("Save post failed:", err);
@@ -419,9 +444,11 @@ app.get("/api/posts", async (req, res) => {
       .from("posts")
       .select(`
         id,
+        platform_id,
         content,
         published_at,
-        post_metrics(likes, shares, comments)
+        post_metrics(likes, shares, comments),
+        post_details_platform(extra_json)
       `)
       .order("published_at", { ascending: false });
 
@@ -429,11 +456,13 @@ app.get("/api/posts", async (req, res) => {
 
     const formattedPosts = posts.map((post) => ({
       id: post.id,
+      platform_id: post.platform_id,
       content: post.content,
       published_at: post.published_at,
       likes: post.post_metrics?.[0]?.likes || 0,
       shares: post.post_metrics?.[0]?.shares || 0,
       comments: post.post_metrics?.[0]?.comments || 0,
+      extra: post.post_details_platform?.[0]?.extra_json || {},
     }));
 
     res.json({ posts: formattedPosts });
