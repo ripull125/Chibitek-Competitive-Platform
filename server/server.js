@@ -254,8 +254,7 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
     const username = req.params.username;
@@ -404,4 +403,8 @@ app.get("/api/posts", async (req, res) => {
     console.error("Fetch posts failed:", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
