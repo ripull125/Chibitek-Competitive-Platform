@@ -17,11 +17,13 @@ import {
   TextInput,
   Title,
   Tooltip,
+  Tabs,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
   IconAlertCircle,
   IconBrandX,
+  IconBrandYoutube,
   IconCheck,
   IconCopy,
   IconSearch,
@@ -32,14 +34,17 @@ import { apiBase, apiUrl } from "../utils/api";
 
 export default function CompetitorLookup() {
   const [username, setUsername] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [youtubeResult, setYoutubeResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
 
   const backends = useMemo(() => {
     const bases = new Set();
     if (apiBase) bases.add(apiBase);
+    if (import.meta.env.DEV) bases.add('http://localhost:8080');
     return Array.from(bases);
   }, []);
 
@@ -97,10 +102,47 @@ export default function CompetitorLookup() {
     throw err;
   }
 
+  async function tryFetchYouTube(youtubeUrlToFetch) {
+    const trimmed = String(youtubeUrlToFetch || "").trim();
+    if (!trimmed) throw new Error("Please enter a YouTube URL.");
+
+    const attempts = [];
+
+    for (const base of backends) {
+      const url = `${base.replace(/\/+$/, "")}/api/youtube/transcript?video=${encodeURIComponent(trimmed)}`;
+      try {
+        const resp = await fetch(url, { method: "GET" });
+        const ct = resp.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          const text = await resp.text();
+          throw new Error(`Expected JSON from ${base}, got: ${text.slice(0, 300)}`);
+        }
+        const json = await resp.json();
+        if (!resp.ok) {
+          const msg =
+            json?.error ||
+            `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
+          throw new Error(msg);
+        }
+        return { ...json, _usedBackend: base };
+      } catch (e) {
+        attempts.push({ base, error: e?.message || String(e) });
+      }
+    }
+
+    const err = new Error(
+      `Couldn't connect to the server. Please make sure it's running and try again.`
+    );
+    err.type = "backend_error";
+    err.attempts = attempts;
+    throw err;
+  }
+
   async function handleSubmit(e) {
     e?.preventDefault?.();
     setError(null);
     setResult(null);
+    setYoutubeResult(null);
     setConvertedData(null);
     const u = username.trim();
     if (!u) {
@@ -111,17 +153,17 @@ export default function CompetitorLookup() {
     try {
       const data = await tryFetch(u);
       setResult(data);
-      
+
       // Convert the data using DataConverter
       try {
         const converted = convertXInput(data);
         setConvertedData(converted);
         console.log('Converted data:', converted);
-        
+
         // Save last 10 posts to localStorage
         const postsToSave = (data.posts || []).slice(0, 10).map((post, index) => {
           const metrics = post.public_metrics || {};
-          const engagement = 
+          const engagement =
             (metrics.like_count || 0) +
             (metrics.retweet_count || 0) +
             (metrics.reply_count || 0);
@@ -136,18 +178,40 @@ export default function CompetitorLookup() {
             timestamp: post.created_at,
           };
         });
-        
+
         // Get existing posts from localStorage and prepend new ones
         const existingPosts = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
         const allPosts = [...postsToSave, ...existingPosts];
         // Keep only the last 10 overall
         const recentTen = allPosts.slice(0, 10);
         localStorage.setItem('recentCompetitorPosts', JSON.stringify(recentTen));
-        
+
       } catch (conversionError) {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
       }
+    } catch (e) {
+      setError(e?.message || "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmitYouTube(e) {
+    e?.preventDefault?.();
+    setError(null);
+    setResult(null);
+    setYoutubeResult(null);
+    setConvertedData(null);
+    const u = youtubeUrl.trim();
+    if (!u) {
+      setError("Please enter a YouTube URL.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await tryFetchYouTube(u);
+      setYoutubeResult(data);
     } catch (e) {
       setError(e?.message || "Unknown error");
     } finally {
@@ -252,6 +316,67 @@ export default function CompetitorLookup() {
     );
   }
 
+  function YouTubeCard({ data }) {
+    if (!data) return null;
+
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="md">
+          <Group justify="space-between" align="start">
+            <Title order={4} lineClamp={2}>{data.video?.title || "Untitled Video"}</Title>
+            <Badge variant="light" color="red">
+              <IconBrandYoutube size={14} style={{ marginRight: 4 }} />
+              YouTube
+            </Badge>
+          </Group>
+
+          <Group gap="md" wrap="wrap">
+            <Group gap="xs">
+              <Text fw={500}>Channel:</Text>
+              <Text>{data.video?.channelTitle || "Unknown"}</Text>
+            </Group>
+            <Group gap="xs">
+              <Text fw={500}>Views:</Text>
+              <Text>{(data.video?.stats?.views || 0).toLocaleString()}</Text>
+            </Group>
+            <Group gap="xs">
+              <Text fw={500}>Likes:</Text>
+              <Text>{(data.video?.stats?.likes || 0).toLocaleString()}</Text>
+            </Group>
+            <Group gap="xs">
+              <Text fw={500}>Published:</Text>
+              <Text>{data.video?.publishedAt ? new Date(data.video.publishedAt).toLocaleDateString() : "Unknown"}</Text>
+            </Group>
+          </Group>
+
+          {data.video?.description && (
+            <div>
+              <Text fw={500} mb="xs">Description:</Text>
+              <Text size="sm" lineClamp={3}>{data.video.description}</Text>
+            </div>
+          )}
+
+          <Divider />
+
+          <div>
+            <Text fw={500} mb="xs">Transcript:</Text>
+            {data.transcriptAvailable ? (
+              <ScrollArea h={200} type="auto">
+                <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
+                  {data.transcript}
+                </Text>
+              </ScrollArea>
+            ) : (
+              <Alert variant="light" color="gray" title="No Transcript Available">
+                {data.reason || "Transcript not available for this video."}
+              </Alert>
+            )}
+          </div>
+        </Stack>
+      </Card>
+    );
+  }
+
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
   return (
@@ -259,44 +384,80 @@ export default function CompetitorLookup() {
       <LoadingOverlay visible={loading} zIndex={1000} />
       <Stack gap="lg">
         <Group justify="space-between" align="baseline">
-          <Group>
-            <Title order={2}>Competitor Lookup</Title>
-            <Badge size="sm" variant="outline" radius="sm">
-              X / Twitter
-            </Badge>
-          </Group>
+          <Title order={2}>Competitor Lookup</Title>
           <Text size="sm" c="dimmed">
-            Enter a username (with or without @)
+            Search competitors on X/Twitter or YouTube
           </Text>
         </Group>
 
-        <form onSubmit={handleSubmit}>
-          <Group align="end" wrap="wrap" gap="sm">
-            <TextInput
-              value={username}
-              onChange={(e) => setUsername(e.currentTarget.value)}
-              placeholder="@jack"
-              label="Username"
-              maw={420}
-              leftSection={<IconUser size={16} />}
-              aria-label="Username to lookup"
-              autoComplete="off"
-            />
-            <Button
-              type="submit"
-              leftSection={<IconSearch size={16} />}
-              disabled={!username.trim() || loading}
-            >
-              Lookup
-            </Button>
-          </Group>
-        </form>
+        <Tabs defaultValue="x" keepMounted={false}>
+          <Tabs.List>
+            <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>
+              X / Twitter
+            </Tabs.Tab>
+            <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} />}>
+              YouTube
+            </Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="x" pt="md">
+            <form onSubmit={handleSubmit}>
+              <Group align="end" wrap="wrap" gap="sm">
+                <TextInput
+                  value={username}
+                  onChange={(e) => setUsername(e.currentTarget.value)}
+                  placeholder="@jack"
+                  label="Username"
+                  maw={420}
+                  leftSection={<IconUser size={16} />}
+                  aria-label="Username to lookup"
+                  autoComplete="off"
+                />
+                <Button
+                  type="submit"
+                  leftSection={<IconSearch size={16} />}
+                  disabled={!username.trim() || loading}
+                >
+                  Lookup
+                </Button>
+              </Group>
+            </form>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="youtube" pt="md">
+            <form onSubmit={handleSubmitYouTube}>
+              <Group align="end" wrap="wrap" gap="sm">
+                <TextInput
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.currentTarget.value)}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  label="YouTube URL"
+                  maw={420}
+                  leftSection={<IconBrandYoutube size={16} />}
+                  aria-label="YouTube video URL to lookup"
+                  autoComplete="off"
+                />
+                <Button
+                  type="submit"
+                  leftSection={<IconSearch size={16} />}
+                  disabled={!youtubeUrl.trim() || loading}
+                >
+                  Lookup
+                </Button>
+              </Group>
+            </form>
+          </Tabs.Panel>
+        </Tabs>
 
         {error && (
           <Alert
             variant="light"
-            color={error.includes("not found") ? "yellow" : "orange"}
-            title={error.includes("not found") ? "Username not found" : "Connection error"}
+            color={error.includes("not found") || error.includes("Invalid") ? "yellow" : "orange"}
+            title={
+              error.includes("not found") ? "Not found" :
+                error.includes("Invalid") ? "Invalid input" :
+                  "Connection error"
+            }
             icon={<IconAlertCircle />}
             styles={{
               label: { fontWeight: 500 },
@@ -378,6 +539,12 @@ export default function CompetitorLookup() {
                 ))}
               </SimpleGrid>
             )}
+          </Stack>
+        )}
+
+        {youtubeResult && (
+          <Stack gap="lg">
+            <YouTubeCard data={youtubeResult} />
           </Stack>
         )}
       </Stack>
