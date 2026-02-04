@@ -14,6 +14,12 @@ export default function SavedPosts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
+  }, []);
+
+  useEffect(() => {
     fetch("http://localhost:8080/api/posts")
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
