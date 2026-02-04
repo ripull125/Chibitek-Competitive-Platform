@@ -1,4 +1,3 @@
-// client/src/tour/AppTourProvider.jsx
 import React from "react";
 import Joyride from "react-joyride";
 import { useNavigate } from "react-router-dom";
@@ -12,13 +11,15 @@ export function useAppTour() {
 }
 
 /*
-  Joyride runs for:
-  1) Dashboard highlights (3 steps)
-  2) Keyword Tracking highlights (2 steps)
+  Joyride sequences
+  Dashboard (3)
+  Keyword Tracking (2)
+  Reports (1)
+  Chat (1)
 
-  Bubble overlay runs for:
-  1) Competitor Lookup intro (full screen)
-  2) Saved Posts intro (full screen)
+  Bubble overlays
+  Competitor Lookup (full screen)
+  Saved Posts (full screen)
 */
 
 const DASHBOARD_STEPS = [
@@ -62,6 +63,26 @@ const KEYWORD_STEPS = [
   },
 ];
 
+const REPORTS_STEPS = [
+  {
+    target: '[data-tour="reports-root"]',
+    title: "Analysis Reports",
+    content: "Generate a quick PDF snapshot so you can share results and keep a record of changes over time.",
+    placement: "top",
+    disableBeacon: true,
+  },
+];
+
+const CHAT_STEPS = [
+  {
+    target: '[data-tour="chat-root"]',
+    title: "ChibitekAI Chat",
+    content: "Ask questions, attach files, and save conversations so your competitive research stays organized.",
+    placement: "top",
+    disableBeacon: true,
+  },
+];
+
 function Bubble({ title, body, onNext, onExit, nextLabel = "Next" }) {
   return (
     <>
@@ -75,6 +96,7 @@ function Bubble({ title, body, onNext, onExit, nextLabel = "Next" }) {
           transition: "opacity 260ms ease",
         }}
       />
+
       <div
         style={{
           position: "fixed",
@@ -103,6 +125,7 @@ function Bubble({ title, body, onNext, onExit, nextLabel = "Next" }) {
         >
           {title}
         </div>
+
         <div
           style={{
             marginTop: 8,
@@ -133,6 +156,7 @@ function Bubble({ title, body, onNext, onExit, nextLabel = "Next" }) {
           >
             Exit
           </button>
+
           <button
             onClick={onNext}
             style={{
@@ -190,12 +214,13 @@ export default function AppTourProvider({ children }) {
 
   const waitingDashboardStartRef = React.useRef(false);
   const waitingKeywordStartRef = React.useRef(false);
+  const waitingReportsStartRef = React.useRef(false);
+  const waitingChatStartRef = React.useRef(false);
 
   React.useEffect(() => {
     const onPageReady = (e) => {
       const page = e?.detail?.page;
 
-      // start dashboard joyride when dashboard signals ready
       if (waitingDashboardStartRef.current && page === "dashboard") {
         waitingDashboardStartRef.current = false;
         setJoyrideSteps(DASHBOARD_STEPS);
@@ -204,7 +229,6 @@ export default function AppTourProvider({ children }) {
         return;
       }
 
-      // start keyword joyride when keyword tracking signals ready
       if (waitingKeywordStartRef.current && page === "keyword-tracking") {
         waitingKeywordStartRef.current = false;
         setJoyrideSteps(KEYWORD_STEPS);
@@ -213,7 +237,22 @@ export default function AppTourProvider({ children }) {
         return;
       }
 
-      // bubble readiness for competitor / saved posts
+      if (waitingReportsStartRef.current && page === "reports") {
+        waitingReportsStartRef.current = false;
+        setJoyrideSteps(REPORTS_STEPS);
+        setJoyrideStep(0);
+        setJoyrideRun(true);
+        return;
+      }
+
+      if (waitingChatStartRef.current && page === "chat") {
+        waitingChatStartRef.current = false;
+        setJoyrideSteps(CHAT_STEPS);
+        setJoyrideStep(0);
+        setJoyrideRun(true);
+        return;
+      }
+
       if (pageIntro?.awaitPage && page === pageIntro.awaitPage) {
         setPageIntro((prev) => (prev ? { ...prev, ready: true } : prev));
       }
@@ -231,13 +270,17 @@ export default function AppTourProvider({ children }) {
         setJoyrideStep(0);
 
         waitingKeywordStartRef.current = false;
-        waitingDashboardStartRef.current = true;
+        waitingReportsStartRef.current = false;
+        waitingChatStartRef.current = false;
 
+        waitingDashboardStartRef.current = true;
         navigate("/");
       },
       stop() {
         waitingDashboardStartRef.current = false;
         waitingKeywordStartRef.current = false;
+        waitingReportsStartRef.current = false;
+        waitingChatStartRef.current = false;
 
         setJoyrideRun(false);
         setJoyrideStep(0);
@@ -263,7 +306,6 @@ export default function AppTourProvider({ children }) {
           title: "Saved Posts",
           body: "Everything you saved for later lives here so you can reference, tag, and reuse the best examples.",
           next: () => {
-            // NOW: go to keyword tracking and run Joyride there (two cutouts)
             setPageIntro(null);
             setJoyrideRun(false);
             setJoyrideStep(0);
@@ -278,6 +320,22 @@ export default function AppTourProvider({ children }) {
     });
 
     navigate("/competitor-lookup");
+  }, [navigate]);
+
+  const goReportsAfterKeywords = React.useCallback(() => {
+    setJoyrideRun(false);
+    setJoyrideStep(0);
+
+    waitingReportsStartRef.current = true;
+    navigate("/reports");
+  }, [navigate]);
+
+  const goChatAfterReports = React.useCallback(() => {
+    setJoyrideRun(false);
+    setJoyrideStep(0);
+
+    waitingChatStartRef.current = true;
+    navigate("/chat");
   }, [navigate]);
 
   return (
@@ -309,17 +367,26 @@ export default function AppTourProvider({ children }) {
           if (data.action === "next") {
             const next = joyrideStep + 1;
 
-            // finished current joyride sequence
             if (next >= joyrideSteps.length) {
-              // If we just finished dashboard, go to competitor bubble flow
               if (joyrideSteps === DASHBOARD_STEPS) {
                 beginCompetitorIntro();
                 return;
               }
 
-              // If we just finished keyword tracking, end tutorial
-              api.stop();
-              return;
+              if (joyrideSteps === KEYWORD_STEPS) {
+                goReportsAfterKeywords();
+                return;
+              }
+
+              if (joyrideSteps === REPORTS_STEPS) {
+                goChatAfterReports();
+                return;
+              }
+
+              if (joyrideSteps === CHAT_STEPS) {
+                api.stop();
+                return;
+              }
             }
 
             setJoyrideStep(next);

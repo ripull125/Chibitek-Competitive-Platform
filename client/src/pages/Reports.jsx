@@ -1,63 +1,122 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Button, Checkbox } from "@mantine/core";
+import {
+  Badge,
+  Button,
+  Card,
+  Container,
+  Group,
+  Stack,
+  Text,
+  Title,
+  Switch,
+} from "@mantine/core";
+import { IconDownload } from "@tabler/icons-react";
 import "../utils/ui.css";
 
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "reports" } })
+    );
+  }, []);
 
   const generatePDF = async () => {
-    if (!includeKeywordTracking) {
-      alert("Please enable Keyword Tracking to generate PDF");
-      return;
-    }
+    if (!includeKeywordTracking) return;
 
-    const input = chartRef.current; 
-
+    const input = chartRef.current;
     if (!input) return;
 
-    // Convert DOM → canvas
-    const canvas = await html2canvas(input, {
-      scale: 2, // high resolution
-    });
+    setGenerating(true);
+    try {
+      const canvas = await html2canvas(input, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
 
-    const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "pt",
+        format: "a4",
+      });
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "pt",
-      format: "a4",
-    });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const imgWidth = pageWidth - 48;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth - 40; // 20pt margin each side
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.setFontSize(14);
+      pdf.text("Keyword Tracking Report", 24, 28);
+      pdf.addImage(imgData, "PNG", 24, 44, imgWidth, imgHeight);
 
-    pdf.text("Keyword Tracking Report", 20, 30);
-    pdf.addImage(imgData, "PNG", 20, 50, imgWidth, imgHeight);
-
-    pdf.save("keyword-tracking-report.pdf");
+      pdf.save("keyword-tracking-report.pdf");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h1 style={{ marginBottom: "1.5rem" }}>Analysis Reports</h1>
-      
-      <Button onClick={generatePDF} mb="lg">
-        Download PDF
-      </Button>
+    <Container size="lg" py="lg">
+      <Stack gap="lg">
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <Stack gap={4}>
+            <Title order={2}>Analysis Reports</Title>
+            <Text c="dimmed">
+              Export a PDF snapshot for sharing, archiving, or quick weekly check ins.
+            </Text>
+          </Stack>
+          <Badge variant="light" radius="sm">
+            PDF Export
+          </Badge>
+        </Group>
 
-      <Checkbox
-        label="Include Keyword Tracking"
-        checked={includeKeywordTracking}
-        onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
-        mb="lg"
-      />
+        <Card withBorder radius="lg" p="md">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Group gap="md" align="center">
+              <Switch
+                checked={includeKeywordTracking}
+                onChange={(e) => setIncludeKeywordTracking(e.currentTarget.checked)}
+                label="Include Keyword Tracking"
+              />
+            </Group>
 
-      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
-    </div>
+            <Button
+              leftSection={<IconDownload size={16} />}
+              onClick={generatePDF}
+              loading={generating}
+              disabled={!includeKeywordTracking}
+              variant="light"
+              radius="md"
+            >
+              Download PDF
+            </Button>
+          </Group>
+
+          {!includeKeywordTracking ? (
+            <Text c="dimmed" mt="sm">
+              Turn on Keyword Tracking to enable the PDF export.
+            </Text>
+          ) : null}
+        </Card>
+
+        <div data-tour="reports-root">
+          {includeKeywordTracking ? (
+            <KeywordTracking ref={chartRef} />
+          ) : (
+            <Card withBorder radius="lg" p="xl">
+              <Stack gap={6} align="center">
+                <Title order={4}>Keyword Tracking hidden</Title>
+                <Text c="dimmed" ta="center">
+                  Enable Keyword Tracking above to view the report content.
+                </Text>
+              </Stack>
+            </Card>
+          )}
+        </div>
+      </Stack>
+    </Container>
   );
 }
