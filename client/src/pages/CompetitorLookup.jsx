@@ -328,14 +328,14 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platform_id: 8, 
+            platform_id: 8,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
             platform_post_id: data.videoId,
             content: data.transcript || data.video.description,
             published_at: data.video.publishedAt,
             likes: data.video.stats.likes || 0,
-            shares: 0, 
+            shares: 0,
             comments: data.video.stats.comments || 0,
             title: data.video.title,
             description: data.video.description,
@@ -402,14 +402,15 @@ export default function CompetitorLookup() {
           <div>
             <Text fw={500} mb="xs">Transcript:</Text>
             {data.transcriptAvailable ? (
-              <ScrollArea h={200} type="auto">
+              <ScrollArea h={200}>
                 <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
                   {data.transcript}
                 </Text>
               </ScrollArea>
             ) : (
-              <Alert variant="light" color="gray" title="No Transcript Available">
-                {data.reason || "Transcript not available for this video."}
+              <Alert color="yellow" title="Transcript unavailable">
+                YouTube does not allow downloading captions for this video.
+                Showing description instead.
               </Alert>
             )}
           </div>

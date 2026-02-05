@@ -443,13 +443,13 @@ app.get("/api/posts", async (req, res) => {
     const { data: posts, error } = await supabase
       .from("posts")
       .select(`
-        id,
-        platform_id,
-        content,
-        published_at,
-        post_metrics(likes, shares, comments),
-        post_details_platform(extra_json)
-      `)
+  id,
+  platform_id,
+  content,
+  published_at,
+  post_metrics!inner(likes, shares, comments),
+  post_details_platform!left(extra_json)
+`)
       .order("published_at", { ascending: false });
 
     if (error) throw error;
@@ -462,7 +462,7 @@ app.get("/api/posts", async (req, res) => {
       likes: post.post_metrics?.[0]?.likes || 0,
       shares: post.post_metrics?.[0]?.shares || 0,
       comments: post.post_metrics?.[0]?.comments || 0,
-      extra: post.post_details_platform?.[0]?.extra_json || {},
+      extra: post.post_details_platform?.find(d => d.extra_json)?.extra_json || {},
     }));
 
     res.json({ posts: formattedPosts });
@@ -507,7 +507,6 @@ app.get("/api/youtube/transcript", async (req, res) => {
     const videoMetaRes = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
     );
-
     const videoMetaData = await videoMetaRes.json();
 
     if (!videoMetaData.items?.length) {
@@ -522,7 +521,6 @@ app.get("/api/youtube/transcript", async (req, res) => {
       publishedAt: videoItem.snippet.publishedAt,
       channelId: videoItem.snippet.channelId,
       channelTitle: videoItem.snippet.channelTitle,
-      thumbnails: videoItem.snippet.thumbnails,
       stats: {
         views: Number(videoItem.statistics.viewCount || 0),
         likes: Number(videoItem.statistics.likeCount || 0),
@@ -530,75 +528,105 @@ app.get("/api/youtube/transcript", async (req, res) => {
       },
     };
 
-    const listRes = await fetch(
+
+
+    const captionsRes = await fetch(
       `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
     );
+    const captionsData = await captionsRes.json();
 
-    const listData = await listRes.json();
-
-    if (!listData.items?.length) {
+    if (!captionsData.items?.length) {
       return res.json({
         videoId,
-        available: false,
-        transcriptAvailable: false,
-        reason: "No captions found",
         video: videoInfo,
+        transcriptAvailable: false,
+        transcript: "",
+        reason: "No captions available",
       });
     }
 
-    const caption =
-      listData.items.find(
+    let caption =
+      captionsData.items.find(
         (c) =>
+          c.snippet.language.startsWith("en") &&
           c.snippet.trackKind === "standard" &&
+          !c.snippet.isDraft
+      ) ||
+      captionsData.items.find(
+        (c) =>
           c.snippet.language.startsWith("en") &&
           !c.snippet.isDraft
       ) ||
-      listData.items.find(
+      captionsData.items.find(
         (c) =>
-          c.snippet.trackKind === "ASR" &&
-          c.snippet.language.startsWith("en")
+          c.snippet.language.startsWith("en") &&
+          c.snippet.trackKind === "asr"
       );
 
     if (!caption) {
       return res.json({
         videoId,
-        available: true,
-        transcriptAvailable: false,
-        reason: "No usable English captions",
         video: videoInfo,
+        transcriptAvailable: false,
+        transcript: "",
+        reason: "No usable English captions found",
       });
     }
 
-    const timedTextUrl = new URL("https://video.google.com/timedtext");
-    timedTextUrl.searchParams.set("v", videoId);
-    timedTextUrl.searchParams.set("lang", caption.snippet.language);
-    timedTextUrl.searchParams.set("fmt", "srt");
+    const base = "https://www.youtube.com/api/timedtext";
 
-    const captionRes = await fetch(timedTextUrl.toString());
+    const attempts = [
+      `${base}?v=${videoId}&lang=${caption.snippet.language}&fmt=vtt`,
 
-    let rawSrt = "";
-    let transcript = "";
+      `${base}?v=${videoId}&lang=${caption.snippet.language}&kind=asr&fmt=vtt`,
 
-    if (captionRes.ok) {
-      rawSrt = await captionRes.text();
+      caption.snippet.name
+        ? `${base}?v=${videoId}&lang=${caption.snippet.language}&name=${encodeURIComponent(
+          caption.snippet.name
+        )}&fmt=vtt`
+        : null,
 
-      transcript = rawSrt
-        .replace(/\d+\n/g, "")
-        .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*?\n/g, "")
-        .replace(/\n+/g, " ")
-        .replace(/\[.*?\]/g, "")
-        .trim();
+      `${base}?v=${videoId}&lang=${caption.snippet.language}&kind=asr&fmt=srt`,
+    ].filter(Boolean);
+
+    let raw = "";
+
+    for (const url of attempts) {
+      const r = await fetch(url);
+      if (!r.ok) continue;
+
+      const text = await r.text();
+      if (text && text.trim().length > 0) {
+        raw = text;
+        break;
+      }
     }
+
+    if (!raw) {
+      return res.json({
+        videoId,
+        video: videoInfo,
+        transcriptAvailable: false,
+        transcript: "",
+        reason: "Caption track exists but text could not be fetched",
+      });
+    }
+
+    const transcript = raw
+      .replace(/^WEBVTT[\s\S]*?\n\n/, "")
+      .replace(/\d+\n/g, "")
+      .replace(/\d{2}:\d{2}:\d{2}[.,]\d{3} --> .*?\n/g, "")
+      .replace(/\n+/g, " ")
+      .replace(/\[.*?\]/g, "")
+      .trim();
 
     return res.json({
       videoId,
-      available: true,
+      video: videoInfo,
       transcriptAvailable: transcript.length > 0,
       language: caption.snippet.language,
       trackKind: caption.snippet.trackKind,
       transcript,
-      raw: rawSrt,
-      video: videoInfo,
     });
   } catch (err) {
     console.error("YouTube transcript error:", err);
