@@ -107,7 +107,8 @@ function convertSavedPosts(posts) {
       'Name/Source': 'Saved Posts',
       'Engagement': engagement,
       'Message': messageText,
-      'Tone': categorizeTone(messageText)
+      'Tone': categorizeTone(messageText),  
+      'Date': post.published_at ?? post.created_at ?? post.inserted_at ?? null,
     };
   });
 }

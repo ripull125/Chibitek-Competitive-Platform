@@ -23,6 +23,7 @@ export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
   const [toneEngagementData, setToneEngagementData] = useState([]);
+  const [savedPosts, setSavedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch and process saved posts
@@ -32,6 +33,8 @@ export default function Reports() {
       .then((data) => {
         const posts = data.posts || [];
         const converted = convertSavedPosts(posts);
+
+        setSavedPosts(converted);
 
         // Create chart data with index for each post
         const chartData = converted.map((post, index) => ({
@@ -105,7 +108,8 @@ export default function Reports() {
         mb="lg"
       />
 
-      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
+      {includeKeywordTracking && (
+        <KeywordTracking ref={chartRef} posts={savedPosts} /> )} 
 
       {/* Saved Posts Source-Based Engagement Chart */}
       <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>

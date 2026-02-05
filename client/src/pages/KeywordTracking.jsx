@@ -14,6 +14,8 @@ import {
   IconTriangleFilled, IconInfoCircle, IconTrendingUp, IconActivity, IconChartBar
 } from "@tabler/icons-react";
 import classes from "./KeywordTracking.module.css";
+import { convertSavedPosts } from "./DataConverter";
+
 
 /* Formatting */
 const formatK = (n) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString());
@@ -33,28 +35,6 @@ function DeltaBadge({ delta }) {
   );
 }
 
-/* Demo data (replace with API) */
-const trending = [
-  { term: "burger restaurants", volume: 21000, delta: +1 },
-  { term: "brussels fast food", volume: 15000, delta: -3 },
-  { term: "best burger in brussels", volume: 5000, delta: +1 },
-  { term: "antwerp burgers", volume: 2000, delta: -4 },
-  { term: "belgian fries", volume: 6000, delta: -8 },
-  { term: "milkshakes in brussels", volume: 950, delta: -11 },
-  { term: "vegetarian burgers", volume: 500, delta: -19 },
-];
-
-/* Category series with an avg engagement metric for overlay */
-const BASE_SERIES = [
-  { t: "W1", Burgers: 3200, Fries: 800,  Shakes: 160, Veggie: 120, avgEng: 92 },
-  { t: "W2", Burgers: 3600, Fries: 920,  Shakes: 180, Veggie: 130, avgEng: 87 },
-  { t: "W3", Burgers: 4100, Fries: 870,  Shakes: 210, Veggie: 150, avgEng: 101 },
-  { t: "W4", Burgers: 3900, Fries: 780,  Shakes: 240, Veggie: 160, avgEng: 95 },
-  { t: "W5", Burgers: 4550, Fries: 950,  Shakes: 220, Veggie: 190, avgEng: 108 },
-  { t: "W6", Burgers: 4800, Fries: 1020, Shakes: 260, Veggie: 210, avgEng: 103 },
-];
-
-const CATEGORY_KEYS = ["Burgers", "Fries", "Shakes", "Veggie"];
 
 /* Normalize counts to shares per bucket */
 function toShare(points, keys) {
@@ -66,19 +46,160 @@ function toShare(points, keys) {
   });
 }
 
-const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
+// -----------------------------
+// Helpers to build charts from saved posts
+// -----------------------------
+const STOPWORDS = new Set([
+  "the","a","an","and","or","but","if","then","so","to","of","in","on","for","with",
+  "is","are","was","were","be","been","being","it","this","that","as","from","will","not"
+]);
+
+function tokenize(text) {
+  return (text || "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !STOPWORDS.has(w));
+}
+
+function parseRangeDays(range) {
+  if (range === "7d") return 7;
+  if (range === "90d") return 90;
+  return 30;
+}
+
+function startOfWeek(d) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - day);
+  x.setHours(0,0,0,0);
+  return x;
+}
+
+function getPostDate(p) {
+  return new Date(p.Date);
+}
+
+
+// TEMP categories — change later to MSP keywords
+const CATEGORY_DEFS = {
+  Links: ["http", "https", "t.co"],
+  AI: ["ai", "grok", "chatgpt", "openai"],
+  Security: ["edr", "mdr", "soc", "ransomware", "zero trust", "siem"],
+  Cloud: ["azure", "aws", "cloud", "m365", "office 365"],
+};
+
+
+
+  const CATEGORY_KEYS = Object.keys(CATEGORY_DEFS);
+  const KeywordTracking = forwardRef(function KeywordTracking({ posts = [] }, ref) {
   const [range, setRange] = React.useState("30d");
   const [mode, setMode] = React.useState("absolute"); // 'absolute' | 'share'
   const [overlay, setOverlay] = React.useState("none"); // 'none' | 'avg'
-  const [infoOpen, setInfoOpen] = React.useState(false);
 
-  const series = mode === "share" ? toShare(BASE_SERIES, CATEGORY_KEYS) : BASE_SERIES;
+  const [localPosts, setLocalPosts] = React.useState([]);
+  const effectivePosts = posts.length ? posts : localPosts;
+
+  React.useEffect(() => {
+    if (posts.length) return; // if parent passed posts, don't fetch
+
+    fetch("http://localhost:8080/api/posts")
+      .then((r) => r.json())
+      .then((data) => {
+        const converted = convertSavedPosts(data.posts || []);
+        setLocalPosts(converted);
+      })
+      .catch((e) => console.error("KeywordTracking fetch failed:", e));
+  }, [posts.length]);
+
+  const [infoOpen, setInfoOpen] = React.useState(false);
   const yLeftFormatter = mode === "share" ? formatPct : formatK;
 
   const tooltipFormatter = (value, name) => {
     if (name === "Avg engagement") return `${value}`;
     return mode === "share" ? formatPct(value) : formatK(value);
   };
+
+  const { trendingRows, series } = React.useMemo(() => {
+    if (!effectivePosts.length) return { trendingRows: [], series: [] };
+
+  const days = parseRangeDays(range);
+  const now = new Date();
+  const windowStart = new Date(now);
+  windowStart.setDate(now.getDate() - days);
+
+  const filtered = effectivePosts.filter((p) => {
+  const d = getPostDate(p);
+  return d >= windowStart && d <= now;
+  });
+
+  console.log("effectivePosts:", effectivePosts.length);
+  console.log("unique messages:", new Set(effectivePosts.map(p => p.Message)).size);
+  console.log("sample messages:", effectivePosts.slice(0, 3).map(p => p.Message));
+
+
+
+
+  // --- Trending keywords ---
+  const counts = new Map();
+  filtered.forEach(p => {
+    tokenize(p.Message).forEach(w => {
+      counts.set(w, (counts.get(w) || 0) + 1);
+    });
+  });
+
+  const trendingRows = [...counts.entries()]
+    .sort((a,b) => b[1] - a[1])
+    .slice(0,7)
+    .map(([term, volume], i) => ({
+      term,
+      volume,
+      delta: 0 // placeholder for now
+    }));
+
+  // --- Category time series ---
+  const byWeek = new Map();
+
+  filtered.forEach(p => {
+    const week = startOfWeek(getPostDate(p));
+    const key = week.toISOString();
+
+    if (!byWeek.has(key)) {
+      byWeek.set(key, {
+        t: week.toLocaleDateString(),
+        ...Object.fromEntries(CATEGORY_KEYS.map((k) => [k, 0])),
+        _eng: 0,
+        _n: 0,
+    });
+
+    }
+
+    const bucket = byWeek.get(key);
+    const msg = (p.Message || "").toLowerCase();
+
+    CATEGORY_KEYS.forEach((cat) => {
+      if (CATEGORY_DEFS[cat].some((kw) => msg.includes(kw))) {
+        bucket[cat] += 1;
+      }
+    });
+
+
+    bucket._eng += p.Engagement || 0;
+    bucket._n++;
+  });
+
+  const series = [...byWeek.values()]
+  .sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime())
+  .map((v) => ({
+    t: v.t,
+    ...Object.fromEntries(CATEGORY_KEYS.map((k) => [k, v[k] ?? 0])),
+    avgEng: v._n ? Math.round(v._eng / v._n) : 0,
+  }));
+
+  return { trendingRows, series };
+}, [effectivePosts, range]);
+
 
   return (
     <div ref={ref} className={classes.wrap}>
@@ -109,7 +230,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
               <Text className={classes.colDelta}>Δ Rank</Text>
             </div>
             <div className={classes.list}>
-              {trending.map((r) => (
+              {trendingRows.map((r) => (
                 <div key={r.term} className={classes.row}>
                   <Anchor href="#" underline="never" className={classes.term}>{r.term}</Anchor>
                   <Text fw={600} className={classes.vol}>{formatK(r.volume)}</Text>
@@ -159,7 +280,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
 
             <div className={classes.chartBox}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={series} margin={{ top: 8, right: 28, left: 10, bottom: 8 }}>
+                <LineChart data={mode === "share" ? toShare(series, CATEGORY_KEYS) : series}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="t" tickLine={false} axisLine={false} />
                   <YAxis
@@ -186,10 +307,18 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                   />
                   <Legend />
                   {/* Theme-driven colors */}
-                  <Line yAxisId="left" type="monotone" dataKey="Burgers" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Fries" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Shakes" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Veggie" dot={false} strokeWidth={2} />
+                  {CATEGORY_KEYS.map((k) => (
+                    <Line
+                      key={k}
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey={k}
+                      name={k}
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  ))}
+
                   {overlay === "avg" && (
                     <Line
                       yAxisId="right"
