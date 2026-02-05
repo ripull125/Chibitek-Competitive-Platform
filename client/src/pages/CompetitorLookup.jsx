@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   ActionIcon,
@@ -29,6 +29,7 @@ import {
 } from "@tabler/icons-react";
 import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function CompetitorLookup() {
   const [username, setUsername] = useState("");
@@ -36,6 +37,21 @@ export default function CompetitorLookup() {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (userError) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const backends = useMemo(() => {
     const bases = new Set();
@@ -198,6 +214,9 @@ export default function CompetitorLookup() {
 
     async function handleSave() {
       try {
+        if (!currentUserId) {
+          throw new Error("Please sign in to save posts.");
+        }
         setSaving(true);
         const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
@@ -212,6 +231,7 @@ export default function CompetitorLookup() {
             likes: metrics.like_count ?? 0,
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
+            user_id: currentUserId,
           }),
         });
 

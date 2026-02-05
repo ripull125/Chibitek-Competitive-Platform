@@ -26,6 +26,7 @@ import {
   IconSend,
 } from '@tabler/icons-react';
 import { apiUrl } from '../utils/api';
+import { supabase } from '../supabaseClient';
 
 const CHAT_STORAGE_KEY = 'chibitek-chat-state';
 
@@ -98,9 +99,24 @@ export default function ChatInput() {
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     hasHydratedRef.current = true;
@@ -225,6 +241,10 @@ export default function ChatInput() {
 
   const handleSaveConversation = async (titleOverride) => {
     if (!conversation.length) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to save conversations.');
+      return;
+    }
     setIsSaving(true);
     setSaveNotice('');
     try {
@@ -234,6 +254,7 @@ export default function ChatInput() {
         body: JSON.stringify({
           title: titleOverride || buildConversationTitle(conversation),
           conversation,
+          user_id: currentUserId,
         }),
       });
       if (!response.ok) {
@@ -267,10 +288,14 @@ export default function ChatInput() {
   };
 
   const handleOpenLoadModal = async () => {
+    if (!currentUserId) {
+      setSaveNotice('Sign in to load conversations.');
+      return;
+    }
     setLoadModalOpen(true);
     setIsLoadingList(true);
     try {
-      const response = await fetch(apiUrl('/api/chat/conversations'));
+      const response = await fetch(apiUrl(`/api/chat/conversations?user_id=${encodeURIComponent(currentUserId)}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -288,9 +313,15 @@ export default function ChatInput() {
 
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to load conversations.');
+      return;
+    }
     setIsLoadingList(true);
     try {
-      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`));
+      const response = await fetch(
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`)
+      );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
@@ -317,6 +348,10 @@ export default function ChatInput() {
 
   const handleDeleteConversation = async (conversationId) => {
     if (!conversationId) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to delete conversations.');
+      return;
+    }
 
     const previousList = savedConversations;
     const previousConversation = conversation;
@@ -331,14 +366,20 @@ export default function ChatInput() {
 
     setIsLoadingList(true);
     try {
-      let response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+      let response = await fetch(
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`),
+        {
         method: 'DELETE',
-      });
+        }
+      );
 
       if (response.status === 404 || response.status === 405) {
-        response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}/delete`), {
-          method: 'POST',
-        });
+        response = await fetch(
+          apiUrl(`/api/chat/conversations/${conversationId}/delete?user_id=${encodeURIComponent(currentUserId)}`),
+          {
+            method: 'POST',
+          }
+        );
       }
 
       if (!response.ok) {

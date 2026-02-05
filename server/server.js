@@ -21,6 +21,18 @@ app.use(express.json({ limit: '10mb' }));
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
 
+const getUserIdFromRequest = (req) =>
+  req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
+
+const requireUserId = (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) {
+    res.status(401).json({ error: 'Missing user id.' });
+    return null;
+  }
+  return String(userId);
+};
+
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
     const username = req.params.username;
@@ -161,12 +173,16 @@ app.post('/api/chat/conversations', async (req, res) => {
     return res.status(400).json({ error: 'conversation must be a non-empty array' });
   }
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .insert({
         title: title || 'New chat',
         conversation,
+        user_id: userId,
       })
       .select()
       .single();
@@ -184,10 +200,14 @@ app.post('/api/chat/conversations', async (req, res) => {
 });
 
 app.get('/api/chat/conversations', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .select('id, title, created_at')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -207,11 +227,15 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .select('*')
       .eq('id', id)
+      .eq('user_id', userId)
       .single();
 
     if (error) {
@@ -230,11 +254,22 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id');
     if (error) {
       console.error('Delete conversation error:', error);
       return res.status(500).json({ error: error.message });
+    }
+    if (!data?.length) {
+      return res.status(404).json({ error: 'Conversation not found.' });
     }
     return res.json({ deleted: true, id });
   } catch (err) {
@@ -243,14 +278,25 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
-const deleteConversationById = async (id, res) => {
+const deleteConversationById = async (id, req, res) => {
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id');
     if (error) {
       console.error('Delete conversation error:', error);
       return res.status(500).json({ error: error.message });
+    }
+    if (!data?.length) {
+      return res.status(404).json({ error: 'Conversation not found.' });
     }
     return res.json({ deleted: true, id });
   } catch (err) {
@@ -261,7 +307,7 @@ const deleteConversationById = async (id, res) => {
 
 app.post('/api/chat/conversations/:id/delete', async (req, res) => {
   const { id } = req.params;
-  return deleteConversationById(id, res);
+  return deleteConversationById(id, req, res);
 });
 
 app.post('/api/chat/conversations/:id', async (req, res) => {
@@ -270,14 +316,16 @@ app.post('/api/chat/conversations/:id', async (req, res) => {
   if (String(methodOverride || '').toUpperCase() !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
-  return deleteConversationById(id, res);
+  return deleteConversationById(id, req, res);
 });
 
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
     const username = req.params.username;
 
-    const userId = await getUserIdByUsername(username);
+    const platformUserId = await getUserIdByUsername(username);
 
     const PLATFORM_X = 1;
 
@@ -286,7 +334,7 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       .upsert(
         {
           platform_id: PLATFORM_X,
-          platform_user_id: userId,
+          platform_user_id: platformUserId,
           display_name: username,
           profile_url: `https://x.com/${username}`,
         },
@@ -295,7 +343,7 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       .select()
       .single();
 
-    const [tweet] = await fetchPostsByUserId(userId);
+    const [tweet] = await fetchPostsByUserId(platformUserId);
 
     if (!tweet) {
       return res.json({ saved: false, reason: "No tweet found" });
@@ -308,9 +356,15 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 
     const { data: post } = await supabase
       .from("posts")
-      .upsert(normalized.post, {
-        onConflict: "platform_id,platform_post_id",
-      })
+      .upsert(
+        {
+          ...normalized.post,
+          user_id: userId,
+        },
+        {
+          onConflict: "user_id,platform_id,platform_post_id",
+        }
+      )
       .select()
       .single();
 
@@ -338,9 +392,10 @@ app.post("/api/posts", async (req, res) => {
     likes,
     shares,
     comments,
+    user_id,
   } = req.body;
 
-  if (!platform_id || !platform_user_id || !platform_post_id) {
+  if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
@@ -370,8 +425,9 @@ app.post("/api/posts", async (req, res) => {
           platform_post_id,
           content,
           published_at,
+          user_id,
         },
-        { onConflict: "platform_id,platform_post_id" }
+        { onConflict: "user_id,platform_id,platform_post_id" }
       )
       .select()
       .single();
@@ -394,6 +450,9 @@ app.post("/api/posts", async (req, res) => {
 });
 
 app.get("/api/posts", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data: posts, error } = await supabase
       .from("posts")
@@ -403,6 +462,7 @@ app.get("/api/posts", async (req, res) => {
         published_at,
         post_metrics(likes, shares, comments)
       `)
+      .eq('user_id', userId)
       .order("published_at", { ascending: false });
 
     if (error) throw error;
@@ -426,14 +486,28 @@ app.get("/api/posts", async (req, res) => {
 app.delete("/api/posts/:id", async (req, res) => {
   const postId = req.params.id;
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    await supabase.from("post_metrics").delete().eq("post_id", postId);
-    const { error: postError } = await supabase
+    const { data: post, error: postError } = await supabase
       .from("posts")
-      .delete()
-      .eq("id", postId);
+      .select("id")
+      .eq("id", postId)
+      .eq("user_id", userId)
+      .maybeSingle();
 
     if (postError) throw postError;
+    if (!post) return res.status(404).json({ error: "Post not found." });
+
+    await supabase.from("post_metrics").delete().eq("post_id", postId);
+    const { error: deleteError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", postId)
+      .eq("user_id", userId);
+
+    if (deleteError) throw deleteError;
 
     res.json({ deleted: true, post_id: postId });
   } catch (err) {

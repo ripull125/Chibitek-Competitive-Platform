@@ -14,18 +14,43 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    fetch(apiUrl("/api/posts"))
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setPosts([]);
+      setNotice("Sign in to view your saved posts.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentUserId]);
 
   function openDeleteConfirm(postId) {
     setDeleteModal({ open: true, postId });
@@ -39,10 +64,18 @@ export default function SavedPosts() {
     const postId = deleteModal.postId;
     closeDeleteConfirm();
 
+    if (!currentUserId) {
+      setNotice("Sign in to delete saved posts.");
+      return;
+    }
+
     try {
-      const resp = await fetch(`http://localhost:8080/api/posts/${postId}`, {
+      const resp = await fetch(
+        apiUrl(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUserId)}`),
+        {
         method: "DELETE",
-      });
+        }
+      );
 
       if (!resp.ok) {
         const error = await resp.json();
@@ -62,6 +95,12 @@ export default function SavedPosts() {
       <LoadingOverlay visible={loading} />
       <Stack>
         <Title order={2}>Saved Posts</Title>
+
+        {notice ? (
+          <Text size="sm" c="dimmed">
+            {notice}
+          </Text>
+        ) : null}
 
         {posts.map((p) => (
           <Card key={p.id} withBorder radius="md">
