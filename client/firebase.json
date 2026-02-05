@@ -6,8 +6,29 @@
       {
         "source": "/api/**",
         "run": {
-          "serviceId": "REPLACE_WITH_CLOUD_RUN_SERVICE_ID",
-          "region": "us-central1"
+          "serviceId": "chibitek-competitive-platform",
+          "region": "us-east4"
+        }
+      },
+      {
+        "source": "/read",
+        "run": {
+          "serviceId": "chibitek-competitive-platform",
+          "region": "us-east4"
+        }
+      },
+      {
+        "source": "/write",
+        "run": {
+          "serviceId": "chibitek-competitive-platform",
+          "region": "us-east4"
+        }
+      },
+      {
+        "source": "/scrape",
+        "run": {
+          "serviceId": "chibitek-competitive-platform",
+          "region": "us-east4"
         }
       },
       { "source": "**", "destination": "/index.html" }

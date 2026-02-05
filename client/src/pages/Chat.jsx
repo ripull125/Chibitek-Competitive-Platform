@@ -17,12 +17,14 @@ import {
 import {
   IconDeviceFloppy,
   IconFolderOpen,
+  IconTrash,
   IconMicrophone,
   IconMicrophoneOff,
   IconPlus,
   IconRefresh,
   IconSend,
-} from "@tabler/icons-react";
+} from '@tabler/icons-react';
+import { apiUrl } from '../utils/api';
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
 
@@ -105,7 +107,8 @@ export default function ChatInput() {
   const [savedConversations, setSavedConversations] = useState([]);
   const [saveNotice, setSaveNotice] = useState("");
   const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [saveTitle, setSaveTitle] = useState("");
+  const [saveTitle, setSaveTitle] = useState('');
+  const [currentConversationId, setCurrentConversationId] = useState(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
@@ -168,9 +171,9 @@ export default function ChatInput() {
 
     try {
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
-      const response = await fetch(`${backendUrl}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(apiUrl('/api/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payloadMessages, attachments }),
       });
 
@@ -245,9 +248,9 @@ export default function ChatInput() {
     setIsSaving(true);
     setSaveNotice("");
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(apiUrl('/api/chat/conversations'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: titleOverride || buildConversationTitle(conversation),
           conversation,
@@ -282,13 +285,14 @@ export default function ChatInput() {
     setMessage("");
     setAttachments([]);
     setConversation(defaultConversation);
+    setCurrentConversationId(null);
   };
 
   const handleOpenLoadModal = async () => {
     setLoadModalOpen(true);
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations`);
+      const response = await fetch(apiUrl('/api/chat/conversations'));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : "";
@@ -308,7 +312,7 @@ export default function ChatInput() {
     if (!conversationId) return;
     setIsLoadingList(true);
     try {
-      const response = await fetch(`${backendUrl}/api/chat/conversations/${conversationId}`);
+      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : "";
@@ -320,6 +324,7 @@ export default function ChatInput() {
         setConversation(loadedConversation);
         setMessage("");
         setAttachments([]);
+        setCurrentConversationId(conversationId);
         setLoadModalOpen(false);
         setSaveNotice("");
       } else {
@@ -331,6 +336,7 @@ export default function ChatInput() {
       setIsLoadingList(false);
     }
   };
+
 
   return (
     <Box
@@ -548,9 +554,20 @@ export default function ChatInput() {
                     {item.created_at ? new Date(item.created_at).toLocaleString() : ""}
                   </Text>
                 </Box>
-                <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                  Open
-                </Button>
+                <Group spacing="xs">
+                  <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
+                    Open
+                  </Button>
+                  <ActionIcon
+                    size="xs"
+                    color="red"
+                    variant="subtle"
+                    onClick={() => handleDeleteConversation(item.id)}
+                    title="Delete saved conversation"
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                </Group>
               </Paper>
             ))}
           </Box>

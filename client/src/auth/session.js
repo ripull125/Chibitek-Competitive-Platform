@@ -1,6 +1,28 @@
 import { supabase } from "../supabaseClient";
 
 const STORAGE_KEY = "chibitek.auth.session";
+const ALLOWED_DOMAIN = "chibitek.com";
+const ALLOWED_EMAILS = new Set([
+  "puhalenthirv@gmail.com",
+  "matousposp8@gmail.com",
+  "evanchin0322@gmail.com",
+  "ethan.j.cha@gmail.com",
+  "davidpaul.villarosa@gmail.com",
+]);
+
+export function isAuthorizedEmail(email) {
+  if (!email) return false;
+  const normalized = String(email).trim().toLowerCase();
+  if (ALLOWED_EMAILS.has(normalized)) return true;
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex === -1) return false;
+  const domain = normalized.slice(atIndex + 1);
+  return domain === ALLOWED_DOMAIN;
+}
+
+export function isSessionAuthorized(session) {
+  return isAuthorizedEmail(session?.user?.email);
+}
 
 export function getStoredSession() {
   try {

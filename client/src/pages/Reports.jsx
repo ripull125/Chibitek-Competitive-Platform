@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
+import { convertSavedPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import {
@@ -20,6 +21,31 @@ export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [toneEngagementData, setToneEngagementData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch and process saved posts
+  useEffect(() => {
+    fetch("http://localhost:8080/api/posts")
+      .then((r) => r.json())
+      .then((data) => {
+        const posts = data.posts || [];
+        const converted = convertSavedPosts(posts);
+
+        // Create chart data with index for each post
+        const chartData = converted.map((post, index) => ({
+          index: index + 1,
+          engagement: post.Engagement,
+          source: post['Name/Source'],
+          message: post.Message,
+          tone: post.Tone,
+        }));
+
+        setToneEngagementData(chartData);
+      })
+      .catch((error) => console.error("Error fetching posts:", error))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -56,6 +82,12 @@ export default function Reports() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const COLORS = {
+    positive: "#51cf66",
+    negative: "#ff6b6b",
+    neutral: "#868e96",
   };
 
   return (

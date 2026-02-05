@@ -1,15 +1,9 @@
-// React can't directly work with puppeteer so it has to go through a
-// server that calls another file with puppeteer
-
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import fs from 'fs/promises';
-import path from 'path';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
-//import { Scraping } from './scraper.js';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 
@@ -26,66 +20,6 @@ app.use(express.json({ limit: '10mb' }));
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
-
-let cachedPayload = null;
-const scrapedDataPath = path.resolve(process.cwd(), '../recharts/scraped-data.json');
-
-const loadCachedPayload = async () => {
-  if (cachedPayload) return cachedPayload;
-  try {
-    const existing = await fs.readFile(scrapedDataPath, 'utf8');
-    cachedPayload = JSON.parse(existing);
-    return cachedPayload;
-  } catch (err) {
-    if (err.code !== 'ENOENT') {
-      console.error('Failed to read cached scrape payload:', err);
-    }
-    return null;
-  }
-};
-
-/* app.get('/scrape', async (req, res) => {
-  try {
-    if (req.query.refresh !== 'true') {
-      const existing = await loadCachedPayload();
-      if (existing) {
-        return res.json(existing);
-      }
-    }
-
-    const data = await Scraping();
-    const booksWithKeywords = await suggestKeywordsForBooks(data.books || []);
-    const payload = { ...data, books: booksWithKeywords };
-    cachedPayload = payload;
-    const { data: inserted, error } = await supabase
-      .from('posts')
-      .insert({
-        platform_id: 1,
-        competitor_id: 1,
-        platform_post_id: data.url,
-        url: data.url,
-        content: data.heading + ' ' + (data.paragraphs || []).join(' ')
-      });
-    if (error) {
-      console.error('Insert error:', error);
-    }
-
-    // Write a copy of the scraped payload to recharts/scraped-data.json
-    (async () => {
-      try {
-        await fs.mkdir(path.dirname(scrapedDataPath), { recursive: true });
-        await fs.writeFile(scrapedDataPath, JSON.stringify(payload, null, 5), 'utf8');
-      } catch (err) {
-        console.error('Failed to write scraped payload to recharts:', err);
-      }
-    })();
-
-    res.json(payload);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Scraping failed' });
-  }
-}); */
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
@@ -292,6 +226,53 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
+app.delete('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  try {
+    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    if (error) {
+      console.error('Delete conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ deleted: true, id });
+  } catch (err) {
+    console.error('Delete conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to delete conversation.' });
+  }
+});
+
+const deleteConversationById = async (id, res) => {
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  try {
+    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    if (error) {
+      console.error('Delete conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    return res.json({ deleted: true, id });
+  } catch (err) {
+    console.error('Delete conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to delete conversation.' });
+  }
+};
+
+app.post('/api/chat/conversations/:id/delete', async (req, res) => {
+  const { id } = req.params;
+  return deleteConversationById(id, res);
+});
+
+app.post('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  const methodOverride = req.get('x-http-method-override') || req.query?._method;
+  if (String(methodOverride || '').toUpperCase() !== 'DELETE') {
+    return res.status(405).json({ error: 'Method not allowed.' });
+  }
+  return deleteConversationById(id, res);
+});
+
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
     const username = req.params.username;
@@ -345,7 +326,6 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.post("/api/posts", async (req, res) => {
   const {
@@ -412,6 +392,7 @@ app.post("/api/posts", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get("/api/posts", async (req, res) => {
   try {
     const { data: posts, error } = await supabase
@@ -438,6 +419,25 @@ app.get("/api/posts", async (req, res) => {
     res.json({ posts: formattedPosts });
   } catch (err) {
     console.error("Fetch posts failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/posts/:id", async (req, res) => {
+  const postId = req.params.id;
+
+  try {
+    await supabase.from("post_metrics").delete().eq("post_id", postId);
+    const { error: postError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", postId);
+
+    if (postError) throw postError;
+
+    res.json({ deleted: true, post_id: postId });
+  } catch (err) {
+    console.error("Delete post failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
