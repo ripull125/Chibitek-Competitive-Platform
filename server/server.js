@@ -20,6 +20,8 @@ app.use(express.json({ limit: '10mb' }));
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
+const systemPrompt =
+  'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.';
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
@@ -43,8 +45,6 @@ const port = process.env.PORT || 8080;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
-
-app.use(express.json());
 
 app.post("/write", async (req, res) => {
   const { message } = req.body;
@@ -130,8 +130,7 @@ app.post('/api/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content:
-              'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
+            content: systemPrompt,
           },
           ...userMessages,
         ],

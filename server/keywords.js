@@ -30,51 +30,51 @@ const parseKeywordsResponse = (content, books) => {
   return books.map((book) => ({ ...book, keywords: [] }));
 };
 
-export async function suggestKeywordsForBooks(books = []) {
-  if (!Array.isArray(books) || books.length === 0) return [];
-  if (!OPENAI_API_KEY) {
-    console.warn('OPENAI_API_KEY not set; skipping keyword suggestions.');
-    return books.map((book) => ({ ...book, keywords: [] }));
-  }
+// export async function suggestKeywordsForBooks(books = []) {
+//   if (!Array.isArray(books) || books.length === 0) return [];
+//   if (!OPENAI_API_KEY) {
+//     console.warn('OPENAI_API_KEY not set; skipping keyword suggestions.');
+//     return books.map((book) => ({ ...book, keywords: [] }));
+//   }
 
-  const userPayload = books.map((book, index) => ({
-    index,
-    title: book.title,
-    price: book.price,
-    availability: book.availability,
-  }));
+//   const userPayload = books.map((book, index) => ({
+//     index,
+//     title: book.title,
+//     price: book.price,
+//     availability: book.availability,
+//   }));
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: chatGptModel,
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt,
-        },
-        {
-          role: 'user',
-          content: `Books to tag: ${JSON.stringify(userPayload)}`,
-        },
-      ],
-    }),
-  });
+//   const response = await fetch('https://api.openai.com/v1/chat/completions', {
+//     method: 'POST',
+//     headers: {
+//       'Content-Type': 'application/json',
+//       Authorization: `Bearer ${OPENAI_API_KEY}`,
+//     },
+//     body: JSON.stringify({
+//       model: chatGptModel,
+//       temperature: 0.3,
+//       response_format: { type: 'json_object' },
+//       messages: [
+//         {
+//           role: 'system',
+//           content: systemPrompt,
+//         },
+//         {
+//           role: 'user',
+//           content: `Books to tag: ${JSON.stringify(userPayload)}`,
+//         },
+//       ],
+//     }),
+//   });
 
-  console.log("Query Complete")
+//   console.log("Query Complete")
 
-  if (!response.ok) {
-    console.error('Keyword suggestion request failed:', response.status, response.statusText);
-    return books.map((book) => ({ ...book, keywords: [] }));
-  }
+//   if (!response.ok) {
+//     console.error('Keyword suggestion request failed:', response.status, response.statusText);
+//     return books.map((book) => ({ ...book, keywords: [] }));
+//   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  return parseKeywordsResponse(content, books);
-}
+//   const data = await response.json();
+//   const content = data.choices?.[0]?.message?.content;
+//   return parseKeywordsResponse(content, books);
+// }
