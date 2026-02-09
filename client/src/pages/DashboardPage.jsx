@@ -53,33 +53,33 @@ const KPI = [
 
 const ALERTS = [
   { icon: IconTrendingUp, title: "Rising category: AI Security", detail: "+38% mentions, engagement holding steady", link: { to: "/keywords?focus=category&value=AI%20Security", label: "Open in Tracking" } },
-  { icon: IconSparkles,   title: "Niche hit: 24/7 SOC",        detail: "Low volume, high resonance (120 avg/mention)", link: { to: "/keywords?term=24%2F7%20SOC", label: "Open in Tracking" } },
-  { icon: IconChartDots,  title: "Saturation risk: Zero Trust", detail: "Volume ↑, engagement ↓ week-over-week",       link: { to: "/keywords?term=Zero%20Trust", label: "Investigate" } },
+  { icon: IconSparkles, title: "Niche hit: 24/7 SOC", detail: "Low volume, high resonance (120 avg/mention)", link: { to: "/keywords?term=24%2F7%20SOC", label: "Open in Tracking" } },
+  { icon: IconChartDots, title: "Saturation risk: Zero Trust", detail: "Volume ↑, engagement ↓ week-over-week", link: { to: "/keywords?term=Zero%20Trust", label: "Investigate" } },
 ];
 
 const EFFECTIVENESS = [
-  { keyword: "AI security",  mentions: 21000, avgEng: 108, totalEng: 226800 },
-  { keyword: "Zero trust",   mentions: 15000, avgEng: 82,  totalEng: 123000 },
-  { keyword: "Endpoint MDR", mentions: 5000,  avgEng: 91,  totalEng: 45500 },
-  { keyword: "24/7 SOC",     mentions: 2000,  avgEng: 120, totalEng: 24000 },
-  { keyword: "Threat intel", mentions: 6000,  avgEng: 98,  totalEng: 58800 },
+  { keyword: "AI security", mentions: 21000, avgEng: 108, totalEng: 226800 },
+  { keyword: "Zero trust", mentions: 15000, avgEng: 82, totalEng: 123000 },
+  { keyword: "Endpoint MDR", mentions: 5000, avgEng: 91, totalEng: 45500 },
+  { keyword: "24/7 SOC", mentions: 2000, avgEng: 120, totalEng: 24000 },
+  { keyword: "Threat intel", mentions: 6000, avgEng: 98, totalEng: 58800 },
 ];
 
 const COMP_FEED = [
-  { who: "Bytecore",   platform: "LinkedIn", title: "Zero Trust explainer",        kw: "zero trust", eng: 742 },
-  { who: "Infonetic",  platform: "X",        title: "SOC behind-the-scenes",       kw: "24/7 soc",   eng: 520 },
-  { who: "Kodex",      platform: "LinkedIn", title: "AI Security launch recap",    kw: "ai security", eng: 910 },
+  { who: "Bytecore", platform: "LinkedIn", title: "Zero Trust explainer", kw: "zero trust", eng: 742 },
+  { who: "Infonetic", platform: "X", title: "SOC behind-the-scenes", kw: "24/7 soc", eng: 520 },
+  { who: "Kodex", platform: "LinkedIn", title: "AI Security launch recap", kw: "ai security", eng: 910 },
 ];
 
 const TOP_POSTS = [
-  { who: "Chibitek", platform: "LinkedIn",  title: "AI Security launch recap", eng: 980 },
-  { who: "Chibitek", platform: "X",         title: "Endpoint MDR myths",       eng: 488 },
-  { who: "Chibitek", platform: "Instagram", title: "SOC night shift",          eng: 420 },
+  { who: "Chibitek", platform: "LinkedIn", title: "AI Security launch recap", eng: 980 },
+  { who: "Chibitek", platform: "X", title: "Endpoint MDR myths", eng: 488 },
+  { who: "Chibitek", platform: "Instagram", title: "SOC night shift", eng: 420 },
 ];
 
 const BRIEFS = [
-  { kw: "AI security", idea: "Platform roundup with customer quote", platform: "LinkedIn",  cta: "Draft brief", to: "/keywords?term=AI%20security" },
-  { kw: "24/7 SOC",    idea: "Behind-the-scenes reel (night ops)",   platform: "Instagram", cta: "Draft brief", to: "/keywords?term=24%2F7%20SOC" },
+  { kw: "AI security", idea: "Platform roundup with customer quote", platform: "LinkedIn", cta: "Draft brief", to: "/keywords?term=AI%20security" },
+  { kw: "24/7 SOC", idea: "Behind-the-scenes reel (night ops)", platform: "Instagram", cta: "Draft brief", to: "/keywords?term=24%2F7%20SOC" },
 ];
 
 /* ---------- Card shell ---------- */
@@ -168,7 +168,7 @@ function EffectivenessScatter() {
       right={<IconTargetArrow className={classes.cardIcon} />}
     >
       <div className={classes.chartBox}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={360}>
           <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="mentions" name="Mentions" tickFormatter={fmtK} />
@@ -427,7 +427,7 @@ export default function DashboardPage() {
               </ActionIcon>
             </Tooltip>
           </div>
-        </div> 
+        </div>
       </div>
     </div>
   );

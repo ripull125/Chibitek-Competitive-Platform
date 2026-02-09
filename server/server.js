@@ -6,8 +6,15 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const execAsync = promisify(exec);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function extractYouTubeVideoId(input) {
   if (!input) return null;
@@ -27,6 +34,29 @@ function extractYouTubeVideoId(input) {
   }
 
   return null;
+}
+
+// Helper function to get transcript using Python library (youtube-transcript-api)
+async function getTranscriptFromPython(videoId) {
+  try {
+    const pythonScript = path.join(__dirname, 'get_transcript.py');
+    const { stdout, stderr } = await execAsync(`python3 "${pythonScript}" "${videoId}"`, {
+      timeout: 15000,
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large transcripts
+    });
+
+    if (stderr) {
+      console.error('Python stderr:', stderr);
+    }
+
+    const result = JSON.parse(stdout);
+    if (!result.success) {
+      console.error('Python transcript extraction failed:', result.error);
+    }
+    return result;
+  } catch (err) {
+    console.error('Python transcript extraction error:', err.message);
+  };
 }
 
 const app = express();
@@ -359,6 +389,13 @@ app.post("/api/posts", async (req, res) => {
     likes,
     shares,
     comments,
+    title,
+    description,
+    channelTitle,
+    videoId,
+    views,
+    author_name,
+    author_handle,
   } = req.body;
 
   if (!platform_id || !platform_user_id || !platform_post_id) {
@@ -415,8 +452,6 @@ app.post("/api/posts", async (req, res) => {
 
     // For YouTube, save additional details
     if (platform_id === 8) {
-      const { title, description, channelTitle, videoId, views } = req.body;
-      console.log('Saving YouTube details:', { title, description, channelTitle, videoId, views });
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -429,6 +464,21 @@ app.post("/api/posts", async (req, res) => {
       });
       if (detailsError) {
         console.error('Error saving post details:', detailsError);
+      }
+    }
+
+    // For X (Twitter), save additional details
+    if (platform_id === 1) {
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          author_name: author_name || username,
+          author_handle: author_handle || username,
+          username,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving X post details:', detailsError);
       }
     }
 
@@ -447,23 +497,39 @@ app.get("/api/posts", async (req, res) => {
   platform_id,
   content,
   published_at,
-  post_metrics!inner(likes, shares, comments),
-  post_details_platform!left(extra_json)
+  competitors(display_name),
+  post_metrics(likes, shares, comments),
+  post_details_platform(extra_json)
 `)
       .order("published_at", { ascending: false });
 
     if (error) throw error;
 
-    const formattedPosts = posts.map((post) => ({
-      id: post.id,
-      platform_id: post.platform_id,
-      content: post.content,
-      published_at: post.published_at,
-      likes: post.post_metrics?.[0]?.likes || 0,
-      shares: post.post_metrics?.[0]?.shares || 0,
-      comments: post.post_metrics?.[0]?.comments || 0,
-      extra: post.post_details_platform?.find(d => d.extra_json)?.extra_json || {},
-    }));
+    const formattedPosts = posts.map((post) => {
+      const extra = post.post_details_platform?.[0]?.extra_json || {};
+      const competitorName = post.competitors?.[0]?.display_name;
+
+      return {
+        id: post.id,
+        platform_id: post.platform_id || 0,
+        content: post.content,
+        published_at: post.published_at,
+        likes: post.post_metrics?.[0]?.likes || 0,
+        shares: post.post_metrics?.[0]?.shares || 0,
+        comments: post.post_metrics?.[0]?.comments || 0,
+        extra: {
+          ...extra,
+          // Fallback to competitor name for X posts if author_name not set
+          author_name: extra.author_name || (post.platform_id === 1 ? competitorName : undefined),
+          username: extra.username || competitorName,
+          title: extra.title,
+          description: extra.description,
+          channelTitle: extra.channelTitle,
+          videoId: extra.videoId,
+          views: extra.views,
+        },
+      };
+    });
 
     res.json({ posts: formattedPosts });
   } catch (err) {
@@ -504,6 +570,7 @@ app.get("/api/youtube/transcript", async (req, res) => {
       return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
     }
 
+    // Fetch video metadata using official YouTube API
     const videoMetaRes = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
     );
@@ -528,108 +595,30 @@ app.get("/api/youtube/transcript", async (req, res) => {
       },
     };
 
+    // Extract transcript using Python library
+    const pythonResult = await getTranscriptFromPython(videoId);
 
-
-    const captionsRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-    const captionsData = await captionsRes.json();
-
-    if (!captionsData.items?.length) {
+    if (pythonResult.success && pythonResult.transcript) {
       return res.json({
         videoId,
         video: videoInfo,
-        transcriptAvailable: false,
-        transcript: "",
-        reason: "No captions available",
+        transcriptAvailable: true,
+        language: pythonResult.language || "en",
+        source: "youtube-transcript-api",
+        transcript: pythonResult.transcript,
       });
     }
 
-    let caption =
-      captionsData.items.find(
-        (c) =>
-          c.snippet.language.startsWith("en") &&
-          c.snippet.trackKind === "standard" &&
-          !c.snippet.isDraft
-      ) ||
-      captionsData.items.find(
-        (c) =>
-          c.snippet.language.startsWith("en") &&
-          !c.snippet.isDraft
-      ) ||
-      captionsData.items.find(
-        (c) =>
-          c.snippet.language.startsWith("en") &&
-          c.snippet.trackKind === "asr"
-      );
-
-    if (!caption) {
-      return res.json({
-        videoId,
-        video: videoInfo,
-        transcriptAvailable: false,
-        transcript: "",
-        reason: "No usable English captions found",
-      });
-    }
-
-    const base = "https://www.youtube.com/api/timedtext";
-
-    const attempts = [
-      `${base}?v=${videoId}&lang=${caption.snippet.language}&fmt=vtt`,
-
-      `${base}?v=${videoId}&lang=${caption.snippet.language}&kind=asr&fmt=vtt`,
-
-      caption.snippet.name
-        ? `${base}?v=${videoId}&lang=${caption.snippet.language}&name=${encodeURIComponent(
-          caption.snippet.name
-        )}&fmt=vtt`
-        : null,
-
-      `${base}?v=${videoId}&lang=${caption.snippet.language}&kind=asr&fmt=srt`,
-    ].filter(Boolean);
-
-    let raw = "";
-
-    for (const url of attempts) {
-      const r = await fetch(url);
-      if (!r.ok) continue;
-
-      const text = await r.text();
-      if (text && text.trim().length > 0) {
-        raw = text;
-        break;
-      }
-    }
-
-    if (!raw) {
-      return res.json({
-        videoId,
-        video: videoInfo,
-        transcriptAvailable: false,
-        transcript: "",
-        reason: "Caption track exists but text could not be fetched",
-      });
-    }
-
-    const transcript = raw
-      .replace(/^WEBVTT[\s\S]*?\n\n/, "")
-      .replace(/\d+\n/g, "")
-      .replace(/\d{2}:\d{2}:\d{2}[.,]\d{3} --> .*?\n/g, "")
-      .replace(/\n+/g, " ")
-      .replace(/\[.*?\]/g, "")
-      .trim();
-
+    // Failed to get transcript
     return res.json({
       videoId,
       video: videoInfo,
-      transcriptAvailable: transcript.length > 0,
-      language: caption.snippet.language,
-      trackKind: caption.snippet.trackKind,
-      transcript,
+      transcriptAvailable: false,
+      transcript: "",
+      reason: pythonResult.error || "No transcript available",
     });
   } catch (err) {
-    console.error("YouTube transcript error:", err);
+    console.error("YouTube transcript error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });
