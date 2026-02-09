@@ -1,23 +1,44 @@
 // client/src/pages/KeywordTracking.jsx
 import "../utils/ui.css";
 
-import React, { forwardRef } from "react";
+import React, { forwardRef, useEffect } from "react";
 import {
-  Card, Title, Group, Text, Anchor, Select, Modal, ActionIcon,
-  Tooltip, Button, List, ThemeIcon, Divider
+  Card,
+  Title,
+  Group,
+  Text,
+  Anchor,
+  Select,
+  Modal,
+  ActionIcon,
+  Tooltip,
+  Button,
+  List,
+  ThemeIcon,
+  Divider,
 } from "@mantine/core";
 import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Legend,
-  Tooltip as RechartsTooltip, CartesianGrid
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Legend,
+  Tooltip as RechartsTooltip,
+  CartesianGrid,
 } from "recharts";
 import {
-  IconTriangleFilled, IconInfoCircle, IconTrendingUp, IconActivity, IconChartBar
+  IconTriangleFilled,
+  IconInfoCircle,
+  IconTrendingUp,
+  IconActivity,
+  IconChartBar,
 } from "@tabler/icons-react";
 import classes from "./KeywordTracking.module.css";
 
 /* Formatting */
 const formatK = (n) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString());
-const formatPct = (v) => `${Math.round(v * 100)}%`; 
+const formatPct = (v) => `${Math.round(v * 100)}%`;
 
 /* Rank delta badge (directional only) */
 function DeltaBadge({ delta }) {
@@ -28,7 +49,9 @@ function DeltaBadge({ delta }) {
   return (
     <Group gap={6} wrap="nowrap" className={classes.delta}>
       <IconTriangleFilled size={14} style={{ color, transform: `rotate(${rotate}deg)` }} />
-      <Text fw={700} style={{ color }}>{Math.abs(delta)}</Text>
+      <Text fw={700} style={{ color }}>
+        {Math.abs(delta)}
+      </Text>
     </Group>
   );
 }
@@ -46,11 +69,11 @@ const trending = [
 
 /* Category series with an avg engagement metric for overlay */
 const BASE_SERIES = [
-  { t: "W1", Burgers: 3200, Fries: 800,  Shakes: 160, Veggie: 120, avgEng: 92 },
-  { t: "W2", Burgers: 3600, Fries: 920,  Shakes: 180, Veggie: 130, avgEng: 87 },
-  { t: "W3", Burgers: 4100, Fries: 870,  Shakes: 210, Veggie: 150, avgEng: 101 },
-  { t: "W4", Burgers: 3900, Fries: 780,  Shakes: 240, Veggie: 160, avgEng: 95 },
-  { t: "W5", Burgers: 4550, Fries: 950,  Shakes: 220, Veggie: 190, avgEng: 108 },
+  { t: "W1", Burgers: 3200, Fries: 800, Shakes: 160, Veggie: 120, avgEng: 92 },
+  { t: "W2", Burgers: 3600, Fries: 920, Shakes: 180, Veggie: 130, avgEng: 87 },
+  { t: "W3", Burgers: 4100, Fries: 870, Shakes: 210, Veggie: 150, avgEng: 101 },
+  { t: "W4", Burgers: 3900, Fries: 780, Shakes: 240, Veggie: 160, avgEng: 95 },
+  { t: "W5", Burgers: 4550, Fries: 950, Shakes: 220, Veggie: 190, avgEng: 108 },
   { t: "W6", Burgers: 4800, Fries: 1020, Shakes: 260, Veggie: 210, avgEng: 103 },
 ];
 
@@ -80,6 +103,13 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
     return mode === "share" ? formatPct(value) : formatK(value);
   };
 
+  // Tell AppTourProvider the page is ready (for starting keyword Joyride)
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "keyword-tracking" } })
+    );
+  }, []);
+
   return (
     <div ref={ref} className={classes.wrap}>
       <Card withBorder shadow="xs" radius="lg" p="lg" className={classes.card}>
@@ -100,115 +130,130 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
 
         {/* Grid */}
         <div className={classes.grid}>
-          {/* Trending list */}
-          <Card withBorder radius="md" p="lg" className={classes.panel}>
-            <Title order={5} className={classes.panelTitle}>Trending Keywords</Title>
-            <div className={classes.listHeader}>
-              <Text className={classes.colTerm}>Keyword</Text>
-              <Text className={classes.colVol}>Volume</Text>
-              <Text className={classes.colDelta}>Δ Rank</Text>
-            </div>
-            <div className={classes.list}>
-              {trending.map((r) => (
-                <div key={r.term} className={classes.row}>
-                  <Anchor href="#" underline="never" className={classes.term}>{r.term}</Anchor>
-                  <Text fw={600} className={classes.vol}>{formatK(r.volume)}</Text>
-                  <DeltaBadge delta={r.delta} />
-                </div>
-              ))}
-            </div>
-          </Card>
+          {/* Highlight 1 */}
+          <div data-tour="keywords-trending">
+            <Card withBorder radius="md" p="lg" className={classes.panel}>
+              <Title order={5} className={classes.panelTitle}>
+                Trending Keywords
+              </Title>
 
-          {/* Category chart */}
-          <Card withBorder radius="md" p="lg" className={classes.panel}>
-            <Group justify="space-between" align="center" className={classes.controls}>
-              <Group gap="xs" align="center">
-                <Title order={5} className={classes.panelTitle}>Keyword Categories Over Time</Title>
-                <Tooltip label="How to read this fast">
-                  <ActionIcon
-                    variant="subtle"
-                    onClick={() => setInfoOpen(true)}
-                    aria-label="How to read this chart"
-                    className={classes.infoIcon}
-                  >
-                    <IconInfoCircle size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-              <Group gap="sm" wrap="wrap">
-                <Select
-                  value={mode}
-                  onChange={(v) => setMode(v ?? "absolute")}
-                  data={[
-                    { value: "absolute", label: "Mode: Absolute" },
-                    { value: "share", label: "Mode: % Share" },
-                  ]}
-                  w={180}
-                />
-                <Select
-                  value={overlay}
-                  onChange={(v) => setOverlay(v ?? "none")}
-                  data={[
-                    { value: "none", label: "Overlay: None" },
-                    { value: "avg", label: "Overlay: Avg engagement" },
-                  ]}
-                  w={240}
-                />
-              </Group>
-            </Group>
+              <div className={classes.listHeader}>
+                <Text className={classes.colTerm}>Keyword</Text>
+                <Text className={classes.colVol}>Volume</Text>
+                <Text className={classes.colDelta}>Δ Rank</Text>
+              </div>
 
-            <div className={classes.chartBox}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={series} margin={{ top: 8, right: 28, left: 10, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="t" tickLine={false} axisLine={false} />
-                  <YAxis
-                    yAxisId="left"
-                    tickFormatter={yLeftFormatter}
-                    tickLine={false}
-                    axisLine={false}
-                    width={64}
-                    domain={mode === "share" ? [0, 1] : ["auto", "auto"]}
+              <div className={classes.list}>
+                {trending.map((r) => (
+                  <div key={r.term} className={classes.row}>
+                    <Anchor href="#" underline="never" className={classes.term}>
+                      {r.term}
+                    </Anchor>
+                    <Text fw={600} className={classes.vol}>
+                      {formatK(r.volume)}
+                    </Text>
+                    <DeltaBadge delta={r.delta} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Highlight 2 */}
+          <div data-tour="keywords-categories-chart">
+            <Card withBorder radius="md" p="lg" className={classes.panel}>
+              <Group justify="space-between" align="center" className={classes.controls}>
+                <Group gap="xs" align="center">
+                  <Title order={5} className={classes.panelTitle}>
+                    Keyword Categories Over Time
+                  </Title>
+                  <Tooltip label="How to read this fast">
+                    <ActionIcon
+                      variant="subtle"
+                      onClick={() => setInfoOpen(true)}
+                      aria-label="How to read this chart"
+                      className={classes.infoIcon}
+                    >
+                      <IconInfoCircle size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+
+                <Group gap="sm" wrap="wrap">
+                  <Select
+                    value={mode}
+                    onChange={(v) => setMode(v ?? "absolute")}
+                    data={[
+                      { value: "absolute", label: "Mode: Absolute" },
+                      { value: "share", label: "Mode: % Share" },
+                    ]}
+                    w={180}
                   />
-                  {overlay === "avg" && (
+                  <Select
+                    value={overlay}
+                    onChange={(v) => setOverlay(v ?? "none")}
+                    data={[
+                      { value: "none", label: "Overlay: None" },
+                      { value: "avg", label: "Overlay: Avg engagement" },
+                    ]}
+                    w={240}
+                  />
+                </Group>
+              </Group>
+
+              <div className={classes.chartBox}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={series} margin={{ top: 8, right: 28, left: 10, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="t" tickLine={false} axisLine={false} />
                     <YAxis
-                      yAxisId="right"
-                      orientation="right"
+                      yAxisId="left"
+                      tickFormatter={yLeftFormatter}
                       tickLine={false}
                       axisLine={false}
-                      width={54}
+                      width={64}
+                      domain={mode === "share" ? [0, 1] : ["auto", "auto"]}
                     />
-                  )}
-                  <RechartsTooltip
-                    cursor={{ fill: "rgba(0,0,0,0.04)" }}
-                    contentStyle={{ borderRadius: 8 }}
-                    formatter={tooltipFormatter}
-                  />
-                  <Legend />
-                  {/* Theme-driven colors */}
-                  <Line yAxisId="left" type="monotone" dataKey="Burgers" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Fries" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Shakes" dot={false} strokeWidth={2} />
-                  <Line yAxisId="left" type="monotone" dataKey="Veggie" dot={false} strokeWidth={2} />
-                  {overlay === "avg" && (
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="avgEng"
-                      name="Avg engagement"
-                      dot={false}
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
+                    {overlay === "avg" && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tickLine={false}
+                        axisLine={false}
+                        width={54}
+                      />
+                    )}
+
+                    <RechartsTooltip
+                      cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                      contentStyle={{ borderRadius: 8 }}
+                      formatter={tooltipFormatter}
                     />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+                    <Legend />
+
+                    <Line yAxisId="left" type="monotone" dataKey="Burgers" dot={false} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="Fries" dot={false} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="Shakes" dot={false} strokeWidth={2} />
+                    <Line yAxisId="left" type="monotone" dataKey="Veggie" dot={false} strokeWidth={2} />
+                    {overlay === "avg" && (
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="avgEng"
+                        name="Avg engagement"
+                        dot={false}
+                        strokeWidth={2}
+                        strokeDasharray="5 5"
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
         </div>
       </Card>
 
-      {/* Info modal — polished */}
       <Modal
         opened={infoOpen}
         onClose={() => setInfoOpen(false)}
@@ -222,22 +267,46 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
           <Text c="dimmed" mb="sm">
             Quick rules to scan the chart correctly:
           </Text>
+
           <div className={classes.infoSection}>
-            <List spacing="xs" size="sm" icon={
-              <ThemeIcon radius="xl" size={20}><IconChartBar size={14} /></ThemeIcon>
-            }>
-              <List.Item><b>Left axis:</b> keyword frequency (mentions) per bucket. In “% Share” mode it shows share of total.</List.Item>
-              <List.Item icon={<ThemeIcon radius="xl" size={20}><IconActivity size={14} /></ThemeIcon>}>
+            <List
+              spacing="xs"
+              size="sm"
+              icon={
+                <ThemeIcon radius="xl" size={20}>
+                  <IconChartBar size={14} />
+                </ThemeIcon>
+              }
+            >
+              <List.Item>
+                <b>Left axis:</b> keyword frequency (mentions) per bucket. In “% Share” mode it shows share of total.
+              </List.Item>
+              <List.Item
+                icon={
+                  <ThemeIcon radius="xl" size={20}>
+                    <IconActivity size={14} />
+                  </ThemeIcon>
+                }
+              >
                 <b>Right axis (overlay):</b> average engagement per mention.
               </List.Item>
-              <List.Item icon={<ThemeIcon radius="xl" size={20}><IconTrendingUp size={14} /></ThemeIcon>}>
-                <b>Fast read:</b> ↑ frequency & ↑ engagement = strong momentum; ↑ frequency & ↓ engagement = saturation risk.
+              <List.Item
+                icon={
+                  <ThemeIcon radius="xl" size={20}>
+                    <IconTrendingUp size={14} />
+                  </ThemeIcon>
+                }
+              >
+                <b>Fast read:</b> ↑ frequency & ↑ engagement means momentum. ↑ frequency & ↓ engagement can mean saturation.
               </List.Item>
             </List>
           </div>
+
           <Divider my="md" />
           <Group justify="flex-end">
-            <Button variant="light" onClick={() => setInfoOpen(false)}>Got it</Button>
+            <Button variant="light" onClick={() => setInfoOpen(false)}>
+              Got it
+            </Button>
           </Group>
         </div>
       </Modal>

@@ -1,4 +1,3 @@
-// client/src/pages/Settings.jsx
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppLanguage } from "../i18n/useAppLanguage";
@@ -14,9 +13,11 @@ import {
   Group,
 } from "@mantine/core";
 import { IconWorld } from "@tabler/icons-react";
+import { useAppTour } from "../tour/AppTourProvider.jsx";
 import { useNavigate } from "react-router-dom";
+
 import classes from "./Settings.module.css";
-import "../utils/ui.css"; // provides .pageTitle (regular)
+import "../utils/ui.css";
 
 function SettingsCard({ label, title, description, children }) {
   return (
@@ -24,7 +25,9 @@ function SettingsCard({ label, title, description, children }) {
       <Stack gap={12} className={classes.cardInner}>
         <Text className={classes.sectionLabel}>{label}</Text>
         <Text className={classes.rowTitle}>{title}</Text>
-        {description ? <Text className={classes.subText}>{description}</Text> : null}
+        {description ? (
+          <Text className={classes.subText}>{description}</Text>
+        ) : null}
         {children}
       </Stack>
     </Paper>
@@ -35,8 +38,20 @@ export default function Settings() {
   const { t } = useTranslation();
   const { language, setLanguage } = useAppLanguage();
   const navigate = useNavigate();
+  const tour = useAppTour();
 
-  const languageLabel = useMemo(() => t(`languages.${language}`), [language, t]);
+  const languageLabel = useMemo(
+    () => t(`languages.${language}`),
+    [language, t]
+  );
+
+  function handleStartTutorial() {
+    navigate("/");
+    // allow route + layout to mount before Joyride starts
+    setTimeout(() => {
+      tour.start();
+    }, 0);
+  }
 
   return (
     <Box className={classes.page}>
@@ -80,7 +95,10 @@ export default function Settings() {
             </Button>
           </SettingsCard>
 
-          <SettingsCard label={t("settings.languageLabel")} title={t("settings.languageTitle")}>
+          <SettingsCard
+            label={t("settings.languageLabel")}
+            title={t("settings.languageTitle")}
+          >
             <Select
               value={language}
               onChange={(v) => v && setLanguage(v)}
@@ -124,9 +142,18 @@ export default function Settings() {
             title={t("settings.tutorialTitle")}
             description={t("settings.tutorialDesc")}
           >
-            <Button variant="light" radius="md" size="md" className={classes.actionBtn}>
-              {t("common.start")} 
-            </Button>
+            <Box data-tour="settings-tutorial-card">
+              <Button
+                variant="light"
+                radius="md"
+                size="md"
+                className={classes.actionBtn}
+                onClick={() => tour.start()}
+
+              >
+                {t("common.start")}
+              </Button>
+            </Box>
           </SettingsCard>
         </Box>
       </Container>
