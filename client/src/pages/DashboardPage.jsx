@@ -276,6 +276,7 @@ function TopPosts() {
 function NextActions() {
   const navigate = useNavigate();
   return (
+    <>
     <CardSection title="Next actions" subtitle="Auto-suggested briefs based on momentum">
       <List spacing="sm" className={classes.listReset}>
         {BRIEFS.map((b, i) => (
@@ -325,6 +326,7 @@ function NextActions() {
         </div>
       </CardSection>
     </div>
+    </>
   );
 }
 

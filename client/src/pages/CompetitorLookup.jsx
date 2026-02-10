@@ -10,6 +10,7 @@ import {
   Divider,
   Group,
   LoadingOverlay,
+  ScrollArea,
   SimpleGrid,
   Stack,
   Text,
