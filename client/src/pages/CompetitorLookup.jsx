@@ -28,6 +28,7 @@ import {
   IconCopy,
   IconSearch,
   IconUser,
+  IconBrandLinkedin,
 } from "@tabler/icons-react";
 import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
@@ -41,10 +42,12 @@ export default function CompetitorLookup() {
 
   const [username, setUsername] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [youtubeResult, setYoutubeResult] = useState(null);
+  const [linkedinResult, setLinkedinResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
 
   const backends = useMemo(() => {
@@ -113,6 +116,42 @@ export default function CompetitorLookup() {
 
     for (const base of backends) {
       const url = `${base.replace(/\/+$/, "")}/api/youtube/transcript?video=${encodeURIComponent(trimmed)}`;
+      try {
+        const resp = await fetch(url, { method: "GET" });
+        const ct = resp.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          const text = await resp.text();
+          throw new Error(`Expected JSON from ${base}, got: ${text.slice(0, 300)}`);
+        }
+        const json = await resp.json();
+        if (!resp.ok) {
+          const msg =
+            json?.error ||
+            `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
+          throw new Error(msg);
+        }
+        return { ...json, _usedBackend: base };
+      } catch (e) {
+        attempts.push({ base, error: e?.message || String(e) });
+      }
+    }
+
+    const err = new Error(
+      `Couldn't connect to the server. Please make sure it's running and try again.`
+    );
+    err.type = "backend_error";
+    err.attempts = attempts;
+    throw err;
+  }
+
+  async function tryFetchLinkedIn(linkedinUrlToFetch) {
+    const trimmed = String(linkedinUrlToFetch || "").trim();
+    if (!trimmed) throw new Error("Please enter a LinkedIn post URL.");
+
+    const attempts = [];
+
+    for (const base of backends) {
+      const url = `${base.replace(/\/+$/, "")}/api/linkedin/post?url=${encodeURIComponent(trimmed)}`;
       try {
         const resp = await fetch(url, { method: "GET" });
         const ct = resp.headers.get("content-type") || "";
@@ -222,6 +261,29 @@ export default function CompetitorLookup() {
     }
   }
 
+  async function handleSubmitLinkedIn(e) {
+    e?.preventDefault?.();
+    setError(null);
+    setResult(null);
+    setYoutubeResult(null);
+    setLinkedinResult(null);
+    setConvertedData(null);
+    const u = linkedinUrl.trim();
+    if (!u) {
+      setError("Please enter a LinkedIn post URL.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await tryFetchLinkedIn(u);
+      setLinkedinResult(data);
+    } catch (e) {
+      setError(e?.message || "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function BackendBadge({ base }) {
     const label = base?.replace(/^https?:\/\//, "");
     return (
@@ -236,7 +298,7 @@ export default function CompetitorLookup() {
     return (
       <Group gap="xs" wrap="nowrap">
         <Text fw={500}>{label}:</Text>
-        <Code>{value || "—"}</Code>
+        <Code>{String(value || "—")}</Code>
         <Tooltip label={copied ? "Copied" : "Copy"} withArrow withinPortal>
           <ActionIcon
             aria-label={`Copy ${label}`}
@@ -260,7 +322,7 @@ export default function CompetitorLookup() {
   function PostCard({ post }) {
     if (!post?.text) return null;
 
-    const metrics = post.public_metrics || [];
+    const metrics = post.public_metrics || {};
     const [saving, setSaving] = useState(false);
 
     async function handleSave() {
@@ -360,7 +422,7 @@ export default function CompetitorLookup() {
       <Card withBorder radius="md" shadow="sm">
         <Stack gap="md">
           <Group justify="space-between" align="start">
-            <Title order={4} lineClamp={2}>{data.video?.title || "Untitled Video"}</Title>
+            <Title order={4} lineClamp={2}>{String(data.video?.title || "Untitled Video")}</Title>
             <Badge variant="light" color="red">
               <IconBrandYoutube size={14} style={{ marginRight: 4 }} />
               YouTube
@@ -370,15 +432,15 @@ export default function CompetitorLookup() {
           <Group gap="md" wrap="wrap">
             <Group gap="xs">
               <Text fw={500}>Channel:</Text>
-              <Text>{data.video?.channelTitle || "Unknown"}</Text>
+              <Text>{String(data.video?.channelTitle || "Unknown")}</Text>
             </Group>
             <Group gap="xs">
               <Text fw={500}>Views:</Text>
-              <Text>{(data.video?.stats?.views || 0).toLocaleString()}</Text>
+              <Text>{(Number(data.video?.stats?.views || 0)).toLocaleString()}</Text>
             </Group>
             <Group gap="xs">
               <Text fw={500}>Likes:</Text>
-              <Text>{(data.video?.stats?.likes || 0).toLocaleString()}</Text>
+              <Text>{(Number(data.video?.stats?.likes || 0)).toLocaleString()}</Text>
             </Group>
             <Group gap="xs">
               <Text fw={500}>Published:</Text>
@@ -389,7 +451,7 @@ export default function CompetitorLookup() {
           {data.video?.description && (
             <div>
               <Text fw={500} mb="xs">Description:</Text>
-              <Text size="sm" lineClamp={3}>{data.video.description}</Text>
+              <Text size="sm" lineClamp={3}>{String(data.video.description)}</Text>
             </div>
           )}
 
@@ -400,7 +462,7 @@ export default function CompetitorLookup() {
             {data.transcriptAvailable ? (
               <ScrollArea h={200}>
                 <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                  {data.transcript}
+                  {String(data.transcript || "")}
                 </Text>
               </ScrollArea>
             ) : (
@@ -446,6 +508,9 @@ export default function CompetitorLookup() {
             </Tabs.Tab>
             <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} />}>
               YouTube
+            </Tabs.Tab>
+            <Tabs.Tab value="linkedin" leftSection={<IconBrandLinkedin size={16} />}>
+              LinkedIn
             </Tabs.Tab>
           </Tabs.List>
 
@@ -496,6 +561,30 @@ export default function CompetitorLookup() {
               </Group>
             </form>
           </Tabs.Panel>
+
+          <Tabs.Panel value="linkedin" pt="md">
+            <form onSubmit={handleSubmitLinkedIn}>
+              <Group align="end" wrap="wrap" gap="sm">
+                <TextInput
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.currentTarget.value)}
+                  placeholder="https://www.linkedin.com/feed/update/..."
+                  label="LinkedIn Post URL"
+                  maw={420}
+                  leftSection={<IconBrandLinkedin size={16} />}
+                  aria-label="LinkedIn post URL to lookup"
+                  autoComplete="off"
+                />
+                <Button
+                  type="submit"
+                  leftSection={<IconSearch size={16} />}
+                  disabled={!linkedinUrl.trim() || loading}
+                >
+                  Lookup
+                </Button>
+              </Group>
+            </form>
+          </Tabs.Panel>
         </Tabs>
 
         {error && (
@@ -525,7 +614,7 @@ export default function CompetitorLookup() {
                 <Group gap="md" wrap="wrap">
                   <Group gap="xs">
                     <Text fw={500}>Username:</Text>
-                    <Code>{result.username || "—"}</Code>
+                    <Code>{String(result.username || "—")}</Code>
                   </Group>
                   <Copyable value={result.userId} label="User ID" />
                   <Group gap="xs">
@@ -553,16 +642,16 @@ export default function CompetitorLookup() {
                         <Group gap="md" wrap="wrap">
                           <Group gap="xs">
                             <Text fw={500}>Name/Source:</Text>
-                            <Badge variant="light">{item["Name/Source"]}</Badge>
+                            <Badge variant="light">{String(item["Name/Source"] || "Unknown")}</Badge>
                           </Group>
                           <Group gap="xs">
                             <Text fw={500}>Engagement:</Text>
-                            <Badge variant="light" color="green">{item.Engagement}</Badge>
+                            <Badge variant="light" color="green">{String(item.Engagement || 0)}</Badge>
                           </Group>
                         </Group>
                         <Text size="sm" mt="xs" style={{ whiteSpace: "pre-wrap" }}>
-                          <Text fw={500} span>Message:</Text> {item.Message.substring(0, 150)}
-                          {item.Message.length > 150 ? "..." : ""}
+                          <Text fw={500} span>Message:</Text> {String(item.Message || "").substring(0, 150)}
+                          {String(item.Message || "").length > 150 ? "..." : ""}
                         </Text>
                       </Card>
                     ))}
@@ -590,6 +679,73 @@ export default function CompetitorLookup() {
         {youtubeResult && (
           <Stack gap="lg">
             <YouTubeCard data={youtubeResult} />
+          </Stack>
+        )}
+
+        {linkedinResult && (
+          <Stack gap="lg">
+            <Card withBorder radius="md" shadow="sm" p="lg">
+              <Stack gap="md">
+                <Group justify="space-between">
+                  <Title order={4}>LinkedIn Post</Title>
+                  <BackendBadge base={linkedinResult._usedBackend} />
+                </Group>
+
+                <Card withBorder radius="sm" p="md" styles={{ root: { backgroundColor: '#f5f5f5' } }}>
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="flex-start">
+                      <Stack gap="xs">
+                        <Text fw={600} size="lg">{String(linkedinResult.post.author || "Unknown Author")}</Text>
+                        <Text size="sm" c="dimmed">{linkedinResult.post.publishedAt ? new Date(linkedinResult.post.publishedAt).toLocaleDateString() : 'Date unknown'}</Text>
+                      </Stack>
+                      <Badge variant="light">LinkedIn</Badge>
+                    </Group>
+
+                    <Text style={{ whiteSpace: "pre-wrap" }}>
+                      {String(linkedinResult.post.content || "No content")}
+                    </Text>
+
+                    {linkedinResult.post.image && (
+                      <div style={{ maxHeight: '300px', overflow: 'hidden', borderRadius: '8px' }}>
+                        <img
+                          src={linkedinResult.post.image}
+                          alt="Post"
+                          style={{ width: '100%', height: 'auto' }}
+                        />
+                      </div>
+                    )}
+
+                    <Group gap="lg" mt="md">
+                      <Group gap="xs">
+                        <Text size="sm" fw={500}>Likes:</Text>
+                        <Badge variant="dot" color="blue">{linkedinResult.post.stats.likes}</Badge>
+                      </Group>
+                      <Group gap="xs">
+                        <Text size="sm" fw={500}>Comments:</Text>
+                        <Badge variant="dot" color="green">{linkedinResult.post.stats.comments}</Badge>
+                      </Group>
+                      <Group gap="xs">
+                        <Text size="sm" fw={500}>Shares:</Text>
+                        <Badge variant="dot" color="orange">{linkedinResult.post.stats.shares}</Badge>
+                      </Group>
+                      <Group gap="xs">
+                        <Text size="sm" fw={500}>Views:</Text>
+                        <Badge variant="dot" color="purple">{linkedinResult.post.stats.views}</Badge>
+                      </Group>
+                    </Group>
+                  </Stack>
+                </Card>
+
+                <Group justify="flex-end">
+                  <Button
+                    variant="light"
+                    onClick={() => window.open(linkedinResult.url, '_blank')}
+                  >
+                    View on LinkedIn
+                  </Button>
+                </Group>
+              </Stack>
+            </Card>
           </Stack>
         )}
       </Stack>

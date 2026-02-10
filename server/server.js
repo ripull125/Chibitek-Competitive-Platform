@@ -622,3 +622,79 @@ app.get("/api/youtube/transcript", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+app.get("/api/linkedin/post", async (req, res) => {
+  try {
+    const { url } = req.query;
+
+    if (!url) {
+      return res.status(400).json({ error: "LinkedIn post URL is required" });
+    }
+
+    if (!process.env.SCRAPE_CREATORS_TOKEN1) {
+      return res.status(500).json({ error: "SCRAPE_CREATORS_TOKEN1 not configured" });
+    }
+
+    // Call ScrapeCreators LinkedIn endpoint with GET request
+    const apiUrl = `https://api.scrapecreators.com/v1/linkedin/post?url=${encodeURIComponent(url)}`;
+    console.log('Calling ScrapeCreators API:', apiUrl);
+
+    const scrapCreatorsRes = await fetch(apiUrl, {
+      headers: {
+        'x-api-key': process.env.SCRAPE_CREATORS_TOKEN1
+      }
+    });
+
+    console.log('ScrapeCreators response status:', scrapCreatorsRes.status);
+
+    const responseText = await scrapCreatorsRes.text();
+    console.log('ScrapeCreators response text:', responseText.slice(0, 500));
+
+    if (!scrapCreatorsRes.ok) {
+      console.error('ScrapeCreators API error:', scrapCreatorsRes.status, responseText);
+      return res.status(scrapCreatorsRes.status).json({
+        error: `ScrapeCreators API error: ${scrapCreatorsRes.status}`,
+        details: responseText.slice(0, 500)
+      });
+    }
+
+    let linkedinData;
+    try {
+      linkedinData = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error('Failed to parse ScrapeCreators response:', parseErr.message);
+      return res.status(500).json({
+        error: 'Invalid JSON response from ScrapeCreators API',
+        received: responseText.slice(0, 200)
+      });
+    }
+
+    console.log('Parsed LinkedIn data:', JSON.stringify(linkedinData).slice(0, 500));
+
+    // Transform response to match our format
+    const postData = {
+      url,
+      post: {
+        id: linkedinData.id || linkedinData.postId || url,
+        content: linkedinData.content || linkedinData.text || '',
+        author: linkedinData.author || linkedinData.authorName || '',
+        authorId: linkedinData.authorId || linkedinData.authorUrl || '',
+        publishedAt: linkedinData.publishedAt || linkedinData.postedDate || new Date().toISOString(),
+        stats: {
+          likes: Number(linkedinData.likes || linkedinData.likeCount || 0),
+          comments: Number(linkedinData.comments || linkedinData.commentCount || 0),
+          shares: Number(linkedinData.shares || linkedinData.shareCount || 0),
+          views: Number(linkedinData.views || linkedinData.viewCount || 0),
+        },
+        image: linkedinData.image || linkedinData.images?.[0] || null,
+      },
+      source: 'scrapecreators',
+      rawData: linkedinData
+    };
+
+    return res.json(postData);
+  } catch (err) {
+    console.error("LinkedIn post error:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
