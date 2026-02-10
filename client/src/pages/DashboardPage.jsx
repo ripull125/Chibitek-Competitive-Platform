@@ -96,6 +96,17 @@ const COMP_FEED = [
   { who: "Kodex", platform: "LinkedIn", title: "AI Security launch recap", kw: "ai security", eng: 910 },
 ];
 
+const TOP_POSTS = [
+  { who: "Chibitek", platform: "LinkedIn", title: "AI Security launch recap", eng: 980 },
+  { who: "Chibitek", platform: "X", title: "Endpoint MDR myths", eng: 488 },
+  { who: "Chibitek", platform: "Instagram", title: "SOC night shift", eng: 420 },
+];
+
+const BRIEFS = [
+  { kw: "AI security", idea: "Platform roundup with customer quote", platform: "LinkedIn", cta: "Draft brief", to: "/keywords?term=AI%20security" },
+  { kw: "24/7 SOC", idea: "Behind-the-scenes reel (night ops)", platform: "Instagram", cta: "Draft brief", to: "/keywords?term=24%2F7%20SOC" },
+];
+
 /* ---------- Card shell ---------- */
 function CardSection({ title, subtitle, right, children, className, pad = "xl" }) {
   return (
@@ -184,6 +195,108 @@ function OpportunityAlerts() {
 function EffectivenessScatter() {
   const navigate = useNavigate();
   return (
+    <CardSection
+      title="What works now"
+      subtitle="X: mentions · Y: avg engagement/mention · Size: total engagement"
+      right={<IconTargetArrow className={classes.cardIcon} />}
+    >
+      <div className={classes.chartBox}>
+        <ResponsiveContainer width="100%" height={360}>
+          <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="mentions" name="Mentions" tickFormatter={fmtK} />
+            <YAxis dataKey="avgEng" name="Avg Eng/mention" />
+            <ZAxis dataKey="totalEng" range={[80, 360]} />
+            <RechartsTooltip
+              cursor={{ strokeDasharray: "3 3" }}
+              contentStyle={{ borderRadius: 8 }}
+              formatter={(v, n) => (n === "Mentions" ? fmtK(v) : v)}
+              labelFormatter={() => ""}
+            />
+            <Scatter
+              data={EFFECTIVENESS}
+              name="Keywords"
+              onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
+            />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+    </CardSection>
+  );
+}
+
+/* ---------- Part 2 ---------- */
+function CompetitorMoves() {
+  return (
+    <CardSection title="Competitor moves" subtitle="Recent high-engagement posts by competitors" className={classes.tall}>
+      <Stack gap="md">
+        {COMP_FEED.map((p, idx) => (
+          <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
+            <Group gap="sm" wrap="nowrap" align="center" className={classes.feedLeft}>
+              <Avatar size={22} radius="xl" className={classes.brandDot} />
+              <Text fw={700}>{p.who}</Text>
+              <Badge variant="light">{p.platform}</Badge>
+              <Text c="dimmed">—</Text>
+              <Text className={classes.linkText}>{p.title}</Text>
+            </Group>
+            <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
+          </Group>
+        ))}
+      </Stack>
+    </CardSection>
+  );
+}
+
+function TopPosts() {
+  return (
+    <CardSection title="Top posts (proof)" subtitle="Your best performers using winning keywords">
+      <Stack gap="md">
+        {TOP_POSTS.map((p, idx) => (
+          <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
+            <Group gap="sm" wrap="nowrap" align="center">
+              <Avatar size={22} radius="xl" className={classes.brandDot} />
+              <Text fw={700}>{p.who}</Text>
+              <Badge variant="light">{p.platform}</Badge>
+              <Text c="dimmed">—</Text>
+              <Text className={classes.linkText}>{p.title}</Text>
+            </Group>
+            <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
+          </Group>
+        ))}
+      </Stack>
+      <Divider my="md" />
+      <Group gap="xs" justify="center" c="dimmed">
+        <IconBolt size={16} />
+        <Text size="sm">Upper-right dots in “What works now” guide quick wins.</Text>
+      </Group>
+    </CardSection>
+  );
+}
+
+function NextActions() {
+  const navigate = useNavigate();
+  return (
+    <>
+    <CardSection title="Next actions" subtitle="Auto-suggested briefs based on momentum">
+      <List spacing="sm" className={classes.listReset}>
+        {BRIEFS.map((b, i) => (
+          <List.Item key={i} className={`${classes.briefRow} ${classes.rowPad}`}>
+            <Group justify="space-between" align="center">
+              <Group gap="sm" align="center">
+                <ThemeIcon variant="light" radius="xl" size={30}>
+                  <IconSparkles size={16} />
+                </ThemeIcon>
+                <Stack gap={2}>
+                  <Text fw={800}>{b.kw}</Text>
+                  <Text size="sm" c="dimmed">{b.idea} · {b.platform}</Text>
+                </Stack>
+              </Group>
+              <Button variant="light" onClick={() => navigate(b.to)}>{b.cta}</Button>
+            </Group>
+          </List.Item>
+        ))}
+      </List>
+    </CardSection>
     <div data-tour="dashboard-chart">
       <CardSection
         title="What works now"
@@ -213,6 +326,7 @@ function EffectivenessScatter() {
         </div>
       </CardSection>
     </div>
+    </>
   );
 }
 
