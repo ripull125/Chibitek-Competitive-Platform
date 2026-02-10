@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   ActionIcon,
@@ -10,7 +10,6 @@ import {
   Divider,
   Group,
   LoadingOverlay,
-  ScrollArea,
   SimpleGrid,
   Stack,
   Text,
@@ -33,6 +32,12 @@ import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
 
 export default function CompetitorLookup() {
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "competitor-lookup" } })
+    );
+  }, []);
+
   const [username, setUsername] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -64,14 +69,11 @@ export default function CompetitorLookup() {
         }
         const json = await resp.json();
         if (!resp.ok) {
-          const msg =
-            json?.error ||
-            `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
+          const msg = json?.error || `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
           throw new Error(msg);
         }
         return { ...json, _usedBackend: base };
       } catch (e) {
-        // Only record the why; continue to next backend.
         attempts.push({ base, error: e?.message || String(e) });
       }
     }
@@ -267,7 +269,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platform_id: 1,                 // X
+            platform_id: 1,
             platform_user_id: result.userId,
             username: result.username,
             platform_post_id: post.id,
@@ -279,14 +281,12 @@ export default function CompetitorLookup() {
           }),
         });
 
-
         if (!resp.ok) {
           const errorText = await resp.text();
           throw new Error(`Failed to save post: ${resp.status} ${errorText}`);
         }
 
         await resp.json();
-        console.log("Post saved successfully");
       } catch (e) {
         console.error("Error saving post:", e);
       } finally {
@@ -303,12 +303,7 @@ export default function CompetitorLookup() {
             <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
           </Group>
 
-          <Button
-            size="xs"
-            variant="light"
-            loading={saving}
-            onClick={handleSave}
-          >
+          <Button size="xs" variant="light" loading={saving} onClick={handleSave}>
             Save
           </Button>
         </Group>
@@ -582,11 +577,7 @@ export default function CompetitorLookup() {
                 The API did not return any tweets for this user.
               </Alert>
             ) : (
-              <SimpleGrid
-                cols={{ base: 1, sm: 2, lg: 3 }}
-                spacing="md"
-                verticalSpacing="md"
-              >
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md" verticalSpacing="md">
                 {posts.map((p) => (
                   <PostCard key={p?.id ?? Math.random()} post={p} />
                 ))}

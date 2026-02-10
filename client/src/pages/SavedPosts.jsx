@@ -21,6 +21,12 @@ export default function SavedPosts() {
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
 
   useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
+  }, []);
+
+  useEffect(() => {
     fetch(apiUrl("/api/posts"))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))

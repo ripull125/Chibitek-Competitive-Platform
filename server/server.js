@@ -377,7 +377,6 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   }
 });
 
-
 app.post("/api/posts", async (req, res) => {
   const {
     platform_id,
@@ -488,6 +487,7 @@ app.post("/api/posts", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get("/api/posts", async (req, res) => {
   try {
     const { data: posts, error } = await supabase

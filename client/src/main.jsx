@@ -1,11 +1,16 @@
-// client/src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n/i18n";
+import AppTourProvider from "./tour/AppTourProvider.jsx";
 
-import { MantineProvider, ScrollArea, ColorSchemeScript } from "@mantine/core";
+import {
+  MantineProvider,
+  ScrollArea,
+  ColorSchemeScript
+} from "@mantine/core";
 import "@mantine/core/styles.css";
+
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import RequireAuth from "./auth/RequireAuth.jsx";
@@ -26,105 +31,27 @@ import SavedPosts from "./pages/SavedPosts.jsx";
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
 
-
-
 function AppLayout() {
   return (
     <div className="app-layout">
       <aside className="app-sidebar">
         <NavbarSimple />
       </aside>
+
       <main className="app-main">
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <DashboardPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/competitor-lookup"
-              element={
-                <RequireAuth>
-                  <CompetitorLookup />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/savedPosts"
-              element={
-                <RequireAuth>
-                  <SavedPosts />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/placeholder"
-              element={
-                <RequireAuth>
-                  <Placeholder />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/keywords"
-              element={
-                <RequireAuth>
-                  <KeywordTracking />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/competitors"
-              element={
-                <RequireAuth>
-                  <CompetitorTracking />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <RequireAuth>
-                  <Reports />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/chat"
-              element={
-                <RequireAuth>
-                  <Chat />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <RequireAuth>
-                  <Settings />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <RequireAuth>
-                  <Profile />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/connected-integrations"
-              element={
-                <RequireAuth>
-                  <ConnectedIntegrations />
-                </RequireAuth>
-              }
-            />
+            <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+            <Route path="/competitor-lookup" element={<RequireAuth><CompetitorLookup /></RequireAuth>} />
+            <Route path="/savedPosts" element={<RequireAuth><SavedPosts /></RequireAuth>} />
+            <Route path="/placeholder" element={<RequireAuth><Placeholder /></RequireAuth>} />
+            <Route path="/keywords" element={<RequireAuth><KeywordTracking /></RequireAuth>} />
+            <Route path="/competitors" element={<RequireAuth><CompetitorTracking /></RequireAuth>} />
+            <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
+            <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+            <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+            <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="/connected-integrations" element={<RequireAuth><ConnectedIntegrations /></RequireAuth>} />
           </Routes>
         </ScrollArea>
       </main>
@@ -138,10 +65,13 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <I18nextProvider i18n={i18n}>
       <MantineProvider defaultColorScheme="light">
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/*" element={<AppLayout />} />
-          </Routes>
+          {/* IMPORTANT: provider must wrap BOTH login and app */}
+          <AppTourProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/*" element={<AppLayout />} />
+            </Routes>
+          </AppTourProvider>
         </BrowserRouter>
       </MantineProvider>
     </I18nextProvider>

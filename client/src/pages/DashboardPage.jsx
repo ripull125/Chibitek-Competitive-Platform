@@ -42,7 +42,8 @@ import { useNavigate } from "react-router-dom";
 import classes from "./DashboardPage.module.css";
 
 /* ---------- Utils & demo data ---------- */
-const fmtK = (n) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString());
+const fmtK = (n) =>
+  n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString();
 
 const KPI = [
   { label: "Mentions", value: 18920, delta: +14 },
@@ -52,9 +53,33 @@ const KPI = [
 ];
 
 const ALERTS = [
-  { icon: IconTrendingUp, title: "Rising category: AI Security", detail: "+38% mentions, engagement holding steady", link: { to: "/keywords?focus=category&value=AI%20Security", label: "Open in Tracking" } },
-  { icon: IconSparkles, title: "Niche hit: 24/7 SOC", detail: "Low volume, high resonance (120 avg/mention)", link: { to: "/keywords?term=24%2F7%20SOC", label: "Open in Tracking" } },
-  { icon: IconChartDots, title: "Saturation risk: Zero Trust", detail: "Volume ↑, engagement ↓ week-over-week", link: { to: "/keywords?term=Zero%20Trust", label: "Investigate" } },
+  {
+    icon: IconTrendingUp,
+    title: "Rising category: AI Security",
+    detail: "+38% mentions, engagement holding steady",
+    link: {
+      to: "/keywords?focus=category&value=AI%20Security",
+      label: "Open in Tracking",
+    },
+  },
+  {
+    icon: IconSparkles,
+    title: "Niche hit: 24/7 SOC",
+    detail: "Low volume, high resonance (120 avg/mention)",
+    link: {
+      to: "/keywords?term=24%2F7%20SOC",
+      label: "Open in Tracking",
+    },
+  },
+  {
+    icon: IconChartDots,
+    title: "Saturation risk: Zero Trust",
+    detail: "Volume ↑, engagement ↓ week-over-week",
+    link: {
+      to: "/keywords?term=Zero%20Trust",
+      label: "Investigate",
+    },
+  },
 ];
 
 const EFFECTIVENESS = [
@@ -110,52 +135,60 @@ function CardSection({ title, subtitle, right, children, className, pad = "xl" }
 /* ---------- Part 1 ---------- */
 function KPIStrip() {
   return (
-    <CardSection title="Engagement snapshot" right={<IconBolt className={classes.cardIcon} />}>
-      <div className={classes.kpis}>
-        {KPI.map((k) => (
-          <div key={k.label} className={classes.kpi}>
-            <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{k.label}</Text>
-            <Group gap="xs" align="end" wrap="nowrap">
-              <Title order={2} className={classes.kpiValue}>
-                {typeof k.value === "number" ? fmtK(k.value) : k.value}
-              </Title>
-              <Badge radius="sm" variant="light" className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}>
-                {k.delta >= 0 ? `+${k.delta}%` : `${k.delta}%`}
-              </Badge>
-            </Group>
-          </div>
-        ))}
-      </div>
-    </CardSection>
+    <div data-tour="dashboard-kpis">
+      <CardSection title="Engagement snapshot" right={<IconBolt className={classes.cardIcon} />}>
+        <div className={classes.kpis}>
+          {KPI.map((k) => (
+            <div key={k.label} className={classes.kpi}>
+              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{k.label}</Text>
+              <Group gap="xs" align="end" wrap="nowrap">
+                <Title order={2} className={classes.kpiValue}>
+                  {typeof k.value === "number" ? fmtK(k.value) : k.value}
+                </Title>
+                <Badge radius="sm" variant="light" className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}>
+                  {k.delta >= 0 ? `+${k.delta}%` : `${k.delta}%`}
+                </Badge>
+              </Group>
+            </div>
+          ))}
+        </div>
+      </CardSection>
+    </div>
   );
 }
 
 function OpportunityAlerts() {
   const navigate = useNavigate();
   return (
-    <CardSection title="Opportunity alerts" subtitle="Fast movers & watchouts">
-      <Stack gap="md">
-        {ALERTS.map((a, i) => {
-          const Icon = a.icon;
-          return (
-            <Group key={i} justify="space-between" align="center" className={classes.rowPad}>
-              <Group gap="sm">
-                <ThemeIcon variant="light" radius="lg" size={36}>
-                  <Icon size={18} />
-                </ThemeIcon>
-                <Stack gap={2}>
-                  <Text fw={800}>{a.title}</Text>
-                  <Text size="sm" c="dimmed">{a.detail}</Text>
-                </Stack>
+    <div data-tour="dashboard-alerts">
+      <CardSection title="Opportunity alerts" subtitle="Fast movers & watchouts">
+        <Stack gap="md">
+          {ALERTS.map((a, i) => {
+            const Icon = a.icon;
+            return (
+              <Group key={i} justify="space-between" align="center" className={classes.rowPad}>
+                <Group gap="sm">
+                  <ThemeIcon variant="light" radius="lg" size={36}>
+                    <Icon size={18} />
+                  </ThemeIcon>
+                  <Stack gap={2}>
+                    <Text fw={800}>{a.title}</Text>
+                    <Text size="sm" c="dimmed">{a.detail}</Text>
+                  </Stack>
+                </Group>
+                <Button
+                  variant="light"
+                  rightSection={<IconExternalLink size={16} />}
+                  onClick={() => navigate(a.link.to)}
+                >
+                  {a.link.label}
+                </Button>
               </Group>
-              <Button variant="light" rightSection={<IconExternalLink size={16} />} onClick={() => navigate(a.link.to)}>
-                {a.link.label}
-              </Button>
-            </Group>
-          );
-        })}
-      </Stack>
-    </CardSection>
+            );
+          })}
+        </Stack>
+      </CardSection>
+    </div>
   );
 }
 
@@ -263,6 +296,35 @@ function NextActions() {
         ))}
       </List>
     </CardSection>
+    <div data-tour="dashboard-chart">
+      <CardSection
+        title="What works now"
+        subtitle="X: mentions · Y: avg engagement/mention · Size: total engagement"
+        right={<IconTargetArrow className={classes.cardIcon} />}
+      >
+        <div className={classes.chartBox}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="mentions" name="Mentions" tickFormatter={fmtK} />
+              <YAxis dataKey="avgEng" name="Avg Eng/mention" />
+              <ZAxis dataKey="totalEng" range={[80, 360]} />
+              <RechartsTooltip
+                cursor={{ strokeDasharray: "3 3" }}
+                contentStyle={{ borderRadius: 8 }}
+                formatter={(v, n) => (n === "Mentions" ? fmtK(v) : v)}
+                labelFormatter={() => ""}
+              />
+              <Scatter
+                data={EFFECTIVENESS}
+                name="Keywords"
+                onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+      </CardSection>
+    </div>
   );
 }
 
@@ -336,12 +398,33 @@ function RecentPosts() {
 /* ---------- Page ---------- */
 export default function DashboardPage() {
   const [page, setPage] = React.useState(0);
-  const [dir, setDir] = React.useState(1); // 1 = down (to page 1), -1 = up (to page 0)
+  const [dir, setDir] = React.useState(1);
 
-  const go = (next) => {
-    setDir(next > page ? 1 : -1);
-    setPage(Math.max(0, Math.min(1, next)));
-  };
+  const go = React.useCallback((next) => {
+    setPage((prev) => {
+      const clamped = Math.max(0, Math.min(1, next));
+      setDir(clamped > prev ? 1 : -1);
+      return clamped;
+    });
+  }, []);
+
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
+  }, []);
+
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("chibitek:dashboard", { detail: { page } }));
+  }, [page]);
+
+  React.useEffect(() => {
+    const onTour = (e) => {
+      const d = e?.detail;
+      if (!d) return;
+      if (d.type === "setDashboardSlide") go(d.page);
+    };
+    window.addEventListener("chibitek:tour", onTour);
+    return () => window.removeEventListener("chibitek:tour", onTour);
+  }, [go]);
 
   return (
     <div className={classes.page}>
@@ -350,11 +433,8 @@ export default function DashboardPage() {
           <Title order={2} className={classes.title}>Dashboard</Title>
         </header>
 
-        {/* Content + side controls */}
         <div className={classes.sliderWrap}>
-          {/* Big content box */}
           <Box className={classes.viewport}>
-            {/* Slide 1 */}
             <Transition
               mounted={page === 0}
               transition={dir === 1 ? "slide-up" : "slide-down"}
@@ -372,7 +452,6 @@ export default function DashboardPage() {
               )}
             </Transition>
 
-            {/* Slide 2 */}
             <Transition
               mounted={page === 1}
               transition={dir === 1 ? "slide-up" : "slide-down"}
@@ -381,20 +460,47 @@ export default function DashboardPage() {
             >
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
-                  <ScrollArea style={{ height: "100%" }}>
-                    <div className={classes.grid}>
-                      <div className={`${classes.col} ${classes.span7}`}><CompetitorMoves /></div>
-                      <div className={`${classes.col} ${classes.span5}`}><TopPosts /></div>
-                      <div className={`${classes.col} ${classes.span12}`}><RecentPosts /></div>
-                      <div className={`${classes.col} ${classes.span12}`}><NextActions /></div>
+                  {/* CENTERED SLIDE 2 CONTENT */}
+                  <div
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 16,
+                    }}
+                  >
+                    {/* Tight wrapper so spotlight hugs the card, no gutters */}
+                    <div
+                      data-tour="dashboard-slide-2"
+                      style={{
+                        width: "min(920px, 96%)",
+                        borderRadius: 16,
+                      }}
+                    >
+                      <CardSection title="Competitor moves" subtitle="Recent high-engagement posts by competitors">
+                        <Stack gap="md">
+                          {COMP_FEED.map((p, idx) => (
+                            <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
+                              <Group gap="sm" wrap="nowrap" align="center" className={classes.feedLeft}>
+                                <Avatar size={22} radius="xl" className={classes.brandDot} />
+                                <Text fw={700}>{p.who}</Text>
+                                <Badge variant="light">{p.platform}</Badge>
+                                <Text c="dimmed">—</Text>
+                                <Text className={classes.linkText}>{p.title}</Text>
+                              </Group>
+                              <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
+                            </Group>
+                          ))}
+                        </Stack>
+                      </CardSection>
                     </div>
-                  </ScrollArea>
+                  </div>
                 </Box>
               )}
             </Transition>
           </Box>
 
-          {/* Vertical side navigation (always visible) */}
           <div className={classes.sideNav}>
             <Tooltip label="Previous">
               <ActionIcon
