@@ -11,9 +11,19 @@ import {
   ActionIcon,
   Tooltip,
   Modal,
+  Spoiler,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
+
+function PlatformBadge({ platformId }) {
+  const isX = platformId === 1;
+  const isYouTube = platformId === 8;
+
+  if (isYouTube) return <Badge variant="light">YouTube</Badge>;
+  if (isX) return <Badge variant="light">X</Badge>;
+  return <Badge variant="light">Other</Badge>;
+}
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
@@ -76,47 +86,14 @@ export default function SavedPosts() {
           return (
             <Card key={p.id} withBorder radius="md">
               <Stack gap="xs">
-                <Group justify="space-between" align="flex-start">
-                  {/* ─────────────────────────────
-                     YOUTUBE POST LAYOUT
-                  ───────────────────────────── */}
-                  {isYouTube ? (
-                    <div style={{ flex: 1 }}>
-                      <Text fw={600} size="lg">
-                        {p.extra?.title || "Untitled Video"}{" "}
-                        <Text span fw={400} c="dimmed">
-                          — {p.extra?.channelTitle || "Unknown Creator"}
-                        </Text>
-                      </Text>
-
-                      <Text size="sm" c="dimmed" mt="xs">
-                        {p.extra?.description
-                          ? p.extra.description.length > 200
-                            ? `${p.extra.description.slice(0, 200)}…`
-                            : p.extra.description
-                          : "No description available"}
-                      </Text>
-
-                      {/* Transcript */}
-                      <Text size="sm" mt="sm">
-                        <Text span fw={500}>
-                          Transcript:{" "}
-                        </Text>
-                        {p.content
-                          ? p.content.length > 300
-                            ? `${p.content.slice(0, 300)}…`
-                            : p.content
-                          : "No transcript available"}
-                      </Text>
-                    </div>
-                  ) : (
-                    /* ─────────────────────────────
-                       X POST LAYOUT 
-                    ───────────────────────────── */
-                    <Text fw={500} style={{ flex: 1 }}>
-                      {p.content}
+                {/* Header row: platform tag + date (left), delete (right) */}
+                <Group justify="space-between" align="center">
+                  <Group gap="xs" align="center">
+                    <PlatformBadge platformId={p.platform_id} />
+                    <Text size="xs" c="dimmed">
+                      {new Date(p.published_at).toLocaleString()}
                     </Text>
-                  )}
+                  </Group>
 
                   <Tooltip label="Delete post" withArrow>
                     <ActionIcon
@@ -129,16 +106,58 @@ export default function SavedPosts() {
                   </Tooltip>
                 </Group>
 
+                {/* Content */}
+                {isYouTube ? (
+                  <Stack gap="xs">
+                    <Text fw={600} size="lg">
+                      {p.extra?.title || "Untitled Video"}{" "}
+                      <Text span fw={400} c="dimmed">
+                        — {p.extra?.channelTitle || "Unknown Creator"}
+                      </Text>
+                    </Text>
+
+                    <Text size="sm" c="dimmed">
+                      {p.extra?.description
+                        ? p.extra.description.length > 200
+                          ? `${p.extra.description.slice(0, 200)}…`
+                          : p.extra.description
+                        : "No description available"}
+                    </Text>
+
+                    {/* Transcript (collapsible) */}
+                    {p.content ? (
+                      <Stack gap={4} mt="sm">
+                        <Text size="sm" fw={500}>
+                          Transcript
+                        </Text>
+
+                        <Spoiler
+                          maxHeight={90}
+                          showLabel="See more"
+                          hideLabel="See less"
+                        >
+                          <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
+                            {p.content}
+                          </Text>
+                        </Spoiler>
+                      </Stack>
+                    ) : (
+                      <Text size="sm" mt="sm" c="dimmed">
+                        No transcript available
+                      </Text>
+                    )}
+                  </Stack>
+                ) : (
+                  <Text fw={500}>{p.content}</Text>
+                )}
+
+                {/* Metrics */}
                 <Group>
                   <Badge>❤️ {p.likes}</Badge>
                   {isX && <Badge>🔁 {p.shares}</Badge>}
                   <Badge>💬 {p.comments}</Badge>
                   {isYouTube && <Badge>👀 {p.extra?.views || 0}</Badge>}
                 </Group>
-
-                <Text size="xs" c="dimmed">
-                  {new Date(p.published_at).toLocaleString()}
-                </Text>
               </Stack>
             </Card>
           );
