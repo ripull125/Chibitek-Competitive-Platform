@@ -20,14 +20,17 @@ import {
 import {
   IconBrandFacebook,
   IconBrandInstagram,
+  IconBrandLinkedin,
+  IconBrandReddit,
   IconBrandTiktok,
   IconBrandX,
+  IconBrandYoutube,
   IconPlugConnected,
   IconPlugConnectedX,
   IconRefresh,
   IconSearch,
 } from "@tabler/icons-react";
-import "../utils/ui.css"; // shared title
+import "../utils/ui.css";
 
 function formatTime(d) {
   if (!d) return "Never";
@@ -41,6 +44,27 @@ const CATALOG = [
     name: "X (Twitter)",
     desc: "Public tweets, profiles, and engagement.",
     icon: IconBrandX,
+    needsToken: false,
+  },
+  {
+    key: "youtube",
+    name: "YouTube",
+    desc: "Videos, channels, transcripts, and engagement.",
+    icon: IconBrandYoutube,
+    needsToken: false,
+  },
+  {
+    key: "linkedin",
+    name: "LinkedIn",
+    desc: "Company pages, public posts, and engagement.",
+    icon: IconBrandLinkedin,
+    needsToken: false,
+  },
+  {
+    key: "reddit",
+    name: "Reddit",
+    desc: "Posts, threads, comments, and engagement.",
+    icon: IconBrandReddit,
     needsToken: false,
   },
   {
@@ -304,10 +328,23 @@ export default function ConnectedIntegrations() {
 
               <TextInput
                 label="Account / handle / URL"
-                placeholder={prov.key === "twitter" ? "@acme_corp" : "your account"}
+                placeholder={
+                  prov.key === "twitter"
+                    ? "@acme_corp"
+                    : prov.key === "youtube"
+                    ? "Channel URL or @handle"
+                    : prov.key === "linkedin"
+                    ? "Company page URL or profile"
+                    : prov.key === "reddit"
+                    ? "u/username or subreddit URL"
+                    : "your account"
+                }
                 value={connectModal.account}
                 onChange={(e) =>
-                  setConnectModal((m) => ({ ...m, account: e.currentTarget.value }))
+                  setConnectModal((m) => ({
+                    ...m,
+                    account: e.currentTarget.value,
+                  }))
                 }
                 withAsterisk
               />
@@ -318,7 +355,10 @@ export default function ConnectedIntegrations() {
                   placeholder="paste your token"
                   value={connectModal.token}
                   onChange={(e) =>
-                    setConnectModal((m) => ({ ...m, token: e.currentTarget.value }))
+                    setConnectModal((m) => ({
+                      ...m,
+                      token: e.currentTarget.value,
+                    }))
                   }
                   withAsterisk
                 />
@@ -342,7 +382,9 @@ export default function ConnectedIntegrations() {
         centered
       >
         {(() => {
-          const prov = platforms.find((p) => p.key === confirmDisconnect.providerKey);
+          const prov = platforms.find(
+            (p) => p.key === confirmDisconnect.providerKey
+          );
           if (!prov) return null;
 
           return (
