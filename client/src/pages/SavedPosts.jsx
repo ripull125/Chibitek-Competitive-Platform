@@ -47,6 +47,13 @@ export default function SavedPosts() {
 
     setLoading(true);
     fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
+  }, []);
+
+  useEffect(() => {
+    fetch(apiUrl("/api/posts"))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
@@ -82,7 +89,6 @@ export default function SavedPosts() {
         throw new Error(error.error || "Failed to delete post");
       }
 
-      // Remove from local state
       setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch (err) {
       console.error("Delete failed:", err);
@@ -93,6 +99,7 @@ export default function SavedPosts() {
   return (
     <Card p="lg" withBorder radius="md" style={{ position: "relative" }}>
       <LoadingOverlay visible={loading} />
+
       <Stack>
         <Title order={2}>Saved Posts</Title>
 
@@ -109,29 +116,10 @@ export default function SavedPosts() {
                 <Text fw={500} style={{ flex: 1 }}>
                   {p.content}
                 </Text>
-                <Tooltip label="Delete post" withArrow>
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    onClick={() => openDeleteConfirm(p.id)}
-                  >
-                    <IconTrash size={18} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-
-              <Group>
-                <Badge>❤️ {p.likes}</Badge>
-                <Badge>🔁 {p.shares}</Badge>
-                <Badge>💬 {p.comments}</Badge>
-              </Group>
-
-              <Text size="xs" c="dimmed">
-                {new Date(p.published_at).toLocaleString()}
-              </Text>
-            </Stack>
-          </Card>
-        ))}
+              </Stack>
+            </Card>
+          );
+        })}
       </Stack>
 
       <Modal
@@ -141,7 +129,10 @@ export default function SavedPosts() {
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Text>
+            Are you sure you want to delete this post? This action cannot be
+            undone.
+          </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeDeleteConfirm}>
               Cancel

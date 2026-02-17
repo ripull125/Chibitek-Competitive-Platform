@@ -7,8 +7,58 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const execAsync = promisify(exec);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function extractYouTubeVideoId(input) {
+  if (!input) return null;
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+
+  try {
+    const url = new URL(input);
+    if (url.hostname.includes("youtube.com")) {
+      return url.searchParams.get("v");
+    }
+    if (url.hostname === "youtu.be") {
+      return url.pathname.slice(1);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+// Helper function to get transcript using Python library (youtube-transcript-api)
+async function getTranscriptFromPython(videoId) {
+  try {
+    const pythonScript = path.join(__dirname, 'get_transcript.py');
+    const { stdout, stderr } = await execAsync(`python3 "${pythonScript}" "${videoId}"`, {
+      timeout: 15000,
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large transcripts
+    });
+
+    if (stderr) {
+      console.error('Python stderr:', stderr);
+    }
+
+    const result = JSON.parse(stdout);
+    if (!result.success) {
+      console.error('Python transcript extraction failed:', result.error);
+    }
+    return result;
+  } catch (err) {
+    console.error('Python transcript extraction error:', err.message);
+  };
+}
 
 const app = express();
 app.use(cors({
@@ -424,6 +474,13 @@ app.post("/api/posts", async (req, res) => {
     shares,
     comments,
     user_id,
+    title,
+    description,
+    channelTitle,
+    videoId,
+    views,
+    author_name,
+    author_handle,
   } = req.body;
 
   if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
@@ -434,6 +491,13 @@ app.post("/api/posts", async (req, res) => {
     // Find or create competitor
     let competitor;
     const { data: existingComp } = await supabase
+    const profileUrl = platform_id === 1
+      ? `https://x.com/${username}`
+      : platform_id === 8
+        ? `https://www.youtube.com/channel/${platform_user_id}`
+        : null;
+
+    const { data: competitor, error: competitorError } = await supabase
       .from("competitors")
       .select("*")
       .eq("platform_id", platform_id)
@@ -501,6 +565,38 @@ app.post("/api/posts", async (req, res) => {
       comments,
     });
 
+    // For YouTube, save additional details
+    if (platform_id === 8) {
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          title,
+          description,
+          channelTitle,
+          videoId,
+          views,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving post details:', detailsError);
+      }
+    }
+
+    // For X (Twitter), save additional details
+    if (platform_id === 1) {
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          author_name: author_name || username,
+          author_handle: author_handle || username,
+          username,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving X post details:', detailsError);
+      }
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error("Save post failed:", err);
@@ -516,24 +612,43 @@ app.get("/api/posts", async (req, res) => {
     const { data: posts, error } = await supabase
       .from("posts")
       .select(`
-        id,
-        content,
-        published_at,
-        post_metrics(likes, shares, comments)
-      `)
-      .eq('user_id', userId)
+  id,
+  platform_id,
+  content,
+  published_at,
+  competitors(display_name),
+  post_metrics(likes, shares, comments),
+  post_details_platform(extra_json)
+`)
       .order("published_at", { ascending: false });
 
     if (error) throw error;
 
-    const formattedPosts = posts.map((post) => ({
-      id: post.id,
-      content: post.content,
-      published_at: post.published_at,
-      likes: post.post_metrics?.[0]?.likes || 0,
-      shares: post.post_metrics?.[0]?.shares || 0,
-      comments: post.post_metrics?.[0]?.comments || 0,
-    }));
+    const formattedPosts = posts.map((post) => {
+      const extra = post.post_details_platform?.[0]?.extra_json || {};
+      const competitorName = post.competitors?.[0]?.display_name;
+
+      return {
+        id: post.id,
+        platform_id: post.platform_id || 0,
+        content: post.content,
+        published_at: post.published_at,
+        likes: post.post_metrics?.[0]?.likes || 0,
+        shares: post.post_metrics?.[0]?.shares || 0,
+        comments: post.post_metrics?.[0]?.comments || 0,
+        extra: {
+          ...extra,
+          // Fallback to competitor name for X posts if author_name not set
+          author_name: extra.author_name || (post.platform_id === 1 ? competitorName : undefined),
+          username: extra.username || competitorName,
+          title: extra.title,
+          description: extra.description,
+          channelTitle: extra.channelTitle,
+          videoId: extra.videoId,
+          views: extra.views,
+        },
+      };
+    });
 
     res.json({ posts: formattedPosts });
   } catch (err) {
@@ -572,5 +687,71 @@ app.delete("/api/posts/:id", async (req, res) => {
   } catch (err) {
     console.error("Delete post failed:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/youtube/transcript", async (req, res) => {
+  try {
+    const { video } = req.query;
+    const videoId = extractYouTubeVideoId(video);
+
+    if (!videoId) {
+      return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
+    }
+
+    if (!process.env.YOUTUBE_API_KEY) {
+      return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
+    }
+
+    // Fetch video metadata using official YouTube API
+    const videoMetaRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
+    );
+    const videoMetaData = await videoMetaRes.json();
+
+    if (!videoMetaData.items?.length) {
+      return res.status(404).json({ error: "Video not found" });
+    }
+
+    const videoItem = videoMetaData.items[0];
+
+    const videoInfo = {
+      title: videoItem.snippet.title,
+      description: videoItem.snippet.description,
+      publishedAt: videoItem.snippet.publishedAt,
+      channelId: videoItem.snippet.channelId,
+      channelTitle: videoItem.snippet.channelTitle,
+      stats: {
+        views: Number(videoItem.statistics.viewCount || 0),
+        likes: Number(videoItem.statistics.likeCount || 0),
+        comments: Number(videoItem.statistics.commentCount || 0),
+      },
+    };
+
+    // Extract transcript using Python library
+    const pythonResult = await getTranscriptFromPython(videoId);
+
+    if (pythonResult.success && pythonResult.transcript) {
+      return res.json({
+        videoId,
+        video: videoInfo,
+        transcriptAvailable: true,
+        language: pythonResult.language || "en",
+        source: "youtube-transcript-api",
+        transcript: pythonResult.transcript,
+      });
+    }
+
+    // Failed to get transcript
+    return res.json({
+      videoId,
+      video: videoInfo,
+      transcriptAvailable: false,
+      transcript: "",
+      reason: pythonResult.error || "No transcript available",
+    });
+  } catch (err) {
+    console.error("YouTube transcript error:", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });

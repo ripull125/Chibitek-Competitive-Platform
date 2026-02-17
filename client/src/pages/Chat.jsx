@@ -1,5 +1,4 @@
-// client/src/pages/Chat.jsx (or ChatInput.jsx if that's the file name you use)
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -14,7 +13,7 @@ import {
   Text,
   TextInput,
   Title,
-} from '@mantine/core';
+} from "@mantine/core";
 import {
   IconDeviceFloppy,
   IconFolderOpen,
@@ -28,29 +27,42 @@ import {
 import { apiUrl } from '../utils/api';
 import { supabase } from '../supabaseClient';
 
-const CHAT_STORAGE_KEY = 'chibitek-chat-state';
+const CHAT_STORAGE_KEY = "chibitek-chat-state";
 
-// use `apiUrl(path)` to build API URLs so `client/src/utils/api.js` handles routing
+const resolveBackendUrl = () => {
+  const envUrl = import.meta.env.e_BACKEND_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  if (typeof window !== "undefined" && window.location?.origin) {
+    const { hostname, port, protocol } = window.location;
+    if (hostname === "localhost" && port === "5173") {
+      return `${protocol}//${hostname}:8080`;
+    }
+    return window.location.origin;
+  }
+  return "";
+};
+
+const backendUrl = resolveBackendUrl();
 
 const SpeechRecognition =
-  typeof window !== 'undefined'
+  typeof window !== "undefined"
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
 const defaultConversation = [
   {
-    role: 'assistant',
-    content: 'Hi! I am ChibitekAI. Ask me anything about your competitive research.',
+    role: "assistant",
+    content: "Hi! I am ChibitekAI. Ask me anything about your competitive research.",
   },
 ];
 
 const loadPersistedChat = () => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
-    console.warn('Failed to load saved chat', err);
+    console.warn("Failed to load saved chat", err);
     return null;
   }
 };
@@ -58,9 +70,9 @@ const loadPersistedChat = () => {
 const fileToAttachment = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
-    const isTextLike = file.type.startsWith('text/') || file.type.includes('json');
+    const isTextLike = file.type.startsWith("text/") || file.type.includes("json");
     reader.onload = () => {
-      const content = typeof reader.result === 'string' ? reader.result : '';
+      const content = typeof reader.result === "string" ? reader.result : "";
       resolve({
         name: file.name,
         type: file.type,
@@ -69,25 +81,24 @@ const fileToAttachment = (file) =>
       });
     };
     reader.onerror = () => reject(reader.error);
-    if (isTextLike) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsDataURL(file);
-    }
+    if (isTextLike) reader.readAsText(file);
+    else reader.readAsDataURL(file);
   });
 
 const buildConversationTitle = (entries) => {
-  const firstUserMessage = entries.find((entry) => entry.role === 'user' && entry.content);
-  if (!firstUserMessage) return 'New chat';
+  const firstUserMessage = entries.find((entry) => entry.role === "user" && entry.content);
+  if (!firstUserMessage) return "New chat";
   const trimmed = firstUserMessage.content.trim();
-  if (!trimmed) return 'New chat';
+  if (!trimmed) return "New chat";
   return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 };
 
 export default function ChatInput() {
   const persisted = useMemo(() => loadPersistedChat(), []);
-  const [message, setMessage] = useState(persisted?.message ?? '');
-  const [conversation, setConversation] = useState(persisted?.conversation ?? defaultConversation);
+  const [message, setMessage] = useState(persisted?.message ?? "");
+  const [conversation, setConversation] = useState(
+    persisted?.conversation ?? defaultConversation
+  );
   const [attachments, setAttachments] = useState(persisted?.attachments ?? []);
   const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -95,7 +106,7 @@ export default function ChatInput() {
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [savedConversations, setSavedConversations] = useState([]);
-  const [saveNotice, setSaveNotice] = useState('');
+  const [saveNotice, setSaveNotice] = useState("");
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
@@ -116,6 +127,9 @@ export default function ChatInput() {
     return () => {
       mounted = false;
     };
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } })
+    );
   }, []);
 
   useEffect(() => {
@@ -123,12 +137,12 @@ export default function ChatInput() {
   }, []);
 
   useEffect(() => {
-    if (!hasHydratedRef.current || typeof window === 'undefined') return;
+    if (!hasHydratedRef.current || typeof window === "undefined") return;
     try {
       const toStore = JSON.stringify({ message, conversation, attachments });
       window.localStorage.setItem(CHAT_STORAGE_KEY, toStore);
     } catch (err) {
-      console.warn('Failed to persist chat', err);
+      console.warn("Failed to persist chat", err);
     }
   }, [message, conversation, attachments]);
 
@@ -137,13 +151,13 @@ export default function ChatInput() {
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = 'en-US';
+    recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map((result) => result[0].transcript)
-        .join(' ');
-      setMessage((prev) => `${prev ? `${prev} ` : ''}${transcript}`.trim());
+        .join(" ");
+      setMessage((prev) => `${prev ? `${prev} ` : ""}${transcript}`.trim());
     };
 
     recognition.onend = () => setIsListening(false);
@@ -155,14 +169,16 @@ export default function ChatInput() {
 
   const handleSend = async () => {
     if (!message.trim() && attachments.length === 0) return;
+
     const userMessage = {
-      role: 'user',
-      content: message.trim() || 'See attached files for context.',
+      role: "user",
+      content: message.trim() || "See attached files for context.",
       attachments,
     };
+
     const updatedConversation = [...conversation, userMessage];
     setConversation(updatedConversation);
-    setMessage('');
+    setMessage("");
     setAttachments([]);
     setIsSending(true);
 
@@ -176,20 +192,23 @@ export default function ChatInput() {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
         throw new Error(`Chat request failed${reason}`);
       }
 
       const data = await response.json();
-      setConversation((prev) => [...prev, { role: 'assistant', content: data.reply || 'No response.' }]);
+      setConversation((prev) => [
+        ...prev,
+        { role: "assistant", content: data.reply || "No response." },
+      ]);
     } catch (error) {
       setConversation((prev) => [
         ...prev,
         {
-          role: 'assistant',
-          content: error?.message?.includes('OPENAI_API_KEY')
-            ? 'Server is missing the OpenAI API key. Please add it and try again.'
-            : 'Sorry, I could not reach the language model right now.',
+          role: "assistant",
+          content: error?.message?.includes("OPENAI_API_KEY")
+            ? "Server is missing the OpenAI API key. Please add it and try again."
+            : "Sorry, I could not reach the language model right now.",
         },
       ]);
     } finally {
@@ -198,7 +217,7 @@ export default function ChatInput() {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -213,17 +232,15 @@ export default function ChatInput() {
       const processed = await Promise.all(files.map((file) => fileToAttachment(file)));
       setAttachments((prev) => [...prev, ...processed]);
     } catch {
-      // ignore
     } finally {
-      event.target.value = '';
+      event.target.value = "";
     }
   };
 
   const toggleListening = () => {
     if (!SpeechRecognition || !recognitionRef.current) return;
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
+    if (isListening) recognitionRef.current.stop();
+    else {
       recognitionRef.current.start();
       setIsListening(true);
     }
@@ -246,7 +263,7 @@ export default function ChatInput() {
       return;
     }
     setIsSaving(true);
-    setSaveNotice('');
+    setSaveNotice("");
     try {
       const response = await fetch(apiUrl('/api/chat/conversations'), {
         method: 'POST',
@@ -257,14 +274,16 @@ export default function ChatInput() {
           user_id: currentUserId,
         }),
       });
+
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
         throw new Error(`Failed to save${reason}`);
       }
-      setSaveNotice('Conversation saved.');
+
+      setSaveNotice("Conversation saved.");
     } catch (error) {
-      setSaveNotice(error.message || 'Failed to save conversation.');
+      setSaveNotice(error.message || "Failed to save conversation.");
     } finally {
       setIsSaving(false);
     }
@@ -281,7 +300,7 @@ export default function ChatInput() {
   };
 
   const handleNewConversation = () => {
-    setMessage('');
+    setMessage("");
     setAttachments([]);
     setConversation(defaultConversation);
     setCurrentConversationId(null);
@@ -298,14 +317,14 @@ export default function ChatInput() {
       const response = await fetch(apiUrl(`/api/chat/conversations?user_id=${encodeURIComponent(currentUserId)}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
         throw new Error(`Failed to load conversations${reason}`);
       }
       const data = await response.json();
       setSavedConversations(data.conversations || []);
     } catch (error) {
       setSavedConversations([]);
-      setSaveNotice(error.message || 'Failed to load conversations.');
+      setSaveNotice(error.message || "Failed to load conversations.");
     } finally {
       setIsLoadingList(false);
     }
@@ -324,20 +343,20 @@ export default function ChatInput() {
       );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
         throw new Error(`Failed to load chat${reason}`);
       }
       const data = await response.json();
       const loadedConversation = data?.conversation?.conversation || data?.conversation;
       if (Array.isArray(loadedConversation)) {
         setConversation(loadedConversation);
-        setMessage('');
+        setMessage("");
         setAttachments([]);
         setCurrentConversationId(conversationId);
         setLoadModalOpen(false);
-        setSaveNotice('');
+        setSaveNotice("");
       } else {
-        throw new Error('Saved conversation is invalid.');
+        throw new Error("Saved conversation is invalid.");
       }
     } catch (error) {
       setSaveNotice(error.message || 'Failed to load conversation.');
@@ -406,43 +425,35 @@ export default function ChatInput() {
   return (
     <Box
       style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary)',
-        padding: '24px',
-        transition: 'background-color 0.3s ease',
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "var(--bg-primary)",
+        padding: "24px",
       }}
     >
-      {/* Centered, constrained width container */}
       <Box
         style={{
-          width: '100%',
-          maxWidth: 'clamp(720px, 80vw, 980px)',
-          marginInline: 'auto',
+          width: "100%",
+          maxWidth: "clamp(720px, 80vw, 980px)",
+          marginInline: "auto",
         }}
       >
-        <Box style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Title
-            style={{
-              fontSize: 32,
-              fontWeight: 400,
-              color: 'var(--text-primary)',
-              margin: 0,
-              transition: 'color 0.3s ease',
-            }}
-          >
+        <Box style={{ textAlign: "center", marginBottom: 28 }}>
+          <Title style={{ fontSize: 32, fontWeight: 400, margin: 0 }}>
             ChibitekAI
           </Title>
           <Text c="dimmed" mt={6}>
             Chat with the model, attach files for context, or speak your prompt.
           </Text>
+
           {saveNotice ? (
             <Text size="sm" c="dimmed" mt={6}>
               {saveNotice}
             </Text>
           ) : null}
+
           <Group justify="center" mt="md">
             <Menu shadow="md" width={240}>
               <Menu.Target>
@@ -454,7 +465,7 @@ export default function ChatInput() {
                   onClick={handleOpenSaveModal}
                   disabled={isSaving}
                 >
-                  {isSaving ? 'Saving...' : 'Save conversation'}
+                  {isSaving ? "Saving..." : "Save conversation"}
                 </Menu.Item>
                 <Menu.Item leftSection={<IconFolderOpen size={16} />} onClick={handleOpenLoadModal}>
                   Load saved chat
@@ -467,148 +478,164 @@ export default function ChatInput() {
           </Group>
         </Box>
 
-        <Paper shadow="sm" radius="lg" p="md" withBorder>
-          <ScrollArea style={{ height: '56vh' }} pr="md">
-            <Box style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {conversation.map((entry, index) => (
-                <Box
-                  key={index}
-                  style={{
-                    display: 'flex',
-                    justifyContent: entry.role === 'user' ? 'flex-end' : 'flex-start',
-                  }}
-                >
-                  <Paper
-                    shadow="xs"
-                    p="sm"
-                    withBorder
+        <div data-tour="chat-root">
+          <Paper shadow="sm" radius="lg" p="md" withBorder>
+            <ScrollArea style={{ height: "56vh" }} pr="md">
+              <Box style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {conversation.map((entry, index) => (
+                  <Box
+                    key={index}
                     style={{
-                      maxWidth: '76%', // message bubble width cap
-                      backgroundColor: entry.role === 'user' ? '#e7f5ff' : 'white',
+                      display: "flex",
+                      justifyContent: entry.role === "user" ? "flex-end" : "flex-start",
                     }}
                   >
-                    <Text size="xs" c="dimmed" mb={4}>
-                      {entry.role === 'user' ? 'You' : 'ChibitekAI'}
-                    </Text>
-                    <Text style={{ whiteSpace: 'pre-wrap' }}>{entry.content}</Text>
-                    {entry.attachments?.length ? (
-                      <Group gap="xs" mt={8} wrap="wrap">
-                        {entry.attachments.map((file) => (
-                          <Badge key={`${file.name}-${file.size}`} color="blue" variant="light">
-                            {file.name}
-                          </Badge>
-                        ))}
-                      </Group>
-                    ) : null}
-                  </Paper>
-                </Box>
-              ))}
-              {isSending ? (
-                <Group gap="xs">
-                  <Loader size="sm" />
-                  <Text c="dimmed">Thinking...</Text>
-                </Group>
-              ) : null}
-            </Box>
-          </ScrollArea>
+                    <Paper
+                      shadow="xs"
+                      p="sm"
+                      withBorder
+                      style={{
+                        maxWidth: "76%",
+                        backgroundColor: entry.role === "user" ? "#e7f5ff" : "white",
+                      }}
+                    >
+                      <Text size="xs" c="dimmed" mb={4}>
+                        {entry.role === "user" ? "You" : "ChibitekAI"}
+                      </Text>
+                      <Text style={{ whiteSpace: "pre-wrap" }}>{entry.content}</Text>
+                      {entry.attachments?.length ? (
+                        <Group gap="xs" mt={8} wrap="wrap">
+                          {entry.attachments.map((file) => (
+                            <Badge key={`${file.name}-${file.size}`} color="blue" variant="light">
+                              {file.name}
+                            </Badge>
+                          ))}
+                        </Group>
+                      ) : null}
+                    </Paper>
+                  </Box>
+                ))}
 
-          {attachments.length > 0 ? (
-            <Group gap="xs" mt="md" wrap="wrap">
-              {attachmentBadges}
-            </Group>
-          ) : null}
+                {isSending ? (
+                  <Group gap="xs">
+                    <Loader size="sm" />
+                    <Text c="dimmed">Thinking...</Text>
+                  </Group>
+                ) : null}
+              </Box>
+            </ScrollArea>
 
-          <Box
-            mt="md"
-            px={12}
-            py={8}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              backgroundColor: 'white',
-              borderRadius: 50,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #e9ecef',
-            }}
-          >
-            <ActionIcon variant="subtle" color="gray" size="lg" onClick={handleFileButtonClick} style={{ flexShrink: 0 }}>
-              <IconPlus size={20} />
-            </ActionIcon>
-            <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileChange} />
+            {attachments.length > 0 ? (
+              <Group gap="xs" mt="md" wrap="wrap">
+                {attachmentBadges}
+              </Group>
+            ) : null}
 
-            <TextInput
-              placeholder="Ask anything"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyPress}
-              variant="unstyled"
-              size="md"
-              disabled={isSending}
-              style={{ flex: 1 }}
-              styles={{
-                input: {
-                  fontSize: 16,
-                  padding: '8px 0',
-                  border: 'none',
-                  outline: 'none',
-                  '&:focus': { outline: 'none', border: 'none' },
-                  '&::placeholder': { color: '#adb5bd' },
-                },
+            <Box
+              mt="md"
+              px={12}
+              py={8}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                backgroundColor: "white",
+                borderRadius: 50,
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+                border: "1px solid #e9ecef",
               }}
-            />
-
-            <ActionIcon
-              variant="subtle"
-              color={isListening ? 'red' : 'gray'}
-              size="lg"
-              onClick={toggleListening}
-              style={{ flexShrink: 0 }}
-              title={SpeechRecognition ? 'Speak your prompt' : 'Speech recognition unavailable'}
             >
-              {isListening ? <IconMicrophoneOff size={20} /> : <IconMicrophone size={20} />}
-            </ActionIcon>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="lg"
+                onClick={handleFileButtonClick}
+                style={{ flexShrink: 0 }}
+              >
+                <IconPlus size={20} />
+              </ActionIcon>
 
-            <ActionIcon
-              variant="filled"
-              color="blue"
-              size="lg"
-              radius="xl"
-              onClick={handleSend}
-              loading={isSending}
-              style={{ flexShrink: 0 }}
-            >
-              <IconSend size={18} />
-            </ActionIcon>
-          </Box>
-        </Paper>
+              <input
+                type="file"
+                multiple
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+
+              <TextInput
+                placeholder="Ask anything"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyPress}
+                variant="unstyled"
+                size="md"
+                disabled={isSending}
+                style={{ flex: 1 }}
+                styles={{
+                  input: {
+                    fontSize: 16,
+                    padding: "8px 0",
+                    border: "none",
+                    outline: "none",
+                  },
+                }}
+              />
+
+              <ActionIcon
+                variant="subtle"
+                color={isListening ? "red" : "gray"}
+                size="lg"
+                onClick={toggleListening}
+                style={{ flexShrink: 0 }}
+                title={SpeechRecognition ? "Speak your prompt" : "Speech recognition unavailable"}
+              >
+                {isListening ? <IconMicrophoneOff size={20} /> : <IconMicrophone size={20} />}
+              </ActionIcon>
+
+              <ActionIcon
+                variant="filled"
+                color="blue"
+                size="lg"
+                radius="xl"
+                onClick={handleSend}
+                loading={isSending}
+                style={{ flexShrink: 0 }}
+              >
+                <IconSend size={18} />
+              </ActionIcon>
+            </Box>
+          </Paper>
+        </div>
       </Box>
-      <Modal
-        opened={loadModalOpen}
-        onClose={() => setLoadModalOpen(false)}
-        title="Saved conversations"
-        centered
-      >
+
+      {/* NOTE: We keep modals OUTSIDE the tour root so the bubble can sit left of the main card without getting shoved. */}
+      <Modal opened={loadModalOpen} onClose={() => setLoadModalOpen(false)} title="Saved conversations" centered>
         {isLoadingList ? (
           <Group gap="xs">
             <Loader size="sm" />
             <Text c="dimmed">Loading...</Text>
           </Group>
         ) : savedConversations.length ? (
-          <Box style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Box style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {savedConversations.map((item) => (
               <Paper
                 key={item.id}
                 withBorder
                 p="sm"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
               >
                 <Box>
                   <Text size="sm" fw={500}>
-                    {item.title || 'Untitled chat'}
+                    {item.title || "Untitled chat"}
                   </Text>
                   <Text size="xs" c="dimmed">
-                    {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                    {item.created_at ? new Date(item.created_at).toLocaleString() : ""}
                   </Text>
                 </Box>
                 <Group spacing="xs">
@@ -634,6 +661,7 @@ export default function ChatInput() {
           </Text>
         )}
       </Modal>
+
       <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title="Name this chat" centered>
         <TextInput
           label="Chat name"
