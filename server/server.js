@@ -1,4 +1,5 @@
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
+import { normalizeXPost } from "./utils/normalizeXPost.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -329,19 +330,31 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 
     const PLATFORM_X = 1;
 
-    const { data: competitor } = await supabase
+    // Find or create competitor
+    let competitor;
+    const { data: existingComp } = await supabase
       .from("competitors")
-      .upsert(
-        {
+      .select("*")
+      .eq("platform_id", PLATFORM_X)
+      .eq("platform_user_id", platformUserId)
+      .maybeSingle();
+
+    if (existingComp) {
+      competitor = existingComp;
+    } else {
+      const { data: newComp, error: compErr } = await supabase
+        .from("competitors")
+        .insert({
           platform_id: PLATFORM_X,
           platform_user_id: platformUserId,
           display_name: username,
           profile_url: `https://x.com/${username}`,
-        },
-        { onConflict: "platform_id,platform_user_id" }
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      if (compErr) throw compErr;
+      competitor = newComp;
+    }
 
     const [tweet] = await fetchPostsByUserId(platformUserId);
 
@@ -354,19 +367,37 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       competitorId: competitor.id,
     });
 
-    const { data: post } = await supabase
+    // Find or create post
+    let post;
+    const { data: existingPost } = await supabase
       .from("posts")
-      .upsert(
-        {
+      .select("*")
+      .eq("user_id", userId)
+      .eq("platform_id", PLATFORM_X)
+      .eq("platform_post_id", normalized.post.platform_post_id)
+      .maybeSingle();
+
+    if (existingPost) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("posts")
+        .update({ content: normalized.post.content, published_at: normalized.post.published_at })
+        .eq("id", existingPost.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      post = updated;
+    } else {
+      const { data: newPost, error: insertErr } = await supabase
+        .from("posts")
+        .insert({
           ...normalized.post,
           user_id: userId,
-        },
-        {
-          onConflict: "user_id,platform_id,platform_post_id",
-        }
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      post = newPost;
+    }
 
     await supabase.from("post_metrics").insert({
       post_id: post.id,
@@ -400,39 +431,67 @@ app.post("/api/posts", async (req, res) => {
   }
 
   try {
-    const { data: competitor, error: competitorError } = await supabase
+    // Find or create competitor
+    let competitor;
+    const { data: existingComp } = await supabase
       .from("competitors")
-      .upsert(
-        {
+      .select("*")
+      .eq("platform_id", platform_id)
+      .eq("platform_user_id", platform_user_id)
+      .maybeSingle();
+
+    if (existingComp) {
+      competitor = existingComp;
+    } else {
+      const { data: newComp, error: compErr } = await supabase
+        .from("competitors")
+        .insert({
           platform_id,
           platform_user_id,
           display_name: username,
           profile_url: `https://x.com/${username}`,
-        },
-        { onConflict: "platform_id,platform_user_id" }
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      if (compErr) throw compErr;
+      competitor = newComp;
+    }
 
-    if (competitorError) throw competitorError;
-
-    const { data: post, error: postError } = await supabase
+    // Find or create post
+    let post;
+    const { data: existingPost } = await supabase
       .from("posts")
-      .upsert(
-        {
+      .select("*")
+      .eq("user_id", user_id)
+      .eq("platform_id", platform_id)
+      .eq("platform_post_id", platform_post_id)
+      .maybeSingle();
+
+    if (existingPost) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("posts")
+        .update({ content, published_at })
+        .eq("id", existingPost.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      post = updated;
+    } else {
+      const { data: newPost, error: insertErr } = await supabase
+        .from("posts")
+        .insert({
           platform_id,
           competitor_id: competitor.id,
           platform_post_id,
           content,
           published_at,
           user_id,
-        },
-        { onConflict: "user_id,platform_id,platform_post_id" }
-      )
-      .select()
-      .single();
-
-    if (postError) throw postError;
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      post = newPost;
+    }
 
     await supabase.from("post_metrics").insert({
       post_id: post.id,
