@@ -1,6 +1,6 @@
 import React from "react";
-import Joyride from "react-joyride";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { IconArrowRight, IconX, IconChevronRight, IconCheck } from "@tabler/icons-react";
 
 const TourContext = React.createContext(null);
 
@@ -10,452 +10,498 @@ export function useAppTour() {
   return ctx;
 }
 
-/*
-  Joyride sequences
-  Dashboard (3)
-  Keyword Tracking (2)
-  Reports (1)
-  Chat (1)
-
-  Bubble overlays
-  Competitor Lookup (full screen)
-  Saved Posts (full screen)
-*/
-
-const DASHBOARD_STEPS = [
+// Tutorial flow is deliberately screen based.
+// Each screen can contain multiple "tips". The Next button advances tips.
+// The arrow button advances to the next screen.
+const TOUR_FLOW = [
   {
-    target: '[data-tour="dashboard-kpis"]',
-    title: "Engagement snapshot",
-    content: "A quick overview of how your brand is performing right now.",
-    placement: "bottom",
-    disableBeacon: true,
+    key: "dashboard",
+    path: "/",
+    tips: [
+      {
+        title: "Dashboard",
+        body: "Your high level snapshot. Scan performance, spot changes, then decide where to dig deeper.",
+      },
+      {
+        title: "Engagement snapshot",
+        body: "Top tiles summarize what is happening right now so you can orient yourself in seconds.",
+      },
+      {
+        title: "Opportunity alerts",
+        body: "Watchouts and fast movers that are worth acting on early.",
+      },
+      {
+        title: "What works now",
+        body: "Charts and tables highlight the topics driving the strongest engagement at the moment.",
+      },
+    ],
   },
   {
-    target: '[data-tour="dashboard-alerts"]',
-    title: "Opportunity alerts",
-    content: "Fast movers and watchouts that are worth acting on early.",
-    placement: "right",
-    disableBeacon: true,
+    key: "competitor-lookup",
+    path: "/competitor-lookup",
+    tips: [
+      {
+        title: "Competitor Lookup",
+        body: "Search any competitor and pull recent posts so you can compare positioning and momentum.",
+      },
+      {
+        title: "Search and filters",
+        body: "Use the search bar and filters to narrow results by platform, time window, or topic.",
+      },
+      {
+        title: "Post feed",
+        body: "Open items for detail, then save the best examples for later.",
+      },
+    ],
   },
   {
-    target: '[data-tour="dashboard-chart"]',
-    title: "What works now",
-    content: "Topics generating the strongest engagement right now.",
-    placement: "left",
-    disableBeacon: true,
+    key: "saved-posts",
+    path: "/savedPosts",
+    tips: [
+      {
+        title: "Saved Posts",
+        body: "Everything you saved lives here so you can reference it later and build your evidence library.",
+      },
+      {
+        title: "Tagging and notes",
+        body: "Add tags or quick notes so you can find examples by theme, competitor, or campaign style.",
+      },
+      {
+        title: "Export",
+        body: "Download your saved set when you need to share findings or move work into a deck.",
+      },
+    ],
+  },
+  {
+    key: "keyword-tracking",
+    path: "/keywords",
+    tips: [
+      {
+        title: "Keyword Tracking",
+        body: "Track what topics are rising and cooling off, then connect them to performance.",
+      },
+      {
+        title: "Trending keywords",
+        body: "This table shows what is trending right now, including volume and rank movement.",
+      },
+      {
+        title: "Category momentum",
+        body: "Charts show category movement over time so you can spot shifts early.",
+      },
+    ],
+  },
+  {
+    key: "reports",
+    path: "/reports",
+    tips: [
+      {
+        title: "Reports",
+        body: "Generate shareable summaries so your insights can travel beyond the dashboard.",
+      },
+      {
+        title: "Build and download",
+        body: "Create a report, review it quickly, then download for distribution or archiving.",
+      },
+    ],
+  },
+  {
+    key: "chat",
+    path: "/chat",
+    tips: [
+      {
+        title: "ChibitekAI Chat",
+        body: "Ask questions, attach files, and save conversations so research stays organized.",
+      },
+      {
+        title: "Save your work",
+        body: "Keep threads you want to reuse, and return to them when you build reports or briefs.",
+      },
+    ],
+  },
+  {
+    key: "settings",
+    path: "/settings",
+    tips: [
+      {
+        title: "Settings",
+        body: "Manage your account preferences and integrations. You can restart this tutorial any time.",
+      },
+      {
+        title: "Language",
+        body: "Switch the app language here. Changes apply instantly across the interface.",
+      },
+      {
+        title: "Integrations",
+        body: "Connect data sources so Chibitek can pull competitive content and updates automatically.",
+      },
+      {
+        title: "Tutorial",
+        body: "Press Start whenever you want a quick refresher of the key screens.",
+      },
+    ],
   },
 ];
 
-const KEYWORD_STEPS = [
-  {
-    target: '[data-tour="keywords-trending"]',
-    title: "Trending Keywords",
-    content: "This table shows what’s trending right now, with volume and rank movement.",
-    placement: "right",
-    disableBeacon: true,
-  },
-  {
-    target: '[data-tour="keywords-categories-chart"]',
-    title: "Keyword Categories Over Time",
-    content: "This chart shows category momentum over time so you can spot what’s rising and cooling off.",
-    placement: "top",
-    disableBeacon: true,
-  },
-];
+function TourBox({
+  title,
+  body,
+  tipIndex,
+  tipCount,
+  hasMoreTips,
+  onNextTip,
+  isLastScreen,
+  onNextScreen,
+  onExit,
+  fadeState,
+}) {
+  const isOut = fadeState === "out";
+  const fadeStyle = {
+    opacity: isOut ? 0 : 1,
+    transform: isOut ? "translateY(8px) scale(0.985)" : "translateY(0) scale(1)",
+    transition: "opacity 180ms ease, transform 180ms ease",
+    willChange: "opacity, transform",
+    pointerEvents: isOut ? "none" : "auto",
+  };
 
-const REPORTS_STEPS = [
-  {
-    target: '[data-tour="reports-root"]',
-    title: "Analysis Reports",
-    content: "Generate a quick PDF snapshot so you can share results and keep a record of changes over time.",
-    placement: "top",
-    disableBeacon: true,
-  },
-];
-
-const CHAT_STEPS = [
-  {
-    target: '[data-tour="chat-root"]',
-    title: "ChibitekAI Chat",
-    content: "Ask questions, attach files, and save conversations so your competitive research stays organized.",
-    placement: "top",
-    disableBeacon: true,
-  },
-];
-
-function Bubble({ title, body, onNext, onExit, nextLabel = "Next" }) {
   return (
     <>
       <div
         style={{
           position: "fixed",
-          inset: 0,
-          zIndex: 9000,
-          background: "rgba(80, 80, 80, 0.55)",
-          opacity: 1,
-          transition: "opacity 260ms ease",
-        }}
-      />
-
-      <div
-        style={{
-          position: "fixed",
-          left: 20,
-          bottom: 86,
-          zIndex: 9100,
-          width: 360,
-          maxWidth: "calc(100vw - 40px)",
-          background: "rgba(255,255,255,0.96)",
-          borderRadius: 18,
-          padding: "16px 16px 14px",
-          boxShadow: "0 12px 34px rgba(0,0,0,0.16), 0 3px 12px rgba(0,0,0,0.10)",
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
+          right: 22,
+          bottom: 22,
+          zIndex: 12000,
+          width: 380,
+          maxWidth: "calc(100vw - 44px)",
+          ...fadeStyle,
         }}
       >
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            letterSpacing: "0.04em",
-            color: "#6b7280",
-            textTransform: "uppercase",
-            textAlign: "center",
-          }}
-        >
-          {title}
-        </div>
-
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 14,
-            fontWeight: 650,
-            color: "#111827",
-            lineHeight: 1.35,
-            textAlign: "center",
-          }}
-        >
-          {body}
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "center" }}>
-          <button
-            onClick={onExit}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
+          <div
             style={{
-              appearance: "none",
-              border: "1px solid rgba(17,24,39,0.10)",
-              background: "rgba(255,255,255,0.9)",
-              borderRadius: 12,
-              padding: "8px 12px",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-              color: "#374151",
+              background:
+                "linear-gradient(135deg, rgba(29,78,216,0.98) 0%, rgba(37,99,235,0.98) 55%, rgba(59,130,246,0.98) 100%)",
+              borderRadius: 20,
+              padding: "16px 16px 18px",
+              boxShadow: "0 18px 52px rgba(0,0,0,0.22), 0 4px 14px rgba(0,0,0,0.14)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              border: "1px solid rgba(255,255,255,0.18)",
             }}
           >
-            Exit
-          </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 900,
+                  letterSpacing: "0.05em",
+                  color: "rgba(255,255,255,0.92)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Tutorial
+              </div>
 
-          <button
-            onClick={onNext}
-            style={{
-              appearance: "none",
-              border: "1px solid rgba(37,99,235,0.18)",
-              background: "rgba(37,99,235,0.12)",
-              borderRadius: 12,
-              padding: "8px 14px",
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: "pointer",
-              color: "#1d4ed8",
-            }}
-          >
-            {nextLabel}
-          </button>
+              <button
+                onClick={onExit}
+                type="button"
+                aria-label="Exit tutorial"
+                style={{
+                  appearance: "none",
+                  border: "1px solid rgba(255,255,255,0.28)",
+                  background: "rgba(255,255,255,0.16)",
+                  borderRadius: 999,
+                  width: 34,
+                  height: 34,
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: "pointer",
+                  color: "rgba(255,255,255,0.96)",
+                  boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
+                }}
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 900, color: "#ffffff" }}>{title}</div>
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 14,
+                fontWeight: 650,
+                color: "rgba(255,255,255,0.92)",
+                lineHeight: 1.35,
+              }}
+            >
+              {body}
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                display: "grid",
+                gridTemplateColumns: "1fr auto 1fr",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 850, color: "rgba(255,255,255,0.86)" }}>
+                Tip {Math.min(tipIndex + 1, tipCount)} of {tipCount}
+              </div>
+
+              <button
+                onClick={onNextScreen}
+                type="button"
+                aria-label={isLastScreen ? "Finish tutorial" : "Next screen"}
+                style={{
+                  appearance: "none",
+                  border: "1px solid rgba(255,255,255,0.50)",
+                  background: "rgba(255,255,255,0.92)",
+                  borderRadius: 999,
+                  width: 44,
+                  height: 44,
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: "pointer",
+                  color: "#1d4ed8",
+                  boxShadow: "0 18px 44px rgba(0,0,0,0.22)",
+                  userSelect: "none",
+                }}
+              >
+                {isLastScreen ? <IconCheck size={20} /> : <IconArrowRight size={20} />}
+              </button>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
+                {hasMoreTips ? (
+                  <button
+                    onClick={onNextTip}
+                    type="button"
+                    style={{
+                      appearance: "none",
+                      border: "1px solid rgba(255,255,255,0.45)",
+                      background: "rgba(255,255,255,0.92)",
+                      borderRadius: 12,
+                      padding: "0 14px",
+                      height: 36,
+                      fontWeight: 950,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      color: "#1d4ed8",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: "0 10px 26px rgba(0,0,0,0.16)",
+                      userSelect: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Next
+                    <IconChevronRight size={16} />
+                  </button>
+                ) : (
+                  <div style={{ height: 36 }} />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div
+      <button
         onClick={onExit}
+        type="button"
         style={{
           position: "fixed",
-          bottom: 26,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 9200,
-          background: "rgba(255,255,255,0.92)",
+          left: 22,
+          bottom: 22,
+          zIndex: 12000,
+          appearance: "none",
+          border: "1px solid rgba(255,255,255,0.24)",
+          background: "rgba(37,99,235,0.96)",
           borderRadius: 999,
-          padding: "6px 14px",
+          padding: "0 14px",
+          height: 38,
           fontSize: 12,
-          fontWeight: 700,
-          color: "#374151",
+          fontWeight: 900,
           cursor: "pointer",
-          boxShadow: "0 4px 14px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
-          backdropFilter: "blur(6px)",
-          WebkitBackdropFilter: "blur(6px)",
+          color: "rgba(255,255,255,0.96)",
+          boxShadow: "0 16px 44px rgba(0,0,0,0.20)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
           userSelect: "none",
+          whiteSpace: "nowrap",
+          ...fadeStyle,
         }}
       >
         Exit tutorial
-      </div>
+      </button>
     </>
   );
 }
 
 export default function AppTourProvider({ children }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [joyrideRun, setJoyrideRun] = React.useState(false);
-  const [joyrideStep, setJoyrideStep] = React.useState(0);
-  const [joyrideSteps, setJoyrideSteps] = React.useState(DASHBOARD_STEPS);
+  const ANIM_MS = 180;
 
-  const [pageIntro, setPageIntro] = React.useState(null);
+  const [isRunning, setIsRunning] = React.useState(false);
+  const [screenIndex, setScreenIndex] = React.useState(0);
+  const [tipIndex, setTipIndex] = React.useState(0);
+  const [fadeState, setFadeState] = React.useState("out");
 
-  const waitingDashboardStartRef = React.useRef(false);
-  const waitingKeywordStartRef = React.useRef(false);
-  const waitingReportsStartRef = React.useRef(false);
-  const waitingChatStartRef = React.useRef(false);
+  const timersRef = React.useRef([]);
+  const transitioningRef = React.useRef(false);
+
+  const schedule = React.useCallback((fn, ms) => {
+    const id = setTimeout(fn, ms);
+    timersRef.current.push(id);
+    return id;
+  }, []);
+
+  const clearTimers = React.useCallback(() => {
+    for (const id of timersRef.current) clearTimeout(id);
+    timersRef.current = [];
+  }, []);
 
   React.useEffect(() => {
-    const onPageReady = (e) => {
-      const page = e?.detail?.page;
-
-      if (waitingDashboardStartRef.current && page === "dashboard") {
-        waitingDashboardStartRef.current = false;
-        setJoyrideSteps(DASHBOARD_STEPS);
-        setJoyrideStep(0);
-        setJoyrideRun(true);
-        return;
-      }
-
-      if (waitingKeywordStartRef.current && page === "keyword-tracking") {
-        waitingKeywordStartRef.current = false;
-        setJoyrideSteps(KEYWORD_STEPS);
-        setJoyrideStep(0);
-        setJoyrideRun(true);
-        return;
-      }
-
-      if (waitingReportsStartRef.current && page === "reports") {
-        waitingReportsStartRef.current = false;
-        setJoyrideSteps(REPORTS_STEPS);
-        setJoyrideStep(0);
-        setJoyrideRun(true);
-        return;
-      }
-
-      if (waitingChatStartRef.current && page === "chat") {
-        waitingChatStartRef.current = false;
-        setJoyrideSteps(CHAT_STEPS);
-        setJoyrideStep(0);
-        setJoyrideRun(true);
-        return;
-      }
-
-      if (pageIntro?.awaitPage && page === pageIntro.awaitPage) {
-        setPageIntro((prev) => (prev ? { ...prev, ready: true } : prev));
-      }
+    return () => {
+      clearTimers();
     };
+  }, [clearTimers]);
 
-    window.addEventListener("chibitek:pageReady", onPageReady);
-    return () => window.removeEventListener("chibitek:pageReady", onPageReady);
-  }, [pageIntro]);
+  const screen = TOUR_FLOW[screenIndex];
+  const tips = screen?.tips ?? [];
+  const tip = tips[Math.min(tipIndex, Math.max(0, tips.length - 1))] ?? null;
+
+  // Keep tutorial aligned to manual navigation.
+  React.useEffect(() => {
+    if (!isRunning) return;
+    const idx = TOUR_FLOW.findIndex((s) => s.path === location.pathname);
+    if (idx === -1) return;
+    if (idx !== screenIndex) {
+      setScreenIndex(idx);
+      setTipIndex(0);
+    }
+  }, [isRunning, location.pathname, screenIndex]);
+
+  const fadeOutThen = React.useCallback(
+    (fn) => {
+      if (transitioningRef.current) return;
+      transitioningRef.current = true;
+      clearTimers();
+      setFadeState("out");
+
+      schedule(() => {
+        fn?.();
+        transitioningRef.current = false;
+      }, ANIM_MS);
+    },
+    [clearTimers, schedule]
+  );
+
+  const fadeSwap = React.useCallback(
+    (fn) => {
+      if (transitioningRef.current) return;
+      transitioningRef.current = true;
+      clearTimers();
+      setFadeState("out");
+
+      schedule(() => {
+        fn?.();
+        setFadeState("in");
+
+        schedule(() => {
+          transitioningRef.current = false;
+        }, ANIM_MS);
+      }, ANIM_MS);
+    },
+    [clearTimers, schedule]
+  );
 
   const api = React.useMemo(
     () => ({
       start() {
-        setPageIntro(null);
-        setJoyrideRun(false);
-        setJoyrideStep(0);
+        if (transitioningRef.current) return;
+        transitioningRef.current = true;
+        clearTimers();
 
-        waitingKeywordStartRef.current = false;
-        waitingReportsStartRef.current = false;
-        waitingChatStartRef.current = false;
+        setFadeState("out");
+        setIsRunning(true);
+        setScreenIndex(0);
+        setTipIndex(0);
+        navigate(TOUR_FLOW[0].path);
 
-        waitingDashboardStartRef.current = true;
-        navigate("/");
+        // Let it mount at opacity 0, then fade in.
+        schedule(() => {
+          setFadeState("in");
+          schedule(() => {
+            transitioningRef.current = false;
+          }, ANIM_MS);
+        }, 30);
       },
       stop() {
-        waitingDashboardStartRef.current = false;
-        waitingKeywordStartRef.current = false;
-        waitingReportsStartRef.current = false;
-        waitingChatStartRef.current = false;
-
-        setJoyrideRun(false);
-        setJoyrideStep(0);
-        setPageIntro(null);
+        fadeOutThen(() => {
+          setIsRunning(false);
+          setTipIndex(0);
+        });
+      },
+      isRunning() {
+        return isRunning;
       },
     }),
-    [navigate]
+    [ANIM_MS, clearTimers, fadeOutThen, isRunning, navigate, schedule]
   );
 
-  const beginCompetitorIntro = React.useCallback(() => {
-    setJoyrideRun(false);
-    setJoyrideStep(0);
+  const onNextTip = React.useCallback(() => {
+    const count = tips.length;
+    if (count <= 1) return;
 
-    setPageIntro({
-      awaitPage: "competitor-lookup",
-      ready: false,
-      title: "Competitor Lookup",
-      body: "Search any competitor and pull their latest posts so you can compare positioning and performance.",
-      next: () => {
-        setPageIntro({
-          awaitPage: "saved-posts",
-          ready: false,
-          title: "Saved Posts",
-          body: "Everything you saved for later lives here so you can reference, tag, and reuse the best examples.",
-          next: () => {
-            setPageIntro(null);
-            setJoyrideRun(false);
-            setJoyrideStep(0);
-
-            waitingKeywordStartRef.current = true;
-            navigate("/keywords");
-          },
-        });
-
-        navigate("/savedPosts");
-      },
+    fadeSwap(() => {
+      setTipIndex((i) => Math.min(i + 1, count - 1));
     });
+  }, [fadeSwap, tips.length]);
 
-    navigate("/competitor-lookup");
-  }, [navigate]);
+  const onNextScreen = React.useCallback(() => {
+    const next = screenIndex + 1;
 
-  const goReportsAfterKeywords = React.useCallback(() => {
-    setJoyrideRun(false);
-    setJoyrideStep(0);
+    if (next >= TOUR_FLOW.length) {
+      fadeOutThen(() => {
+        setIsRunning(false);
+        setTipIndex(0);
+      });
+      return;
+    }
 
-    waitingReportsStartRef.current = true;
-    navigate("/reports");
-  }, [navigate]);
+    fadeSwap(() => {
+      setScreenIndex(next);
+      setTipIndex(0);
+      navigate(TOUR_FLOW[next].path);
+    });
+  }, [fadeOutThen, fadeSwap, navigate, screenIndex]);
 
-  const goChatAfterReports = React.useCallback(() => {
-    setJoyrideRun(false);
-    setJoyrideStep(0);
-
-    waitingChatStartRef.current = true;
-    navigate("/chat");
-  }, [navigate]);
+  const hasMoreTips = tips.length > 1 && tipIndex < tips.length - 1;
+  const isLastScreen = screenIndex >= TOUR_FLOW.length - 1;
 
   return (
     <TourContext.Provider value={api}>
-      <Joyride
-        steps={joyrideSteps}
-        run={joyrideRun}
-        stepIndex={joyrideStep}
-        continuous
-        scrollToFirstStep
-        disableOverlayClose
-        spotlightClicks={false}
-        spotlightPadding={8}
-        showSkipButton={false}
-        hideCloseButton
-        locale={{
-          back: "Back",
-          close: "Next",
-          last: "Next",
-          next: "Next",
-          skip: "Skip",
-        }}
-        callback={(data) => {
-          if (!joyrideRun) return;
-
-          const isAfter = data.type === "step:after";
-          if (!isAfter) return;
-
-          if (data.action === "next") {
-            const next = joyrideStep + 1;
-
-            if (next >= joyrideSteps.length) {
-              if (joyrideSteps === DASHBOARD_STEPS) {
-                beginCompetitorIntro();
-                return;
-              }
-
-              if (joyrideSteps === KEYWORD_STEPS) {
-                goReportsAfterKeywords();
-                return;
-              }
-
-              if (joyrideSteps === REPORTS_STEPS) {
-                goChatAfterReports();
-                return;
-              }
-
-              if (joyrideSteps === CHAT_STEPS) {
-                api.stop();
-                return;
-              }
-            }
-
-            setJoyrideStep(next);
-            return;
-          }
-
-          if (data.action === "prev") {
-            setJoyrideStep((s) => Math.max(0, s - 1));
-          }
-
-          if (data.status === "finished" || data.status === "skipped") {
-            api.stop();
-          }
-        }}
-        styles={{
-          options: {
-            zIndex: 8000,
-            width: 360,
-            backgroundColor: "#ffffff",
-            textColor: "#111827",
-            primaryColor: "#2563eb",
-            borderRadius: 16,
-          },
-          overlay: {
-            backgroundColor: "rgba(80, 80, 80, 0.55)",
-            transition: "opacity 320ms ease",
-          },
-          spotlight: {
-            borderRadius: 18,
-            boxShadow: "0 0 0 9999px rgba(80, 80, 80, 0.55)",
-            transition: "all 260ms ease",
-          },
-          tooltip: {
-            padding: "18px 20px",
-            textAlign: "center",
-            borderRadius: 16,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.14), 0 2px 10px rgba(0,0,0,0.08)",
-          },
-          tooltipContainer: { textAlign: "center" },
-          tooltipTitle: {
-            textAlign: "center",
-            fontWeight: 800,
-            fontSize: 13,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            color: "#6b7280",
-            marginBottom: 8,
-          },
-          buttonNext: {
-            borderRadius: 12,
-            padding: "8px 18px",
-            fontWeight: 800,
-            margin: "0 auto",
-          },
-          buttonBack: { borderRadius: 12 },
-        }}
-      />
-
-      {pageIntro && pageIntro.ready && (
-        <Bubble
-          title={pageIntro.title}
-          body={pageIntro.body}
-          onExit={api.stop}
-          onNext={pageIntro.next}
-          nextLabel="Next"
-        />
-      )}
-
       {children}
+
+      {isRunning && tip ? (
+        <TourBox
+          title={tip.title}
+          body={tip.body}
+          tipIndex={tipIndex}
+          tipCount={tips.length}
+          hasMoreTips={hasMoreTips}
+          onNextTip={onNextTip}
+          isLastScreen={isLastScreen}
+          onNextScreen={onNextScreen}
+          onExit={api.stop}
+          fadeState={fadeState}
+        />
+      ) : null}
     </TourContext.Provider>
   );
 }
