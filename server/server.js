@@ -489,20 +489,21 @@ app.post("/api/posts", async (req, res) => {
 
   try {
     // Find or create competitor
-    let competitor;
-    const { data: existingComp } = await supabase
     const profileUrl = platform_id === 1
       ? `https://x.com/${username}`
       : platform_id === 8
         ? `https://www.youtube.com/channel/${platform_user_id}`
         : null;
 
-    const { data: competitor, error: competitorError } = await supabase
+    let competitor;
+    const { data: existingComp, error: competitorError } = await supabase
       .from("competitors")
       .select("*")
       .eq("platform_id", platform_id)
       .eq("platform_user_id", platform_user_id)
       .maybeSingle();
+
+    if (competitorError) throw competitorError;
 
     if (existingComp) {
       competitor = existingComp;
@@ -513,7 +514,7 @@ app.post("/api/posts", async (req, res) => {
           platform_id,
           platform_user_id,
           display_name: username,
-          profile_url: `https://x.com/${username}`,
+          profile_url: profileUrl || `https://x.com/${username}`,
         })
         .select()
         .single();
@@ -620,6 +621,7 @@ app.get("/api/posts", async (req, res) => {
   post_metrics(likes, shares, comments),
   post_details_platform(extra_json)
 `)
+      .eq("user_id", userId)
       .order("published_at", { ascending: false });
 
     if (error) throw error;

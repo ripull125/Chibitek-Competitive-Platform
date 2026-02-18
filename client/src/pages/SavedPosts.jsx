@@ -47,16 +47,13 @@ export default function SavedPosts() {
 
     setLoading(true);
     fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
-    window.dispatchEvent(
-      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
-    );
-  }, []);
-
-  useEffect(() => {
-    fetch(apiUrl("/api/posts"))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
+
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
   }, [currentUserId]);
 
   function openDeleteConfirm(postId) {
@@ -116,10 +113,10 @@ export default function SavedPosts() {
                 <Text fw={500} style={{ flex: 1 }}>
                   {p.content}
                 </Text>
-              </Stack>
-            </Card>
-          );
-        })}
+              </Group>
+            </Stack>
+          </Card>
+        ))}
       </Stack>
 
       <Modal

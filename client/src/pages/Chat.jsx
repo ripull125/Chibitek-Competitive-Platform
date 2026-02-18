@@ -28,6 +28,7 @@ import { apiUrl } from '../utils/api';
 import { supabase } from '../supabaseClient';
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
+const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
 
 const resolveBackendUrl = () => {
   const envUrl = import.meta.env.e_BACKEND_URL;
@@ -59,6 +60,14 @@ const defaultConversation = [
 const loadPersistedChat = () => {
   if (typeof window === "undefined") return null;
   try {
+    // On a fresh session (new tab / fresh login), start with a clean chat
+    const alreadyLoaded = window.sessionStorage?.getItem(CHAT_SESSION_FLAG);
+    if (!alreadyLoaded) {
+      // Clear any stale localStorage chat state from a previous session
+      window.localStorage?.removeItem(CHAT_STORAGE_KEY);
+      window.sessionStorage?.setItem(CHAT_SESSION_FLAG, "1");
+      return null;
+    }
     const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
@@ -124,12 +133,12 @@ export default function ChatInput() {
       if (mounted) setCurrentUserId(data?.user?.id || null);
     };
     loadUser();
-    return () => {
-      mounted = false;
-    };
     window.dispatchEvent(
       new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } })
     );
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
