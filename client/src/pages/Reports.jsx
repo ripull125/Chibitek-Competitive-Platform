@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import KeywordTracking from "./KeywordTracking";
-import { convertSavedPosts } from "./DataConverter";
+import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Button, Checkbox, Container, Title, Paper, LoadingOverlay, Text } from "@mantine/core";
@@ -27,25 +27,37 @@ export default function Reports() {
 
   // Fetch and process saved posts
   useEffect(() => {
-    fetch("http://localhost:8080/api/posts")
-      .then((r) => r.json())
-      .then((data) => {
+    (async () => {
+      try {
+        const r = await fetch("http://localhost:8080/api/posts");
+        const data = await r.json();
         const posts = data.posts || [];
         const converted = convertSavedPosts(posts);
 
-        // Create chart data with index for each post
-        const chartData = converted.map((post, index) => ({
+        // Send universal-format posts to server for tone analysis
+        let analyzed = [];
+        try {
+          analyzed = await analyzeUniversalPosts(converted);
+        } catch (err) {
+          console.error('Tone analysis failed:', err);
+        }
+
+        // Create chart data with index for each post (use analyzed order if available)
+        const chartData = (analyzed.length ? analyzed : converted).map((post, index) => ({
           index: index + 1,
           engagement: post.Engagement,
           source: post['Name/Source'],
           message: post.Message,
-          tone: post.Tone,
+          tone: post.Tone || null,
         }));
 
         setToneEngagementData(chartData);
-      })
-      .catch((error) => console.error("Error fetching posts:", error))
-      .finally(() => setLoading(false));
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const generatePDF = async () => {
@@ -81,11 +93,19 @@ export default function Reports() {
     pdf.save("keyword-tracking-report.pdf");
   };
 
-  const COLORS = {
-    positive: "#51cf66",
-    negative: "#ff6b6b",
-    neutral: "#868e96",
-  };
+  const TONES = [
+    'Professional', 'Promotional', 'Informative', 'Persuasive', 'Confident',
+    'Approachable', 'Authoritative', 'Inspirational', 'Conversational', 'Assertive',
+    'Casual', 'Customer-centric', 'Urgent', 'Optimistic', 'Polished'
+  ];
+
+  const PALETTE = [
+    '#2f6fdb','#ff7a59','#51cf66','#ffd43b','#845ef7',
+    '#20c997','#0ca678','#f783ac','#15aabf','#d9480f',
+    '#868e96','#364fc7','#fa5252','#12b886','#495057'
+  ];
+
+  const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
 
   return (
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
@@ -114,13 +134,34 @@ export default function Reports() {
         </Title>
         {toneEngagementData.length > 0 ? (
           <ResponsiveContainer width="100%" height={400}>
-            <ScatterChart data={toneEngagementData}>
+            <ScatterChart>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="index" name="Post Index" />
               <YAxis dataKey="engagement" name="Engagement" />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} />
               <Legend />
-              <Scatter name="Engagement" dataKey="engagement" fill="#8884d8" />
+              {TONES.map((tone) => {
+                const pts = toneEngagementData.filter((d) => d.tone === tone);
+                if (!pts || !pts.length) return null;
+                return (
+                  <Scatter
+                    key={tone}
+                    name={tone}
+                    data={pts}
+                    dataKey="engagement"
+                    fill={TONE_COLOR[tone]}
+                  />
+                );
+              })}
+              {/* Fallback for unlabelled posts */}
+              {toneEngagementData.some((d) => !d.tone) && (
+                <Scatter
+                  name="Unlabeled"
+                  data={toneEngagementData.filter((d) => !d.tone)}
+                  dataKey="engagement"
+                  fill="#adb5bd"
+                />
+              )}
             </ScatterChart>
           </ResponsiveContainer>
         ) : (

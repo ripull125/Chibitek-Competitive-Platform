@@ -5,7 +5,8 @@ import 'dotenv/config';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import { supabase } from './supabase.js';
-import { suggestKeywordsForBooks } from './keywords.js';
+//import { suggestKeywordsForBooks } from './keywords.js';
+import { categorizeTone } from './tone.js';
 
 dotenv.config();
 
@@ -151,6 +152,20 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('Chat completion error:', error);
     return res.status(500).json({ error: 'Chat request failed.' });
+  }
+});
+
+// Tone classification endpoint: expects { message: string }
+app.post('/api/tone', async (req, res) => {
+  const { message } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'Missing message in body' });
+
+  try {
+    const result = await categorizeTone(message);
+    return res.json({ success: true, result });
+  } catch (err) {
+    console.error('Tone classification error:', err);
+    return res.status(500).json({ error: 'Tone classification failed' });
   }
 });
 
