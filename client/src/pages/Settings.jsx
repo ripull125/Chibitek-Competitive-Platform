@@ -45,14 +45,6 @@ export default function Settings() {
     [language, t]
   );
 
-  function handleStartTutorial() {
-    navigate("/");
-    // allow route + layout to mount before Joyride starts
-    setTimeout(() => {
-      tour.start();
-    }, 0);
-  }
-
   return (
     <Box className={classes.page}>
       <Container size="lg" className={classes.shell}>
@@ -149,7 +141,6 @@ export default function Settings() {
                 size="md"
                 className={classes.actionBtn}
                 onClick={() => tour.start()}
-
               >
                 {t("common.start")}
               </Button>
