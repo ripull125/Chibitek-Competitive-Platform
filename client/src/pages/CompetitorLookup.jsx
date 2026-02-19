@@ -30,6 +30,7 @@ import {
   IconBrandReddit,
   IconCheck,
   IconCopy,
+  IconInfoCircle,
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
@@ -37,6 +38,19 @@ import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { Checkbox, Transition } from "@mantine/core";
+
+function LabelWithInfo({ label, info }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text size="sm">{label}</Text>
+      <Tooltip label={info} multiline w={260} withArrow>
+        <ActionIcon variant="subtle" size="xs" color="gray" radius="xl">
+          <IconInfoCircle size={14} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+}
 
 export default function CompetitorLookup() {
   useEffect(() => {
@@ -65,6 +79,8 @@ export default function CompetitorLookup() {
   });
   const [instagramOptions, setInstagramOptions] = useState({});
   const [instagramInputs, setInstagramInputs] = useState({});
+  const [tiktokOptions, setTiktokOptions] = useState({});
+  const [tiktokInputs, setTiktokInputs] = useState({});
 
 
 
@@ -519,7 +535,7 @@ export default function CompetitorLookup() {
               <Group align="end" wrap="wrap" gap="sm">
                 <TextInput
                   value={username}
-                  onChange={(e) => setUsername(e.currentTarget.value)}
+                  onChange={(e) => setUsername(e.target.value)}
                   placeholder="@jack"
                   label="Username"
                   maw={420}
@@ -543,7 +559,7 @@ export default function CompetitorLookup() {
               <Group align="end" wrap="wrap" gap="sm">
                 <TextInput
                   value={youtubeUrl}
-                  onChange={(e) => setYoutubeUrl(e.currentTarget.value)}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=..."
                   label="YouTube URL"
                   maw={420}
@@ -595,7 +611,7 @@ export default function CompetitorLookup() {
                     onChange={(e) =>
                       setLinkedinInputs((prev) => ({
                         ...prev,
-                        profile: e.currentTarget.value,
+                        profile: e.target.value,
                       }))
                     }
                   />
@@ -608,7 +624,7 @@ export default function CompetitorLookup() {
                     onChange={(e) =>
                       setLinkedinInputs((prev) => ({
                         ...prev,
-                        company: e.currentTarget.value,
+                        company: e.target.value,
                       }))
                     }
                   />
@@ -621,7 +637,7 @@ export default function CompetitorLookup() {
                     onChange={(e) =>
                       setLinkedinInputs((prev) => ({
                         ...prev,
-                        post: e.currentTarget.value,
+                        post: e.target.value,
                       }))
                     }
                   />
@@ -656,39 +672,20 @@ export default function CompetitorLookup() {
                   <Text fw={600}>👤 Profile & Account</Text>
 
                   <Checkbox
-                    label="Profile (1 credit)"
+                    label={<LabelWithInfo label="Profile" info="Scrapes detailed profile info including bio, followers, following, and account stats." />}
                     checked={instagramOptions.profile || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        profile: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, profile: e.target.checked }))}
                   />
 
                   <Checkbox
-                    label="Basic Profile (1 credit)"
+                    label={<LabelWithInfo label="Basic Profile" info="Scrapes basic profile info including username, display name, and profile picture." />}
                     checked={instagramOptions.basicProfile || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        basicProfile: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, basicProfile: e.target.checked }))}
                   />
 
                   {(instagramOptions.profile || instagramOptions.basicProfile) && (
-                    <TextInput
-                      label="Username"
-                      placeholder="@username"
-                      value={instagramInputs.username || ""}
-                      onChange={(e) =>
-                        setInstagramInputs(prev => ({
-                          ...prev,
-                          username: e.currentTarget.value,
-                        }))
-                      }
-                    />
+                    <TextInput label="Username" placeholder="@username" value={instagramInputs.username || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, username: e.target.value }))} />
                   )}
                 </Stack>
               </Card>
@@ -699,50 +696,31 @@ export default function CompetitorLookup() {
                   <Text fw={600}>📝 Posts & Content</Text>
 
                   <Checkbox
-                    label="User Posts (1 credit)"
+                    label={<LabelWithInfo label="User Posts" info="Scrapes the user's recent posts including images, videos, captions, and engagement metrics." />}
                     checked={instagramOptions.userPosts || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        userPosts: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, userPosts: e.target.checked }))}
                   />
 
                   <Checkbox
-                    label="Single Post (1 credit)"
+                    label={<LabelWithInfo label="Post / Reel Info" info="Scrapes detailed info about a specific post or reel including media, caption, likes, and metadata." />}
                     checked={instagramOptions.singlePost || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        singlePost: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, singlePost: e.target.checked }))}
                   />
 
                   <Checkbox
-                    label="Post Comments (1 credit)"
+                    label={<LabelWithInfo label="Post Comments" info="Scrapes all comments on a specific post including user details, timestamps, and nested replies." />}
                     checked={instagramOptions.postComments || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        postComments: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, postComments: e.target.checked }))}
                   />
+
+                  {instagramOptions.userPosts && (
+                    <TextInput label="Username" placeholder="@username" value={instagramInputs.userPostsUsername || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, userPostsUsername: e.target.value }))} />
+                  )}
 
                   {(instagramOptions.singlePost || instagramOptions.postComments) && (
-                    <TextInput
-                      label="Post URL"
-                      placeholder="https://instagram.com/p/..."
-                      value={instagramInputs.postUrl || ""}
-                      onChange={(e) =>
-                        setInstagramInputs(prev => ({
-                          ...prev,
-                          postUrl: e.target.value,
-                        }))
-                      }
-                    />
+                    <TextInput label="Post URL" placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
                   )}
                 </Stack>
               </Card>
@@ -753,39 +731,25 @@ export default function CompetitorLookup() {
                   <Text fw={600}>🎥 Reels</Text>
 
                   <Checkbox
-                    label="Reels Search (1 credit)"
+                    label={<LabelWithInfo label="Search Reels" info="Searches for reels by keyword or hashtag and returns matching video content with metadata." />}
                     checked={instagramOptions.reelsSearch || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        reelsSearch: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, reelsSearch: e.target.checked }))}
                   />
 
                   <Checkbox
-                    label="User Reels (1 credit)"
+                    label={<LabelWithInfo label="User Reels" info="Scrapes all reels from a specific user's profile including video URLs, captions, and engagement data." />}
                     checked={instagramOptions.userReels || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        userReels: e.target.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, userReels: e.target.checked }))}
                   />
 
-                  {(instagramOptions.reelsSearch || instagramOptions.userReels) && (
-                    <TextInput
-                      label="Search query or username"
-                      placeholder="fitness"
-                      value={instagramInputs.reelsQuery || ""}
-                      onChange={(e) =>
-                        setInstagramInputs(prev => ({
-                          ...prev,
-                          reelsQuery: e.target.value,
-                        }))
-                      }
-                    />
+                  {instagramOptions.reelsSearch && (
+                    <TextInput label="Search Term" placeholder="fitness, #workout" value={instagramInputs.reelsSearchTerm || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, reelsSearchTerm: e.target.value }))} />
+                  )}
+
+                  {instagramOptions.userReels && (
+                    <TextInput label="Username" placeholder="@username" value={instagramInputs.userReelsUsername || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, userReelsUsername: e.target.value }))} />
                   )}
                 </Stack>
               </Card>
@@ -796,28 +760,14 @@ export default function CompetitorLookup() {
                   <Text fw={600}>⭐ Highlights</Text>
 
                   <Checkbox
-                    label="Highlight Detail (1 credit)"
+                    label={<LabelWithInfo label="Highlight Detail" info="Scrapes detailed info about a specific story highlight including all stories, media URLs, and metadata." />}
                     checked={instagramOptions.highlightDetail || false}
-                    onChange={(e) =>
-                      setInstagramOptions(prev => ({
-                        ...prev,
-                        highlightDetail: e.currentTarget.checked,
-                      }))
-                    }
+                    onChange={(e) => setInstagramOptions(prev => ({ ...prev, highlightDetail: e.target.checked }))}
                   />
 
                   {instagramOptions.highlightDetail && (
-                    <TextInput
-                      label="Highlight URL"
-                      placeholder="https://instagram.com/stories/highlights/..."
-                      value={instagramInputs.highlightUrl || ""}
-                      onChange={(e) =>
-                        setInstagramInputs(prev => ({
-                          ...prev,
-                          highlightUrl: e.currentTarget.value,
-                        }))
-                      }
-                    />
+                    <TextInput label="Highlight URL" placeholder="https://instagram.com/stories/highlights/..." value={instagramInputs.highlightUrl || ""}
+                      onChange={(e) => setInstagramInputs(prev => ({ ...prev, highlightUrl: e.target.value }))} />
                   )}
                 </Stack>
               </Card>
@@ -833,9 +783,132 @@ export default function CompetitorLookup() {
 
 
           <Tabs.Panel value="tiktok" pt="md">
-            <Alert variant="light" color="dark" title="TikTok Lookup Coming Soon">
-              TikTok competitor search UI placeholder.
-            </Alert>
+            <Stack gap="lg">
+
+              <Title order={4}>TikTok Lookup</Title>
+
+              <Text size="sm" c="dimmed">
+                Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+              </Text>
+
+              {/* PROFILE & ACCOUNT */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>👤 Profile & Account</Text>
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Profile" info="Scrapes TikTok profile details including bio, follower/following counts, likes, and verified status." />}
+                    checked={tiktokOptions.profile || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, profile: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Following" info="Scrapes the list of accounts a user is following." />}
+                    checked={tiktokOptions.following || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, following: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Followers" info="Scrapes the list of followers for a specific user." />}
+                    checked={tiktokOptions.followers || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, followers: e.target.checked }))}
+                  />
+
+                  {(tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && (
+                    <TextInput label="Username" placeholder="@username" value={tiktokInputs.username || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, username: e.target.value }))} />
+                  )}
+                </Stack>
+              </Card>
+
+              {/* VIDEOS & CONTENT */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>🎬 Videos & Content</Text>
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Profile Videos" info="Scrapes all videos from a user's profile including captions, view counts, and engagement." />}
+                    checked={tiktokOptions.profileVideos || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, profileVideos: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Video Info" info="Scrapes detailed info about a specific video including stats, audio, effects, and metadata." />}
+                    checked={tiktokOptions.videoInfo || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, videoInfo: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Transcript" info="Extracts the spoken transcript from a TikTok video." />}
+                    checked={tiktokOptions.transcript || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Comments" info="Scrapes all comments on a specific video including user details and timestamps." />}
+                    checked={tiktokOptions.comments || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, comments: e.target.checked }))}
+                  />
+
+                  {tiktokOptions.profileVideos && (
+                    <TextInput label="Username" placeholder="@username" value={tiktokInputs.videosUsername || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
+                  )}
+
+                  {(tiktokOptions.videoInfo || tiktokOptions.transcript || tiktokOptions.comments) && (
+                    <TextInput label="Video URL" placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
+                  )}
+                </Stack>
+              </Card>
+
+              {/* SEARCH & DISCOVERY */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>🔍 Search & Discovery</Text>
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Search Users" info="Search for TikTok users by name or keyword and return matching profiles." />}
+                    checked={tiktokOptions.searchUsers || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchUsers: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Search by Hashtag" info="Search for videos associated with a specific hashtag." />}
+                    checked={tiktokOptions.searchHashtag || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchHashtag: e.target.checked }))}
+                  />
+
+                  <Checkbox
+                    label={<LabelWithInfo label="Search by Keyword" info="Search for videos matching a keyword query across TikTok." />}
+                    checked={tiktokOptions.searchKeyword || false}
+                    onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchKeyword: e.target.checked }))}
+                  />
+
+                  {tiktokOptions.searchUsers && (
+                    <TextInput label="User Search Query" placeholder="fitness creator" value={tiktokInputs.userSearchQuery || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, userSearchQuery: e.target.value }))} />
+                  )}
+
+                  {tiktokOptions.searchHashtag && (
+                    <TextInput label="Hashtag" placeholder="#fitness" value={tiktokInputs.hashtag || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, hashtag: e.target.value }))} />
+                  )}
+
+                  {tiktokOptions.searchKeyword && (
+                    <TextInput label="Keyword" placeholder="workout routine" value={tiktokInputs.keyword || ""}
+                      onChange={(e) => setTiktokInputs(prev => ({ ...prev, keyword: e.target.value }))} />
+                  )}
+                </Stack>
+              </Card>
+
+              <Button
+                leftSection={<IconSearch size={16} />}
+                disabled={!Object.values(tiktokOptions).some(Boolean)}
+              >
+                Search TikTok
+              </Button>
+            </Stack>
           </Tabs.Panel>
 
           <Tabs.Panel value="reddit" pt="md">
