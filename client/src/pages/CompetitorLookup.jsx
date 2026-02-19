@@ -24,6 +24,10 @@ import {
   IconAlertCircle,
   IconBrandX,
   IconBrandYoutube,
+  IconBrandLinkedin,
+  IconBrandInstagram,
+  IconBrandTiktok,
+  IconBrandReddit,
   IconCheck,
   IconCopy,
   IconSearch,
@@ -207,7 +211,7 @@ export default function CompetitorLookup() {
         // Keep only the last 10 overall
         const recentTen = allPosts.slice(0, 10);
         localStorage.setItem(storageKey, JSON.stringify(recentTen));
-        
+
       } catch (conversionError) {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
@@ -469,7 +473,7 @@ export default function CompetitorLookup() {
         <Group justify="space-between" align="baseline">
           <Title order={2}>Competitor Lookup</Title>
           <Text size="sm" c="dimmed">
-            Search competitors on X/Twitter or YouTube
+            Search competitors across social platforms
           </Text>
         </Group>
 
@@ -478,7 +482,19 @@ export default function CompetitorLookup() {
             <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>
               X / Twitter
             </Tabs.Tab>
-            <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} />}>
+            <Tabs.Tab value="linkedin" leftSection={<IconBrandLinkedin size={16} color="#0A66C2" />}>
+              LinkedIn
+            </Tabs.Tab>
+            <Tabs.Tab value="instagram" leftSection={<IconBrandInstagram size={16} color="#E1306C" />}>
+              Instagram
+            </Tabs.Tab>
+            <Tabs.Tab value="tiktok" leftSection={<IconBrandTiktok size={16} />}>
+              TikTok
+            </Tabs.Tab>
+            <Tabs.Tab value="reddit" leftSection={<IconBrandReddit size={16} color="#FF4500" />}>
+              Reddit
+            </Tabs.Tab>
+            <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} color="#FF0000" />}>
               YouTube
             </Tabs.Tab>
           </Tabs.List>
@@ -529,6 +545,30 @@ export default function CompetitorLookup() {
                 </Button>
               </Group>
             </form>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="linkedin" pt="md">
+            <Alert variant="light" color="blue" title="LinkedIn Lookup Coming Soon">
+              LinkedIn competitor search UI placeholder.
+            </Alert>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="instagram" pt="md">
+            <Alert variant="light" color="pink" title="Instagram Lookup Coming Soon">
+              Instagram competitor search UI placeholder.
+            </Alert>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="tiktok" pt="md">
+            <Alert variant="light" color="dark" title="TikTok Lookup Coming Soon">
+              TikTok competitor search UI placeholder.
+            </Alert>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="reddit" pt="md">
+            <Alert variant="light" color="orange" title="Reddit Lookup Coming Soon">
+              Reddit competitor search UI placeholder.
+            </Alert>
           </Tabs.Panel>
         </Tabs>
 

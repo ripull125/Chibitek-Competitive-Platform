@@ -22,6 +22,8 @@ import {
   IconBrandInstagram,
   IconBrandTiktok,
   IconBrandX,
+  IconBrandLinkedin,
+  IconBrandReddit,
   IconPlugConnected,
   IconPlugConnectedX,
   IconRefresh,
@@ -44,6 +46,13 @@ const CATALOG = [
     needsToken: false,
   },
   {
+    key: "linkedin",
+    name: "LinkedIn",
+    desc: "Professional posts and company updates.",
+    icon: IconBrandLinkedin,
+    needsToken: false,
+  },
+  {
     key: "instagram",
     name: "Instagram",
     desc: "Public posts and profile metadata.",
@@ -55,6 +64,13 @@ const CATALOG = [
     name: "TikTok",
     desc: "Creator posts and stats.",
     icon: IconBrandTiktok,
+    needsToken: false,
+  },
+  {
+    key: "reddit",
+    name: "Reddit",
+    desc: "Subreddit posts, comments, and media.",
+    icon: IconBrandReddit,
     needsToken: false,
   },
   {
@@ -213,12 +229,21 @@ export default function ConnectedIntegrations() {
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
             {filtered.map((prov) => {
               const Icon = prov.icon;
+              const brandColors = {
+                twitter: "#000000",
+                linkedin: "#0A66C2",
+                instagram: "#E1306C",
+                tiktok: "#000000",
+                reddit: "#FF4500",
+                facebook: "#1877F2",
+              };
+
               return (
                 <Card key={prov.key} withBorder radius="md" p="lg">
                   <Group justify="space-between" align="flex-start">
                     <Group align="flex-start">
                       <Box mt={2}>
-                        <Icon size={28} />
+                        <Icon size={28} color={brandColors[prov.key]} />
                       </Box>
                       <Box>
                         <Group gap="xs">
