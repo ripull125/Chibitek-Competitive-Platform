@@ -16,6 +16,8 @@ import {
 } from "@mantine/core";
 import { IconDownload } from "@tabler/icons-react";
 import "../utils/ui.css";
+import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function Reports() {
   const chartRef = useRef(null);
@@ -23,10 +25,31 @@ export default function Reports() {
   const [generating, setGenerating] = useState(false);
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Fetch and process saved posts
   useEffect(() => {
-    fetch("http://localhost:8080/api/posts")
+    if (!currentUserId) {
+      setToneEngagementData([]);
+      setLoading(false);
+      return;
+    }
+
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
       .then((r) => r.json())
       .then((data) => {
         const posts = data.posts || [];
@@ -45,7 +68,7 @@ export default function Reports() {
       })
       .catch((error) => console.error("Error fetching posts:", error))
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     window.dispatchEvent(

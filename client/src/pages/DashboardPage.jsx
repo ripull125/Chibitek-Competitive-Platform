@@ -39,6 +39,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import classes from "./DashboardPage.module.css";
 
 /* ---------- Utils & demo data ---------- */
@@ -334,14 +335,28 @@ function RecentPosts() {
   const [recentPosts, setRecentPosts] = React.useState([]);
 
   React.useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
-    const chartData = stored.map((post, index) => ({
-      index: index + 1,
-      engagement: post.engagement,
-      username: post.username,
-      content: post.content,
-    }));
-    setRecentPosts(chartData);
+    let mounted = true;
+    const load = async () => {
+      let userId = null;
+      if (supabase) {
+        const { data } = await supabase.auth.getUser();
+        userId = data?.user?.id || null;
+      }
+      if (!mounted) return;
+      const storageKey = userId
+        ? `recentCompetitorPosts_${userId}`
+        : 'recentCompetitorPosts';
+      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const chartData = stored.map((post, index) => ({
+        index: index + 1,
+        engagement: post.engagement,
+        username: post.username,
+        content: post.content,
+      }));
+      setRecentPosts(chartData);
+    };
+    load();
+    return () => { mounted = false; };
   }, []);
 
   const CustomTooltip = ({ active, payload }) => {

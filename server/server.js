@@ -1,4 +1,5 @@
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
+import { normalizeXPost } from "./utils/normalizeXPost.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -70,6 +71,18 @@ app.use(express.json({ limit: '10mb' }));
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
+
+const getUserIdFromRequest = (req) =>
+  req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
+
+const requireUserId = (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) {
+    res.status(401).json({ error: 'Missing user id.' });
+    return null;
+  }
+  return String(userId);
+};
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
@@ -211,12 +224,16 @@ app.post('/api/chat/conversations', async (req, res) => {
     return res.status(400).json({ error: 'conversation must be a non-empty array' });
   }
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .insert({
         title: title || 'New chat',
         conversation,
+        user_id: userId,
       })
       .select()
       .single();
@@ -234,10 +251,14 @@ app.post('/api/chat/conversations', async (req, res) => {
 });
 
 app.get('/api/chat/conversations', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .select('id, title, created_at')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -257,11 +278,15 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data, error } = await supabase
       .from('chat_conversations')
       .select('*')
       .eq('id', id)
+      .eq('user_id', userId)
       .single();
 
     if (error) {
@@ -280,11 +305,22 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id');
     if (error) {
       console.error('Delete conversation error:', error);
       return res.status(500).json({ error: error.message });
+    }
+    if (!data?.length) {
+      return res.status(404).json({ error: 'Conversation not found.' });
     }
     return res.json({ deleted: true, id });
   } catch (err) {
@@ -293,14 +329,25 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
-const deleteConversationById = async (id, res) => {
+const deleteConversationById = async (id, req, res) => {
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    const { error } = await supabase.from('chat_conversations').delete().eq('id', id);
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id');
     if (error) {
       console.error('Delete conversation error:', error);
       return res.status(500).json({ error: error.message });
+    }
+    if (!data?.length) {
+      return res.status(404).json({ error: 'Conversation not found.' });
     }
     return res.json({ deleted: true, id });
   } catch (err) {
@@ -311,7 +358,7 @@ const deleteConversationById = async (id, res) => {
 
 app.post('/api/chat/conversations/:id/delete', async (req, res) => {
   const { id } = req.params;
-  return deleteConversationById(id, res);
+  return deleteConversationById(id, req, res);
 });
 
 app.post('/api/chat/conversations/:id', async (req, res) => {
@@ -320,32 +367,46 @@ app.post('/api/chat/conversations/:id', async (req, res) => {
   if (String(methodOverride || '').toUpperCase() !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
-  return deleteConversationById(id, res);
+  return deleteConversationById(id, req, res);
 });
 
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
     const username = req.params.username;
 
-    const userId = await getUserIdByUsername(username);
+    const platformUserId = await getUserIdByUsername(username);
 
     const PLATFORM_X = 1;
 
-    const { data: competitor } = await supabase
+    // Find or create competitor
+    let competitor;
+    const { data: existingComp } = await supabase
       .from("competitors")
-      .upsert(
-        {
+      .select("*")
+      .eq("platform_id", PLATFORM_X)
+      .eq("platform_user_id", platformUserId)
+      .maybeSingle();
+
+    if (existingComp) {
+      competitor = existingComp;
+    } else {
+      const { data: newComp, error: compErr } = await supabase
+        .from("competitors")
+        .insert({
           platform_id: PLATFORM_X,
-          platform_user_id: userId,
+          platform_user_id: platformUserId,
           display_name: username,
           profile_url: `https://x.com/${username}`,
-        },
-        { onConflict: "platform_id,platform_user_id" }
-      )
-      .select()
-      .single();
+        })
+        .select()
+        .single();
+      if (compErr) throw compErr;
+      competitor = newComp;
+    }
 
-    const [tweet] = await fetchPostsByUserId(userId);
+    const [tweet] = await fetchPostsByUserId(platformUserId);
 
     if (!tweet) {
       return res.json({ saved: false, reason: "No tweet found" });
@@ -356,13 +417,37 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       competitorId: competitor.id,
     });
 
-    const { data: post } = await supabase
+    // Find or create post
+    let post;
+    const { data: existingPost } = await supabase
       .from("posts")
-      .upsert(normalized.post, {
-        onConflict: "platform_id,platform_post_id",
-      })
-      .select()
-      .single();
+      .select("*")
+      .eq("user_id", userId)
+      .eq("platform_id", PLATFORM_X)
+      .eq("platform_post_id", normalized.post.platform_post_id)
+      .maybeSingle();
+
+    if (existingPost) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("posts")
+        .update({ content: normalized.post.content, published_at: normalized.post.published_at })
+        .eq("id", existingPost.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      post = updated;
+    } else {
+      const { data: newPost, error: insertErr } = await supabase
+        .from("posts")
+        .insert({
+          ...normalized.post,
+          user_id: userId,
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      post = newPost;
+    }
 
     await supabase.from("post_metrics").insert({
       post_id: post.id,
@@ -388,6 +473,7 @@ app.post("/api/posts", async (req, res) => {
     likes,
     shares,
     comments,
+    user_id,
     title,
     description,
     channelTitle,
@@ -397,49 +483,80 @@ app.post("/api/posts", async (req, res) => {
     author_handle,
   } = req.body;
 
-  if (!platform_id || !platform_user_id || !platform_post_id) {
+  if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   try {
+    // Find or create competitor
     const profileUrl = platform_id === 1
       ? `https://x.com/${username}`
       : platform_id === 8
         ? `https://www.youtube.com/channel/${platform_user_id}`
         : null;
 
-    const { data: competitor, error: competitorError } = await supabase
+    let competitor;
+    const { data: existingComp, error: competitorError } = await supabase
       .from("competitors")
-      .upsert(
-        {
-          platform_id,
-          platform_user_id,
-          display_name: username,
-          profile_url: profileUrl,
-        },
-        { onConflict: "platform_id,platform_user_id" }
-      )
-      .select()
-      .single();
+      .select("*")
+      .eq("platform_id", platform_id)
+      .eq("platform_user_id", platform_user_id)
+      .maybeSingle();
 
     if (competitorError) throw competitorError;
 
-    const { data: post, error: postError } = await supabase
+    if (existingComp) {
+      competitor = existingComp;
+    } else {
+      const { data: newComp, error: compErr } = await supabase
+        .from("competitors")
+        .insert({
+          platform_id,
+          platform_user_id,
+          display_name: username,
+          profile_url: profileUrl || `https://x.com/${username}`,
+        })
+        .select()
+        .single();
+      if (compErr) throw compErr;
+      competitor = newComp;
+    }
+
+    // Find or create post
+    let post;
+    const { data: existingPost } = await supabase
       .from("posts")
-      .upsert(
-        {
+      .select("*")
+      .eq("user_id", user_id)
+      .eq("platform_id", platform_id)
+      .eq("platform_post_id", platform_post_id)
+      .maybeSingle();
+
+    if (existingPost) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("posts")
+        .update({ content, published_at })
+        .eq("id", existingPost.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      post = updated;
+    } else {
+      const { data: newPost, error: insertErr } = await supabase
+        .from("posts")
+        .insert({
           platform_id,
           competitor_id: competitor.id,
           platform_post_id,
           content,
           published_at,
-        },
-        { onConflict: "platform_id,platform_post_id" }
-      )
-      .select()
-      .single();
-
-    if (postError) throw postError;
+          user_id,
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+      post = newPost;
+    }
 
     await supabase.from("post_metrics").insert({
       post_id: post.id,
@@ -489,6 +606,9 @@ app.post("/api/posts", async (req, res) => {
 });
 
 app.get("/api/posts", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
     const { data: posts, error } = await supabase
       .from("posts")
@@ -501,6 +621,7 @@ app.get("/api/posts", async (req, res) => {
   post_metrics(likes, shares, comments),
   post_details_platform(extra_json)
 `)
+      .eq("user_id", userId)
       .order("published_at", { ascending: false });
 
     if (error) throw error;
@@ -541,14 +662,28 @@ app.get("/api/posts", async (req, res) => {
 app.delete("/api/posts/:id", async (req, res) => {
   const postId = req.params.id;
 
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   try {
-    await supabase.from("post_metrics").delete().eq("post_id", postId);
-    const { error: postError } = await supabase
+    const { data: post, error: postError } = await supabase
       .from("posts")
-      .delete()
-      .eq("id", postId);
+      .select("id")
+      .eq("id", postId)
+      .eq("user_id", userId)
+      .maybeSingle();
 
     if (postError) throw postError;
+    if (!post) return res.status(404).json({ error: "Post not found." });
+
+    await supabase.from("post_metrics").delete().eq("post_id", postId);
+    const { error: deleteError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", postId)
+      .eq("user_id", userId);
+
+    if (deleteError) throw deleteError;
 
     res.json({ deleted: true, post_id: postId });
   } catch (err) {

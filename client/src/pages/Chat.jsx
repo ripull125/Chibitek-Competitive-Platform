@@ -25,8 +25,10 @@ import {
   IconSend,
 } from '@tabler/icons-react';
 import { apiUrl } from '../utils/api';
+import { supabase } from '../supabaseClient';
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
+const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
 
 const resolveBackendUrl = () => {
   const envUrl = import.meta.env.e_BACKEND_URL;
@@ -58,6 +60,14 @@ const defaultConversation = [
 const loadPersistedChat = () => {
   if (typeof window === "undefined") return null;
   try {
+    // On a fresh session (new tab / fresh login), start with a clean chat
+    const alreadyLoaded = window.sessionStorage?.getItem(CHAT_SESSION_FLAG);
+    if (!alreadyLoaded) {
+      // Clear any stale localStorage chat state from a previous session
+      window.localStorage?.removeItem(CHAT_STORAGE_KEY);
+      window.sessionStorage?.setItem(CHAT_SESSION_FLAG, "1");
+      return null;
+    }
     const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
@@ -109,14 +119,26 @@ export default function ChatInput() {
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
     window.dispatchEvent(
       new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } })
     );
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -245,6 +267,10 @@ export default function ChatInput() {
 
   const handleSaveConversation = async (titleOverride) => {
     if (!conversation.length) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to save conversations.');
+      return;
+    }
     setIsSaving(true);
     setSaveNotice("");
     try {
@@ -254,6 +280,7 @@ export default function ChatInput() {
         body: JSON.stringify({
           title: titleOverride || buildConversationTitle(conversation),
           conversation,
+          user_id: currentUserId,
         }),
       });
 
@@ -289,10 +316,14 @@ export default function ChatInput() {
   };
 
   const handleOpenLoadModal = async () => {
+    if (!currentUserId) {
+      setSaveNotice('Sign in to load conversations.');
+      return;
+    }
     setLoadModalOpen(true);
     setIsLoadingList(true);
     try {
-      const response = await fetch(apiUrl('/api/chat/conversations'));
+      const response = await fetch(apiUrl(`/api/chat/conversations?user_id=${encodeURIComponent(currentUserId)}`));
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : "";
@@ -310,9 +341,15 @@ export default function ChatInput() {
 
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to load conversations.');
+      return;
+    }
     setIsLoadingList(true);
     try {
-      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`));
+      const response = await fetch(
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`)
+      );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
         const reason = errorBody?.error ? `: ${errorBody.error}` : "";
@@ -331,7 +368,63 @@ export default function ChatInput() {
         throw new Error("Saved conversation is invalid.");
       }
     } catch (error) {
-      setSaveNotice(error.message || "Failed to load conversation.");
+      setSaveNotice(error.message || 'Failed to load conversation.');
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!conversationId) return;
+    if (!currentUserId) {
+      setSaveNotice('Sign in to delete conversations.');
+      return;
+    }
+
+    const previousList = savedConversations;
+    const previousConversation = conversation;
+    const previousMessage = message;
+    const previousAttachments = attachments;
+    const previousCurrentId = currentConversationId;
+
+    setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (currentConversationId === conversationId) {
+      handleNewConversation();
+    }
+
+    setIsLoadingList(true);
+    try {
+      let response = await fetch(
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`),
+        {
+        method: 'DELETE',
+        }
+      );
+
+      if (response.status === 404 || response.status === 405) {
+        response = await fetch(
+          apiUrl(`/api/chat/conversations/${conversationId}/delete?user_id=${encodeURIComponent(currentUserId)}`),
+          {
+            method: 'POST',
+          }
+        );
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        throw new Error(`Failed to delete conversation${reason}`);
+      }
+      setSaveNotice('Conversation deleted.');
+    } catch (error) {
+      setSaveNotice(error.message || 'Failed to delete conversation.');
+      setSavedConversations(previousList);
+      if (previousCurrentId === conversationId) {
+        setConversation(previousConversation);
+        setMessage(previousMessage);
+        setAttachments(previousAttachments);
+        setCurrentConversationId(previousCurrentId);
+      }
     } finally {
       setIsLoadingList(false);
     }

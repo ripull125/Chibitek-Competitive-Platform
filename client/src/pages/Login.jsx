@@ -72,10 +72,13 @@ export default function Login() {
       mounted = false;
       sub?.unsubscribe?.();
     };
+  }, [navigate, nextPath, searchParams]);
+
+  useEffect(() => {
     if (searchParams.get("unauthorized")) {
       setErrorMsg(unauthorizedMessage);
     }
-  }, [navigate, nextPath, searchParams]);
+  }, [searchParams]);
 
   const signInWithGoogle = async () => {
     setErrorMsg("");

@@ -14,24 +14,47 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
-    );
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
-    fetch(apiUrl("/api/posts"))
+    if (!currentUserId) {
+      setPosts([]);
+      setNotice("Sign in to view your saved posts.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
-  }, []);
+
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
+  }, [currentUserId]);
 
   function openDeleteConfirm(postId) {
     setDeleteModal({ open: true, postId });
@@ -45,10 +68,18 @@ export default function SavedPosts() {
     const postId = deleteModal.postId;
     closeDeleteConfirm();
 
+    if (!currentUserId) {
+      setNotice("Sign in to delete saved posts.");
+      return;
+    }
+
     try {
-      const resp = await fetch(`http://localhost:8080/api/posts/${postId}`, {
+      const resp = await fetch(
+        apiUrl(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUserId)}`),
+        {
         method: "DELETE",
-      });
+        }
+      );
 
       if (!resp.ok) {
         const error = await resp.json();
@@ -69,80 +100,23 @@ export default function SavedPosts() {
       <Stack>
         <Title order={2}>Saved Posts</Title>
 
-        {posts.map((p) => {
-          const isX = p.platform_id === 1;
-          const isYouTube = p.platform_id === 8;
+        {notice ? (
+          <Text size="sm" c="dimmed">
+            {notice}
+          </Text>
+        ) : null}
 
-          return (
-            <Card key={p.id} withBorder radius="md">
-              <Stack gap="xs">
-                <Group justify="space-between" align="flex-start">
-                  {/* ─────────────────────────────
-                     YOUTUBE POST LAYOUT
-                  ───────────────────────────── */}
-                  {isYouTube ? (
-                    <div style={{ flex: 1 }}>
-                      <Text fw={600} size="lg">
-                        {p.extra?.title || "Untitled Video"}{" "}
-                        <Text span fw={400} c="dimmed">
-                          — {p.extra?.channelTitle || "Unknown Creator"}
-                        </Text>
-                      </Text>
-
-                      <Text size="sm" c="dimmed" mt="xs">
-                        {p.extra?.description
-                          ? p.extra.description.length > 200
-                            ? `${p.extra.description.slice(0, 200)}…`
-                            : p.extra.description
-                          : "No description available"}
-                      </Text>
-
-                      {/* Transcript */}
-                      <Text size="sm" mt="sm">
-                        <Text span fw={500}>
-                          Transcript:{" "}
-                        </Text>
-                        {p.content
-                          ? p.content.length > 300
-                            ? `${p.content.slice(0, 300)}…`
-                            : p.content
-                          : "No transcript available"}
-                      </Text>
-                    </div>
-                  ) : (
-                    /* ─────────────────────────────
-                       X POST LAYOUT 
-                    ───────────────────────────── */
-                    <Text fw={500} style={{ flex: 1 }}>
-                      {p.content}
-                    </Text>
-                  )}
-
-                  <Tooltip label="Delete post" withArrow>
-                    <ActionIcon
-                      color="red"
-                      variant="subtle"
-                      onClick={() => openDeleteConfirm(p.id)}
-                    >
-                      <IconTrash size={18} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-
-                <Group>
-                  <Badge>❤️ {p.likes}</Badge>
-                  {isX && <Badge>🔁 {p.shares}</Badge>}
-                  <Badge>💬 {p.comments}</Badge>
-                  {isYouTube && <Badge>👀 {p.extra?.views || 0}</Badge>}
-                </Group>
-
-                <Text size="xs" c="dimmed">
-                  {new Date(p.published_at).toLocaleString()}
+        {posts.map((p) => (
+          <Card key={p.id} withBorder radius="md">
+            <Stack gap="xs">
+              <Group justify="space-between" align="flex-start">
+                <Text fw={500} style={{ flex: 1 }}>
+                  {p.content}
                 </Text>
-              </Stack>
-            </Card>
-          );
-        })}
+              </Group>
+            </Stack>
+          </Card>
+        ))}
       </Stack>
 
       <Modal

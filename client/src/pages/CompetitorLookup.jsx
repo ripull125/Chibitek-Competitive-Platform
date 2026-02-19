@@ -31,6 +31,7 @@ import {
 } from "@tabler/icons-react";
 import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function CompetitorLookup() {
   useEffect(() => {
@@ -46,6 +47,21 @@ export default function CompetitorLookup() {
   const [result, setResult] = useState(null);
   const [youtubeResult, setYoutubeResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (userError) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const backends = useMemo(() => {
     const bases = new Set();
@@ -183,12 +199,15 @@ export default function CompetitorLookup() {
         });
 
         // Get existing posts from localStorage and prepend new ones
-        const existingPosts = JSON.parse(localStorage.getItem('recentCompetitorPosts') || '[]');
+        const storageKey = currentUserId
+          ? `recentCompetitorPosts_${currentUserId}`
+          : 'recentCompetitorPosts';
+        const existingPosts = JSON.parse(localStorage.getItem(storageKey) || '[]');
         const allPosts = [...postsToSave, ...existingPosts];
         // Keep only the last 10 overall
         const recentTen = allPosts.slice(0, 10);
-        localStorage.setItem('recentCompetitorPosts', JSON.stringify(recentTen));
-
+        localStorage.setItem(storageKey, JSON.stringify(recentTen));
+        
       } catch (conversionError) {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
@@ -262,10 +281,15 @@ export default function CompetitorLookup() {
 
     const metrics = post.public_metrics || [];
     const [saving, setSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null); // 'saved' | 'error'
 
     async function handleSave() {
       try {
+        if (!currentUserId) {
+          throw new Error("Please sign in to save posts.");
+        }
         setSaving(true);
+        setSaveStatus(null);
         const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -279,6 +303,7 @@ export default function CompetitorLookup() {
             likes: metrics.like_count ?? 0,
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
+            user_id: currentUserId,
           }),
         });
 
@@ -288,8 +313,10 @@ export default function CompetitorLookup() {
         }
 
         await resp.json();
+        setSaveStatus('saved');
       } catch (e) {
         console.error("Error saving post:", e);
+        setSaveStatus('error');
       } finally {
         setSaving(false);
       }
@@ -304,8 +331,15 @@ export default function CompetitorLookup() {
             <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
           </Group>
 
-          <Button size="xs" variant="light" loading={saving} onClick={handleSave}>
-            Save
+          <Button
+            size="xs"
+            variant="light"
+            loading={saving}
+            color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
+            onClick={handleSave}
+            disabled={saveStatus === 'saved'}
+          >
+            {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save'}
           </Button>
         </Group>
       </Card>
