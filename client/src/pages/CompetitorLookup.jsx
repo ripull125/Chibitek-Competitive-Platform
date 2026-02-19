@@ -63,6 +63,9 @@ export default function CompetitorLookup() {
     company: "",
     post: "",
   });
+  const [instagramOptions, setInstagramOptions] = useState({});
+  const [instagramInputs, setInstagramInputs] = useState({});
+
 
 
   useEffect(() => {
@@ -586,7 +589,7 @@ export default function CompetitorLookup() {
               <Stack gap="sm">
                 {linkedinOptions.profile && (
                   <TextInput
-                    label="Profile URL or username"
+                    label="Profile URL or username (1 credit)"
                     placeholder="https://linkedin.com/in/..."
                     value={linkedinInputs.profile}
                     onChange={(e) =>
@@ -599,7 +602,7 @@ export default function CompetitorLookup() {
                 )}
                 {linkedinOptions.company && (
                   <TextInput
-                    label="Company URL or name"
+                    label="Company URL or name (1 credit)"
                     placeholder="https://linkedin.com/company/..."
                     value={linkedinInputs.company}
                     onChange={(e) =>
@@ -612,7 +615,7 @@ export default function CompetitorLookup() {
                 )}
                 {linkedinOptions.post && (
                   <TextInput
-                    label="Post URL"
+                    label="Post URL (1 credit)"
                     placeholder="https://linkedin.com/posts/..."
                     value={linkedinInputs.post}
                     onChange={(e) =>
@@ -639,10 +642,195 @@ export default function CompetitorLookup() {
           </Tabs.Panel>
 
           <Tabs.Panel value="instagram" pt="md">
-            <Alert variant="light" color="pink" title="Instagram Lookup Coming Soon">
-              Instagram competitor search UI placeholder.
-            </Alert>
+            <Stack gap="lg">
+
+              <Title order={4}>Instagram Lookup</Title>
+
+              <Text size="sm" c="dimmed">
+                Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+              </Text>
+
+              {/* PROFILE SECTION */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>👤 Profile & Account</Text>
+
+                  <Checkbox
+                    label="Profile (1 credit)"
+                    checked={instagramOptions.profile || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        profile: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  <Checkbox
+                    label="Basic Profile (1 credit)"
+                    checked={instagramOptions.basicProfile || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        basicProfile: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  {(instagramOptions.profile || instagramOptions.basicProfile) && (
+                    <TextInput
+                      label="Username"
+                      placeholder="@username"
+                      value={instagramInputs.username || ""}
+                      onChange={(e) =>
+                        setInstagramInputs(prev => ({
+                          ...prev,
+                          username: e.currentTarget.value,
+                        }))
+                      }
+                    />
+                  )}
+                </Stack>
+              </Card>
+
+              {/* POSTS SECTION */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>📝 Posts & Content</Text>
+
+                  <Checkbox
+                    label="User Posts (1 credit)"
+                    checked={instagramOptions.userPosts || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        userPosts: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  <Checkbox
+                    label="Single Post (1 credit)"
+                    checked={instagramOptions.singlePost || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        singlePost: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  <Checkbox
+                    label="Post Comments (1 credit)"
+                    checked={instagramOptions.postComments || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        postComments: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  {(instagramOptions.singlePost || instagramOptions.postComments) && (
+                    <TextInput
+                      label="Post URL"
+                      placeholder="https://instagram.com/p/..."
+                      value={instagramInputs.postUrl || ""}
+                      onChange={(e) =>
+                        setInstagramInputs(prev => ({
+                          ...prev,
+                          postUrl: e.target.value,
+                        }))
+                      }
+                    />
+                  )}
+                </Stack>
+              </Card>
+
+              {/* REELS SECTION */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>🎥 Reels</Text>
+
+                  <Checkbox
+                    label="Reels Search (1 credit)"
+                    checked={instagramOptions.reelsSearch || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        reelsSearch: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  <Checkbox
+                    label="User Reels (1 credit)"
+                    checked={instagramOptions.userReels || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        userReels: e.target.checked,
+                      }))
+                    }
+                  />
+
+                  {(instagramOptions.reelsSearch || instagramOptions.userReels) && (
+                    <TextInput
+                      label="Search query or username"
+                      placeholder="fitness"
+                      value={instagramInputs.reelsQuery || ""}
+                      onChange={(e) =>
+                        setInstagramInputs(prev => ({
+                          ...prev,
+                          reelsQuery: e.target.value,
+                        }))
+                      }
+                    />
+                  )}
+                </Stack>
+              </Card>
+
+              {/* HIGHLIGHTS SECTION */}
+              <Card withBorder radius="md" p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>⭐ Highlights</Text>
+
+                  <Checkbox
+                    label="Highlight Detail (1 credit)"
+                    checked={instagramOptions.highlightDetail || false}
+                    onChange={(e) =>
+                      setInstagramOptions(prev => ({
+                        ...prev,
+                        highlightDetail: e.currentTarget.checked,
+                      }))
+                    }
+                  />
+
+                  {instagramOptions.highlightDetail && (
+                    <TextInput
+                      label="Highlight URL"
+                      placeholder="https://instagram.com/stories/highlights/..."
+                      value={instagramInputs.highlightUrl || ""}
+                      onChange={(e) =>
+                        setInstagramInputs(prev => ({
+                          ...prev,
+                          highlightUrl: e.currentTarget.value,
+                        }))
+                      }
+                    />
+                  )}
+                </Stack>
+              </Card>
+
+              <Button
+                leftSection={<IconSearch size={16} />}
+                disabled={!Object.values(instagramOptions).some(Boolean)}
+              >
+                Search Instagram
+              </Button>
+            </Stack>
           </Tabs.Panel>
+
 
           <Tabs.Panel value="tiktok" pt="md">
             <Alert variant="light" color="dark" title="TikTok Lookup Coming Soon">
