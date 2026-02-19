@@ -36,6 +36,7 @@ import {
 import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import { Checkbox, Transition } from "@mantine/core";
 
 export default function CompetitorLookup() {
   useEffect(() => {
@@ -52,6 +53,17 @@ export default function CompetitorLookup() {
   const [youtubeResult, setYoutubeResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [linkedinOptions, setLinkedinOptions] = useState({
+    profile: false,
+    company: false,
+    post: false,
+  });
+  const [linkedinInputs, setLinkedinInputs] = useState({
+    profile: "",
+    company: "",
+    post: "",
+  });
+
 
   useEffect(() => {
     let mounted = true;
@@ -548,9 +560,82 @@ export default function CompetitorLookup() {
           </Tabs.Panel>
 
           <Tabs.Panel value="linkedin" pt="md">
-            <Alert variant="light" color="blue" title="LinkedIn Lookup Coming Soon">
-              LinkedIn competitor search UI placeholder.
-            </Alert>
+            <Stack gap="md">
+
+              <Title order={4}>LinkedIn Lookup</Title>
+
+              {/* Checkbox Options */}
+              <Checkbox.Group
+                value={Object.keys(linkedinOptions).filter(k => linkedinOptions[k])}
+                onChange={(values) => {
+                  setLinkedinOptions({
+                    profile: values.includes("profile"),
+                    company: values.includes("company"),
+                    post: values.includes("post"),
+                  });
+                }}
+                label="Select what you want to search"
+              >
+                <Stack mt="xs">
+                  <Checkbox value="profile" label="Profile" />
+                  <Checkbox value="company" label="Company" />
+                  <Checkbox value="post" label="Post" />
+                </Stack>
+              </Checkbox.Group>
+
+              <Stack gap="sm">
+                {linkedinOptions.profile && (
+                  <TextInput
+                    label="Profile URL or username"
+                    placeholder="https://linkedin.com/in/..."
+                    value={linkedinInputs.profile}
+                    onChange={(e) =>
+                      setLinkedinInputs((prev) => ({
+                        ...prev,
+                        profile: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                )}
+                {linkedinOptions.company && (
+                  <TextInput
+                    label="Company URL or name"
+                    placeholder="https://linkedin.com/company/..."
+                    value={linkedinInputs.company}
+                    onChange={(e) =>
+                      setLinkedinInputs((prev) => ({
+                        ...prev,
+                        company: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                )}
+                {linkedinOptions.post && (
+                  <TextInput
+                    label="Post URL"
+                    placeholder="https://linkedin.com/posts/..."
+                    value={linkedinInputs.post}
+                    onChange={(e) =>
+                      setLinkedinInputs((prev) => ({
+                        ...prev,
+                        post: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                )}
+              </Stack>
+
+              <Button
+                leftSection={<IconSearch size={16} />}
+                disabled={
+                  !linkedinOptions.profile &&
+                  !linkedinOptions.company &&
+                  !linkedinOptions.post
+                }
+              >
+                Search LinkedIn
+              </Button>
+            </Stack>
           </Tabs.Panel>
 
           <Tabs.Panel value="instagram" pt="md">
