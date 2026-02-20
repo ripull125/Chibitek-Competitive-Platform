@@ -961,6 +961,9 @@ export default function CompetitorLookup() {
   const [youtubeResult, setYoutubeResult] = useState(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [youtubeError, setYoutubeError] = useState(null);
+  const [instagramResult, setInstagramResult] = useState(null);
+  const [instagramLoading, setInstagramLoading] = useState(false);
+  const [instagramError, setInstagramError] = useState(null);
 
 
 
@@ -1332,6 +1335,67 @@ export default function CompetitorLookup() {
           likes: data.likes ?? 0,
           shares: 0,
           comments: data.comments ?? 0,
+          user_id: currentUserId,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Save failed: ${resp.status} ${text}`);
+      }
+      return resp.json();
+    }
+  }
+
+  async function handleInstagramSubmit() {
+    setInstagramError(null);
+    setInstagramResult(null);
+
+    const hasInput =
+      (instagramOptions.profile && instagramInputs.username?.trim()) ||
+      (instagramOptions.userPosts && instagramInputs.userPostsUsername?.trim()) ||
+      ((instagramOptions.singlePost || instagramOptions.postComments) && instagramInputs.postUrl?.trim()) ||
+      (instagramOptions.reelsSearch && instagramInputs.reelsSearchTerm?.trim()) ||
+      (instagramOptions.userReels && instagramInputs.userReelsUsername?.trim()) ||
+      (instagramOptions.highlightDetail && instagramInputs.highlightUrl?.trim());
+
+    if (!hasInput) {
+      setInstagramError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setInstagramLoading(true);
+    try {
+      const json = await tryPostJson("/api/instagram/search", {
+        options: instagramOptions,
+        inputs: instagramInputs,
+      });
+      setInstagramResult(json);
+    } catch (e) {
+      setInstagramError(e?.message || "Unknown error");
+    } finally {
+      setInstagramLoading(false);
+    }
+  }
+
+  async function handleInstagramSave(type, data) {
+    if (!currentUserId) {
+      setInstagramError("Please sign in to save data.");
+      return;
+    }
+    if (type === "post" && data) {
+      const resp = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: 2, // Instagram
+          platform_user_id: data.user?.pk || data.owner?.id || "",
+          username: data.user?.username || data.owner?.username || "",
+          platform_post_id: data.pk || data.id || data.code || "",
+          content: data.caption?.text || data.caption || "",
+          published_at: data.taken_at ? new Date(data.taken_at * 1000).toISOString() : null,
+          likes: data.like_count ?? data.likes ?? 0,
+          shares: 0,
+          comments: data.comment_count ?? data.comments ?? 0,
           user_id: currentUserId,
         }),
       });
@@ -1805,6 +1869,262 @@ export default function CompetitorLookup() {
     );
   }
 
+  /* ── Instagram Display Components ──────────────────────────────────── */
+
+  function IgProfileCard({ profile }) {
+    if (!profile) return null;
+    const p = profile.data?.user || profile.data || profile.user || profile;
+    const pic = p.profile_pic_url_hd || p.profile_pic_url || p.profilePicture;
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start">
+            <Group gap="sm">
+              {pic && <img src={pic} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />}
+              <div>
+                <Group gap="xs">
+                  <Title order={4}>{p.full_name || p.fullName || p.username}</Title>
+                  {(p.is_verified || p.isVerified) && <Badge size="xs" color="blue">Verified</Badge>}
+                  {(p.is_private || p.isPrivate) && <Badge size="xs" color="gray">Private</Badge>}
+                </Group>
+                <Text size="xs" c="dimmed">@{p.username}</Text>
+                {p.category && <Badge size="xs" variant="outline" mt={2}>{p.category}</Badge>}
+              </div>
+            </Group>
+            <Badge variant="light" color="pink">
+              <IconBrandInstagram size={14} style={{ marginRight: 4 }} /> Profile
+            </Badge>
+          </Group>
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Posts", value: fmtNum(p.media_count ?? p.edge_owner_to_timeline_media?.count ?? p.postsCount) },
+              { label: "Followers", value: fmtNum(p.follower_count ?? p.edge_followed_by?.count ?? p.followersCount) },
+              { label: "Following", value: fmtNum(p.following_count ?? p.edge_follow?.count ?? p.followingCount) },
+            ].map(({ label, value }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{value}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          {(p.biography || p.bio) && (
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{p.biography || p.bio}</Text>
+          )}
+
+          {p.external_url && (
+            <Text size="xs" c="blue">{p.external_url}</Text>
+          )}
+        </Stack>
+      </Card>
+    );
+  }
+
+  function IgPostCard({ post, onSave, compact }) {
+    if (!post) return null;
+    const caption = post.caption?.text || post.caption || "";
+    const thumb =
+      post.image_versions2?.candidates?.[0]?.url ||
+      post.thumbnail_url ||
+      post.display_url ||
+      post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url;
+    const isVideo = post.media_type === 2 || post.video_url || post.is_video;
+
+    return (
+      <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
+        <Group gap="sm" align="start" wrap="nowrap">
+          {thumb && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <img src={thumb} alt="" style={{ width: compact ? 100 : 140, height: compact ? 100 : 140, objectFit: "cover", borderRadius: 6 }} />
+              {isVideo && <Badge size="xs" style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,.7)", color: "#fff" }}>Video</Badge>}
+              {post.carousel_media_count > 1 && (
+                <Badge size="xs" style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.7)", color: "#fff" }}>
+                  1/{post.carousel_media_count}
+                </Badge>
+              )}
+            </div>
+          )}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>No caption</i>}</Text>
+            <Text size="xs" c="dimmed">
+              {post.user?.username || post.owner?.username || ""}
+              {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
+            </Text>
+            <Group gap="xs">
+              {[
+                { label: "❤️", val: post.like_count ?? post.likes },
+                { label: "💬", val: post.comment_count ?? post.comments },
+                { label: "👁", val: post.play_count || post.video_view_count },
+              ].filter(x => x.val != null).map(({ label, val }) => (
+                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              ))}
+            </Group>
+            {onSave && (
+              <Group justify="flex-end">
+                <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+              </Group>
+            )}
+          </Stack>
+        </Group>
+      </Card>
+    );
+  }
+
+  function IgCommentsList({ comments }) {
+    const list = Array.isArray(comments) ? comments : comments?.comments || [];
+    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    return (
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+        {list.slice(0, 30).map((c, i) => (
+          <Card key={i} withBorder radius="sm" p="xs">
+            <Group gap={6} mb={4} wrap="nowrap">
+              {c.user?.profile_pic_url && <img src={c.user.profile_pic_url} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />}
+              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.user?.username || c.username || "User"}</Text>
+              {(c.comment_like_count > 0 || c.likes > 0) && <Badge size="xs" variant="light">{c.comment_like_count || c.likes} ♥</Badge>}
+            </Group>
+            <Text size="xs" lineClamp={3}>{c.text}</Text>
+          </Card>
+        ))}
+      </SimpleGrid>
+    );
+  }
+
+  function IgReelCard({ reel, compact }) {
+    if (!reel) return null;
+    const thumb = reel.image_versions2?.candidates?.[0]?.url || reel.thumbnail_url || reel.display_url;
+    const caption = reel.caption?.text || reel.caption || "";
+    return (
+      <Card withBorder radius="md" shadow="sm" p="xs">
+        <Group gap="sm" align="start" wrap="nowrap">
+          {thumb && <img src={thumb} alt="" style={{ width: 90, height: 120, objectFit: "cover", borderRadius: 6 }} />}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text size="xs" lineClamp={2} fw={500}>{caption || <i>No caption</i>}</Text>
+            <Text size="xs" c="dimmed">{reel.user?.username || ""}</Text>
+            <Group gap="xs">
+              {[
+                { label: "▶", val: reel.play_count || reel.video_view_count },
+                { label: "❤️", val: reel.like_count ?? reel.likes },
+                { label: "💬", val: reel.comment_count ?? reel.comments },
+              ].filter(x => x.val != null).map(({ label, val }) => (
+                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              ))}
+            </Group>
+          </Stack>
+        </Group>
+      </Card>
+    );
+  }
+
+  function InstagramResults({ data, onSave }) {
+    if (!data) return null;
+    const { results = {}, errors = [] } = data;
+
+    // Normalize arrays — Scrape Creators response shapes:
+    //   userPosts: { posts: [{ node: {...} }] }
+    //   reelsSearch: { reels: [...] }
+    //   userReels: { items: [{ media: {...} }] }
+    //   postComments: { comments: [...] }
+    //   highlightDetail: { highlights: [...] }
+    const rawPosts = results.userPosts?.posts || results.userPosts?.data?.items || results.userPosts?.items || [];
+    const postsArr = rawPosts.map(p => p.node || p);
+    const reelsSearchArr = results.reelsSearch?.reels || results.reelsSearch?.data?.items || results.reelsSearch?.items || [];
+    const rawUserReels = results.userReels?.items || results.userReels?.data?.items || [];
+    const userReelsArr = rawUserReels.map(r => r.media || r);
+    const commentsArr = results.postComments?.comments || results.postComments?.data?.comments || [];
+    const highlightItems = results.highlightDetail?.highlights || results.highlightDetail?.data?.items || results.highlightDetail?.items || [];
+
+    const count =
+      (results.profile ? 1 : 0) +
+      (Array.isArray(postsArr) ? postsArr.length : 0) +
+      (results.singlePost ? 1 : 0) +
+      (Array.isArray(commentsArr) ? commentsArr.length : 0) +
+      (Array.isArray(reelsSearchArr) ? reelsSearchArr.length : 0) +
+      (Array.isArray(userReelsArr) ? userReelsArr.length : 0) +
+      (Array.isArray(highlightItems) ? highlightItems.length : 0);
+
+    return (
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Text fw={600}>Instagram Results</Text>
+          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+        </Group>
+
+        {errors.length > 0 && (
+          <Alert color="orange" title="Some requests failed">
+            {errors.map((e, i) => (
+              <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
+            ))}
+          </Alert>
+        )}
+
+        {results.profile && (
+          <>
+            <Divider label="Profile" labelPosition="center" />
+            <IgProfileCard profile={results.profile} />
+          </>
+        )}
+
+        {postsArr.length > 0 && (
+          <>
+            <Divider label={`User Posts (${postsArr.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {postsArr.map((p, i) => <IgPostCard key={p.pk || p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {results.singlePost && (
+          <>
+            <Divider label="Post Detail" labelPosition="center" />
+            <IgPostCard post={results.singlePost?.data?.xdt_shortcode_media || results.singlePost?.data || results.singlePost} onSave={onSave} />
+          </>
+        )}
+
+        {commentsArr.length > 0 && (
+          <>
+            <Divider label={`Comments (${commentsArr.length})`} labelPosition="center" />
+            <IgCommentsList comments={commentsArr} />
+          </>
+        )}
+
+        {reelsSearchArr.length > 0 && (
+          <>
+            <Divider label={`Reels Search (${reelsSearchArr.length})`} labelPosition="center" />
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+              {reelsSearchArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} compact />)}
+            </SimpleGrid>
+          </>
+        )}
+
+        {userReelsArr.length > 0 && (
+          <>
+            <Divider label={`User Reels (${userReelsArr.length})`} labelPosition="center" />
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+              {userReelsArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} compact />)}
+            </SimpleGrid>
+          </>
+        )}
+
+        {highlightItems.length > 0 && (
+          <>
+            <Divider label={`Highlight (${highlightItems.length} stories)`} labelPosition="center" />
+            <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="xs">
+              {highlightItems.map((item, i) => {
+                const src = item.image_versions2?.candidates?.[0]?.url || item.display_url;
+                return src ? (
+                  <Card key={i} withBorder radius="sm" p={4}>
+                    <img src={src} alt="" style={{ width: "100%", borderRadius: 4 }} />
+                  </Card>
+                ) : null;
+              })}
+            </SimpleGrid>
+          </>
+        )}
+      </Stack>
+    );
+  }
+
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
   return (
@@ -2180,13 +2500,7 @@ export default function CompetitorLookup() {
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, profile: e.target.checked }))}
                       />
 
-                      <Checkbox
-                        label={<LabelWithInfo label="Basic Profile" info="Scrapes basic profile info including username, display name, and profile picture." />}
-                        checked={instagramOptions.basicProfile || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, basicProfile: e.target.checked }))}
-                      />
-
-                      {(instagramOptions.profile || instagramOptions.basicProfile) && (
+                      {instagramOptions.profile && (
                         <TextInput label="Username" placeholder="@username" value={instagramInputs.username || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, username: e.target.value }))} />
                       )}
@@ -2263,13 +2577,13 @@ export default function CompetitorLookup() {
                       <Text fw={600}>⭐ Highlights</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Highlight Detail" info="Scrapes detailed info about a specific story highlight including all stories, media URLs, and metadata." />}
+                        label={<LabelWithInfo label="User Highlights" info="Scrapes all story highlights for a user including cover images and media." />}
                         checked={instagramOptions.highlightDetail || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, highlightDetail: e.target.checked }))}
                       />
 
                       {instagramOptions.highlightDetail && (
-                        <TextInput label="Highlight URL" placeholder="https://instagram.com/stories/highlights/..." value={instagramInputs.highlightUrl || ""}
+                        <TextInput label="Username" placeholder="@username" value={instagramInputs.highlightUrl || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, highlightUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -2278,9 +2592,21 @@ export default function CompetitorLookup() {
                   <Button
                     leftSection={<IconSearch size={16} />}
                     disabled={!Object.values(instagramOptions).some(Boolean)}
+                    loading={instagramLoading}
+                    onClick={handleInstagramSubmit}
                   >
                     Search Instagram
                   </Button>
+
+                  {instagramError && (
+                    <Alert color="red" title="Instagram Error" withCloseButton onClose={() => setInstagramError(null)}>
+                      {instagramError}
+                    </Alert>
+                  )}
+
+                  {instagramResult && (
+                    <InstagramResults data={instagramResult} onSave={handleInstagramSave} />
+                  )}
                 </Stack>
               </Tabs.Panel>
             )}

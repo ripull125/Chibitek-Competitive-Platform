@@ -1230,6 +1230,129 @@ app.post('/api/linkedin/save', async (req, res) => {
 
 // ─── End LinkedIn ────────────────────────────────────────────────────────────
 
+// ─── Instagram ───────────────────────────────────────────────────────────────
+
+/**
+ * Helper – extract an Instagram shortcode from a URL or raw shortcode.
+ */
+function extractIgShortcode(input) {
+  if (!input) return null;
+  const trimmed = input.trim();
+  // URL like https://www.instagram.com/p/CODE/ or /reel/CODE/
+  const m = trimmed.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
+  if (m) return m[1];
+  // Already a raw shortcode (11-char alphanumeric)
+  if (/^[A-Za-z0-9_-]{6,}$/.test(trimmed)) return trimmed;
+  return trimmed; // pass through, let API decide
+}
+
+function extractIgUsername(input) {
+  if (!input) return '';
+  let u = input.trim().replace(/^@/, '');
+  // URL like instagram.com/username
+  const m = u.match(/instagram\.com\/([A-Za-z0-9_.]+)/);
+  if (m) u = m[1];
+  return u;
+}
+
+/**
+ * POST /api/instagram/search
+ * Body: { options: { profile, userPosts, singlePost, postComments,
+ *                     reelsSearch, userReels, highlightDetail },
+ *         inputs: { username, userPostsUsername, postUrl, reelsSearchTerm,
+ *                   userReelsUsername, highlightUrl } }
+ *
+ * Scrape Creators param mapping (discovered via testing):
+ *   /v1/instagram/profile        → { handle }
+ *   /v1/instagram/user/posts     → { handle }
+ *   /v1/instagram/post           → { url }   (full IG post URL)
+ *   /v1/instagram/post/comments  → { url }   (full IG post URL)
+ *   /v1/instagram/reels/search   → { query }
+ *   /v1/instagram/user/reels     → { handle }
+ *   /v1/instagram/user/highlights→ { handle }
+ */
+app.post('/api/instagram/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+    const tasks = [];
+    const labels = [];
+
+    // ── Profile & Account ────────────────────────────────────────────────
+    const handle = extractIgUsername(inputs.username);
+
+    if (options.profile && handle) {
+      labels.push('profile');
+      tasks.push(scrapeCreators('/v1/instagram/profile', { handle }));
+    }
+
+    // ── Posts & Content ──────────────────────────────────────────────────
+    const postsHandle = extractIgUsername(inputs.userPostsUsername);
+    if (options.userPosts && postsHandle) {
+      labels.push('userPosts');
+      tasks.push(scrapeCreators('/v1/instagram/user/posts', { handle: postsHandle }));
+    }
+
+    // For single post & comments the API expects the full post URL
+    const postUrl = inputs.postUrl?.trim();
+    const shortcode = extractIgShortcode(postUrl);
+    // Build a canonical URL so the API always receives a full URL
+    const canonicalPostUrl = shortcode
+      ? (postUrl?.startsWith('http') ? postUrl : `https://www.instagram.com/p/${shortcode}/`)
+      : null;
+
+    if (options.singlePost && canonicalPostUrl) {
+      labels.push('singlePost');
+      tasks.push(scrapeCreators('/v1/instagram/post', { url: canonicalPostUrl }));
+    }
+    if (options.postComments && canonicalPostUrl) {
+      labels.push('postComments');
+      tasks.push(scrapeCreators('/v1/instagram/post/comments', { url: canonicalPostUrl }));
+    }
+
+    // ── Reels ────────────────────────────────────────────────────────────
+    if (options.reelsSearch && inputs.reelsSearchTerm?.trim()) {
+      labels.push('reelsSearch');
+      tasks.push(scrapeCreators('/v1/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }));
+    }
+
+    const reelsHandle = extractIgUsername(inputs.userReelsUsername);
+    if (options.userReels && reelsHandle) {
+      labels.push('userReels');
+      tasks.push(scrapeCreators('/v1/instagram/user/reels', { handle: reelsHandle }));
+    }
+
+    // ── Highlights ───────────────────────────────────────────────────────
+    const highlightHandle = extractIgUsername(inputs.highlightUrl);
+    if (options.highlightDetail && highlightHandle) {
+      labels.push('highlightDetail');
+      tasks.push(scrapeCreators('/v1/instagram/user/highlights', { handle: highlightHandle }));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No Instagram options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors });
+  } catch (err) {
+    console.error('Instagram search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── End Instagram ───────────────────────────────────────────────────────────
+
 // ─── YouTube Helpers ─────────────────────────────────────────────────────────
 
 const YT_BASE = 'https://www.googleapis.com/youtube/v3';
