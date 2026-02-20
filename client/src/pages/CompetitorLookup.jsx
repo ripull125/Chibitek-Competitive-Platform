@@ -930,7 +930,6 @@ export default function CompetitorLookup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [youtubeResult, setYoutubeResult] = useState(null);
   const [convertedData, setConvertedData] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [linkedinOptions, setLinkedinOptions] = useState({
@@ -959,6 +958,9 @@ export default function CompetitorLookup() {
   const [xResult, setXResult] = useState(null);
   const [xLoading, setXLoading] = useState(false);
   const [xError, setXError] = useState(null);
+  const [youtubeResult, setYoutubeResult] = useState(null);
+  const [youtubeLoading, setYoutubeLoading] = useState(false);
+  const [youtubeError, setYoutubeError] = useState(null);
 
 
 
@@ -1282,6 +1284,65 @@ export default function CompetitorLookup() {
     }
   }
 
+  async function handleYoutubeSubmit() {
+    setYoutubeError(null);
+    setYoutubeResult(null);
+
+    const hasInput =
+      ((youtubeOptions.channelDetails || youtubeOptions.channelVideos) && youtubeInputs.channelUrl?.trim()) ||
+      ((youtubeOptions.videoDetails || youtubeOptions.transcript || youtubeOptions.videoComments) && youtubeInputs.videoUrl?.trim()) ||
+      (youtubeOptions.search && youtubeInputs.searchQuery?.trim());
+
+    if (!hasInput) {
+      setYoutubeError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setYoutubeLoading(true);
+    try {
+      const json = await tryPostJson("/api/youtube/search", {
+        options: youtubeOptions,
+        inputs: youtubeInputs,
+      });
+      setYoutubeResult(json);
+    } catch (e) {
+      setYoutubeError(e?.message || "Unknown error");
+    } finally {
+      setYoutubeLoading(false);
+    }
+  }
+
+  async function handleYoutubeSave(type, data) {
+    if (!currentUserId) {
+      setYoutubeError("Please sign in to save data.");
+      return;
+    }
+    // Save video as a post via /api/posts
+    if (type === "video" && data) {
+      const resp = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: 5, // YouTube
+          platform_user_id: data.channelId || "",
+          username: data.channelTitle || "",
+          platform_post_id: data.id,
+          content: data.title + (data.description ? "\n\n" + data.description : ""),
+          published_at: data.publishedAt,
+          likes: data.likes ?? 0,
+          shares: 0,
+          comments: data.comments ?? 0,
+          user_id: currentUserId,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Save failed: ${resp.status} ${text}`);
+      }
+      return resp.json();
+    }
+  }
+
   function BackendBadge({ base }) {
     const label = base?.replace(/^https?:\/\//, "");
     return (
@@ -1498,6 +1559,249 @@ export default function CompetitorLookup() {
           </Group>
         </Stack>
       </Card>
+    );
+  }
+
+  /* ── YouTube Display Components ───────────────────────────────────────── */
+
+  function fmtNum(n) {
+    if (n == null) return "0";
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+    return n.toLocaleString();
+  }
+
+  function parseDuration(iso) {
+    if (!iso) return "";
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return iso;
+    const h = m[1] ? `${m[1]}:` : "";
+    const min = (m[2] || "0").padStart(h ? 2 : 1, "0");
+    const sec = (m[3] || "0").padStart(2, "0");
+    return `${h}${min}:${sec}`;
+  }
+
+  function YTChannelCard({ data }) {
+    if (!data) return null;
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start">
+            <Group gap="sm">
+              {data.thumbnails?.medium?.url && (
+                <img src={data.thumbnails.medium.url} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />
+              )}
+              <div>
+                <Title order={4}>{data.title}</Title>
+                {data.customUrl && <Text size="xs" c="dimmed">{data.customUrl}</Text>}
+              </div>
+            </Group>
+            <Badge variant="light" color="red">
+              <IconBrandYoutube size={14} style={{ marginRight: 4 }} /> Channel
+            </Badge>
+          </Group>
+
+          {data.bannerUrl && (
+            <img src={data.bannerUrl} alt="banner" style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: 8 }} />
+          )}
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Subscribers", value: fmtNum(data.subscribers) },
+              { label: "Total Views", value: fmtNum(data.totalViews) },
+              { label: "Videos", value: fmtNum(data.videoCount) },
+            ].map(({ label, value }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{value}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          {data.description && (
+            <ScrollArea h={80}>
+              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.description}</Text>
+            </ScrollArea>
+          )}
+
+          {data.country && (
+            <Text size="xs" c="dimmed">Country: {data.country} · Joined {new Date(data.publishedAt).toLocaleDateString()}</Text>
+          )}
+
+          {data.keywords && (
+            <Group gap={4} wrap="wrap">
+              {data.keywords.split(/\s+/).slice(0, 15).map((kw, i) => (
+                <Badge key={i} size="xs" variant="outline">{kw.replace(/"/g, "")}</Badge>
+              ))}
+            </Group>
+          )}
+        </Stack>
+      </Card>
+    );
+  }
+
+  function YTVideoCard({ video, onSave, compact }) {
+    if (!video) return null;
+    const thumb = video.thumbnails?.medium?.url || video.thumbnails?.default?.url;
+    return (
+      <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
+        <Group gap="sm" align="start" wrap="nowrap">
+          {thumb && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <img src={thumb} alt="" style={{ width: compact ? 120 : 168, borderRadius: 6 }} />
+              {video.duration && (
+                <Badge size="xs" style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,.8)", color: "#fff" }}>
+                  {parseDuration(video.duration)}
+                </Badge>
+              )}
+            </div>
+          )}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
+            <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}</Text>
+            <Group gap="xs">
+              {[
+                { label: "Views", val: video.views },
+                { label: "Likes", val: video.likes },
+                { label: "Comments", val: video.comments },
+              ].map(({ label, val }) => (
+                <Badge key={label} variant="light" size="xs">{label}: {fmtNum(val)}</Badge>
+              ))}
+            </Group>
+            {!compact && video.description && (
+              <Text size="xs" c="dimmed" lineClamp={2}>{video.description}</Text>
+            )}
+            {onSave && (
+              <Group justify="flex-end">
+                <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
+              </Group>
+            )}
+          </Stack>
+        </Group>
+      </Card>
+    );
+  }
+
+  function YTCommentsList({ comments }) {
+    if (!comments?.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    return (
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+        {comments.map((c, i) => (
+          <Card key={i} withBorder radius="sm" p="xs">
+            <Group gap={6} mb={4} wrap="nowrap">
+              {c.authorImage && <img src={c.authorImage} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />}
+              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
+              {c.likes > 0 && <Badge size="xs" variant="light">{c.likes} ♥</Badge>}
+            </Group>
+            <Text size="xs" lineClamp={3}>{c.text}</Text>
+            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{c.replyCount} {c.replyCount === 1 ? "reply" : "replies"}</Text>}
+          </Card>
+        ))}
+      </SimpleGrid>
+    );
+  }
+
+  function YTTranscript({ data }) {
+    if (!data) return null;
+    if (!data.available) {
+      return (
+        <Alert color="yellow" title="Transcript unavailable">
+          {data.reason || "No transcript available for this video."}
+          {data.videoTitle && <Text size="sm" mt={4}>Video: {data.videoTitle}</Text>}
+        </Alert>
+      );
+    }
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="xs">
+          <Group justify="space-between">
+            <Text fw={600}>Transcript</Text>
+            <Badge size="xs" variant="light">{data.language || "en"}</Badge>
+          </Group>
+          <ScrollArea h={250}>
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.text}</Text>
+          </ScrollArea>
+        </Stack>
+      </Card>
+    );
+  }
+
+  function YoutubeResults({ data, onSave }) {
+    if (!data) return null;
+    const { results = {}, errors = [] } = data;
+    const count =
+      (results.channelDetails ? 1 : 0) +
+      (results.channelVideos?.length || 0) +
+      (results.videoDetails ? 1 : 0) +
+      (results.transcript ? 1 : 0) +
+      (results.videoComments?.length || 0) +
+      (results.search?.length || 0);
+
+    return (
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Text fw={600}>YouTube Results</Text>
+          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+        </Group>
+
+        {errors.length > 0 && (
+          <Alert color="orange" title="Some requests failed">
+            {errors.map((e, i) => (
+              <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
+            ))}
+          </Alert>
+        )}
+
+        {results.channelDetails && (
+          <>
+            <Divider label="Channel Details" labelPosition="center" />
+            <YTChannelCard data={results.channelDetails} />
+          </>
+        )}
+
+        {results.channelVideos?.length > 0 && (
+          <>
+            <Divider label={`Channel Videos (${results.channelVideos.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {results.channelVideos.map((v) => (
+                <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
+              ))}
+            </Stack>
+          </>
+        )}
+
+        {results.videoDetails && (
+          <>
+            <Divider label="Video Details" labelPosition="center" />
+            <YTVideoCard video={results.videoDetails} onSave={onSave} />
+          </>
+        )}
+
+        {results.transcript && (
+          <>
+            <Divider label="Transcript" labelPosition="center" />
+            <YTTranscript data={results.transcript} />
+          </>
+        )}
+
+        {results.videoComments?.length > 0 && (
+          <>
+            <Divider label={`Comments (${results.videoComments.length})`} labelPosition="center" />
+            <YTCommentsList comments={results.videoComments} />
+          </>
+        )}
+
+        {results.search?.length > 0 && (
+          <>
+            <Divider label={`Search Results (${results.search.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {results.search.map((v) => (
+                <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
+              ))}
+            </Stack>
+          </>
+        )}
+      </Stack>
     );
   }
 
@@ -1756,9 +2060,21 @@ export default function CompetitorLookup() {
                   <Button
                     leftSection={<IconSearch size={16} />}
                     disabled={!Object.values(youtubeOptions).some(Boolean)}
+                    loading={youtubeLoading}
+                    onClick={handleYoutubeSubmit}
                   >
                     Search YouTube
                   </Button>
+
+                  {youtubeError && (
+                    <Alert color="red" title="YouTube Error" withCloseButton onClose={() => setYoutubeError(null)}>
+                      {youtubeError}
+                    </Alert>
+                  )}
+
+                  {youtubeResult && (
+                    <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} />
+                  )}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -2302,12 +2618,6 @@ export default function CompetitorLookup() {
                 ))}
               </SimpleGrid>
             )}
-          </Stack>
-        )}
-
-        {youtubeResult && (
-          <Stack gap="lg">
-            <YouTubeCard data={youtubeResult} />
           </Stack>
         )}
       </Stack>

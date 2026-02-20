@@ -1230,6 +1230,296 @@ app.post('/api/linkedin/save', async (req, res) => {
 
 // ─── End LinkedIn ────────────────────────────────────────────────────────────
 
+// ─── YouTube Helpers ─────────────────────────────────────────────────────────
+
+const YT_BASE = 'https://www.googleapis.com/youtube/v3';
+
+function ytKey() {
+  const k = process.env.YOUTUBE_API_KEY;
+  if (!k) throw new Error('YOUTUBE_API_KEY not configured');
+  return k;
+}
+
+async function ytFetch(path, params = {}) {
+  const url = new URL(path, YT_BASE);
+  url.searchParams.set('key', ytKey());
+  for (const [k, v] of Object.entries(params)) {
+    if (v != null && v !== '') url.searchParams.set(k, v);
+  }
+  const resp = await fetch(url.toString());
+  const json = await resp.json();
+  if (!resp.ok) {
+    const msg = json?.error?.message || `YouTube API error ${resp.status}`;
+    throw new Error(msg);
+  }
+  return json;
+}
+
+// Resolve @handle or channel URL → channelId
+async function resolveChannelId(input) {
+  const trimmed = String(input || '').trim();
+
+  // Already a channel ID (UC...)
+  if (/^UC[a-zA-Z0-9_-]{22}$/.test(trimmed)) return trimmed;
+
+  // Handle @username format
+  const handleMatch = trimmed.match(/@([\w.-]+)/);
+  if (handleMatch) {
+    const data = await ytFetch(`${YT_BASE}/search`, { part: 'snippet', q: handleMatch[0], type: 'channel', maxResults: 1 });
+    if (data.items?.[0]?.snippet?.channelId) return data.items[0].snippet.channelId;
+    // Try channels endpoint with forHandle
+    const chData = await ytFetch(`${YT_BASE}/channels`, { part: 'id', forHandle: handleMatch[1] });
+    if (chData.items?.[0]?.id) return chData.items[0].id;
+    throw new Error(`Could not find channel for ${handleMatch[0]}`);
+  }
+
+  // URL with /channel/UC...
+  try {
+    const url = new URL(trimmed);
+    const chMatch = url.pathname.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/);
+    if (chMatch) return chMatch[1];
+
+    // /c/name or /@name
+    const nameMatch = url.pathname.match(/\/(c|user|@)([\w.-]+)/);
+    if (nameMatch) {
+      const handle = nameMatch[2];
+      const chData = await ytFetch(`${YT_BASE}/channels`, { part: 'id', forHandle: handle });
+      if (chData.items?.[0]?.id) return chData.items[0].id;
+      // fallback to search
+      const sData = await ytFetch(`${YT_BASE}/search`, { part: 'snippet', q: handle, type: 'channel', maxResults: 1 });
+      if (sData.items?.[0]?.snippet?.channelId) return sData.items[0].snippet.channelId;
+      throw new Error(`Could not find channel for ${handle}`);
+    }
+  } catch (e) {
+    if (e.message.includes('Could not find')) throw e;
+    // not a URL, try as search term
+  }
+
+  // Fallback: search for it
+  const sData = await ytFetch(`${YT_BASE}/search`, { part: 'snippet', q: trimmed, type: 'channel', maxResults: 1 });
+  if (sData.items?.[0]?.snippet?.channelId) return sData.items[0].snippet.channelId;
+  throw new Error(`Could not find channel for "${trimmed}"`);
+}
+
+async function fetchChannelDetails(channelId) {
+  const data = await ytFetch(`${YT_BASE}/channels`, {
+    part: 'snippet,statistics,brandingSettings,contentDetails',
+    id: channelId,
+  });
+  if (!data.items?.length) throw new Error('Channel not found');
+  const ch = data.items[0];
+  return {
+    id: ch.id,
+    title: ch.snippet.title,
+    description: ch.snippet.description,
+    customUrl: ch.snippet.customUrl,
+    publishedAt: ch.snippet.publishedAt,
+    thumbnails: ch.snippet.thumbnails,
+    country: ch.snippet.country,
+    subscribers: Number(ch.statistics.subscriberCount || 0),
+    totalViews: Number(ch.statistics.viewCount || 0),
+    videoCount: Number(ch.statistics.videoCount || 0),
+    uploadsPlaylistId: ch.contentDetails?.relatedPlaylists?.uploads,
+    bannerUrl: ch.brandingSettings?.image?.bannerExternalUrl || null,
+    keywords: ch.brandingSettings?.channel?.keywords || '',
+  };
+}
+
+async function fetchChannelVideos(channelId, maxResults = 10) {
+  // First get channel details to find uploads playlist
+  const ch = await fetchChannelDetails(channelId);
+  if (!ch.uploadsPlaylistId) return [];
+
+  const data = await ytFetch(`${YT_BASE}/playlistItems`, {
+    part: 'snippet,contentDetails',
+    playlistId: ch.uploadsPlaylistId,
+    maxResults: Math.min(maxResults, 50),
+  });
+  const videoIds = (data.items || []).map(i => i.contentDetails.videoId).filter(Boolean);
+  if (!videoIds.length) return [];
+
+  // Fetch full video details for metrics
+  const vData = await ytFetch(`${YT_BASE}/videos`, {
+    part: 'snippet,statistics,contentDetails',
+    id: videoIds.join(','),
+  });
+  return (vData.items || []).map(v => ({
+    id: v.id,
+    title: v.snippet.title,
+    description: v.snippet.description?.slice(0, 300),
+    publishedAt: v.snippet.publishedAt,
+    channelTitle: v.snippet.channelTitle,
+    thumbnails: v.snippet.thumbnails,
+    duration: v.contentDetails?.duration,
+    views: Number(v.statistics?.viewCount || 0),
+    likes: Number(v.statistics?.likeCount || 0),
+    comments: Number(v.statistics?.commentCount || 0),
+  }));
+}
+
+async function fetchVideoDetails(videoId) {
+  const data = await ytFetch(`${YT_BASE}/videos`, {
+    part: 'snippet,statistics,contentDetails,topicDetails',
+    id: videoId,
+  });
+  if (!data.items?.length) throw new Error('Video not found');
+  const v = data.items[0];
+  return {
+    id: v.id,
+    title: v.snippet.title,
+    description: v.snippet.description,
+    publishedAt: v.snippet.publishedAt,
+    channelId: v.snippet.channelId,
+    channelTitle: v.snippet.channelTitle,
+    thumbnails: v.snippet.thumbnails,
+    tags: v.snippet.tags || [],
+    categoryId: v.snippet.categoryId,
+    duration: v.contentDetails?.duration,
+    views: Number(v.statistics?.viewCount || 0),
+    likes: Number(v.statistics?.likeCount || 0),
+    comments: Number(v.statistics?.commentCount || 0),
+    topics: v.topicDetails?.topicCategories || [],
+  };
+}
+
+async function fetchVideoComments(videoId, maxResults = 20) {
+  const data = await ytFetch(`${YT_BASE}/commentThreads`, {
+    part: 'snippet,replies',
+    videoId: videoId,
+    maxResults: Math.min(maxResults, 100),
+    order: 'relevance',
+    textFormat: 'plainText',
+  });
+  return (data.items || []).map(item => {
+    const top = item.snippet.topLevelComment.snippet;
+    const replies = (item.replies?.comments || []).map(r => ({
+      author: r.snippet.authorDisplayName,
+      authorImage: r.snippet.authorProfileImageUrl,
+      text: r.snippet.textDisplay,
+      likes: r.snippet.likeCount || 0,
+      publishedAt: r.snippet.publishedAt,
+    }));
+    return {
+      author: top.authorDisplayName,
+      authorImage: top.authorProfileImageUrl,
+      text: top.textDisplay,
+      likes: top.likeCount || 0,
+      publishedAt: top.publishedAt,
+      replyCount: item.snippet.totalReplyCount || 0,
+      replies,
+    };
+  });
+}
+
+async function searchYouTube(query, maxResults = 10) {
+  const data = await ytFetch(`${YT_BASE}/search`, {
+    part: 'snippet',
+    q: query,
+    maxResults: Math.min(maxResults, 50),
+    type: 'video',
+    order: 'relevance',
+  });
+  const videoIds = (data.items || []).map(i => i.id?.videoId).filter(Boolean);
+  if (!videoIds.length) return [];
+
+  // Enrich with stats
+  const vData = await ytFetch(`${YT_BASE}/videos`, {
+    part: 'snippet,statistics,contentDetails',
+    id: videoIds.join(','),
+  });
+  return (vData.items || []).map(v => ({
+    id: v.id,
+    title: v.snippet.title,
+    description: v.snippet.description?.slice(0, 300),
+    publishedAt: v.snippet.publishedAt,
+    channelTitle: v.snippet.channelTitle,
+    channelId: v.snippet.channelId,
+    thumbnails: v.snippet.thumbnails,
+    duration: v.contentDetails?.duration,
+    views: Number(v.statistics?.viewCount || 0),
+    likes: Number(v.statistics?.likeCount || 0),
+    comments: Number(v.statistics?.commentCount || 0),
+  }));
+}
+
+/**
+ * POST /api/youtube/search
+ * Body: { options: { channelDetails, channelVideos, videoDetails, transcript, videoComments, search },
+ *         inputs: { channelUrl, videoUrl, searchQuery } }
+ */
+app.post('/api/youtube/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+    const tasks = [];
+    const labels = [];
+
+    // Channel-related
+    if ((options.channelDetails || options.channelVideos) && inputs.channelUrl) {
+      const channelIdPromise = resolveChannelId(inputs.channelUrl);
+
+      if (options.channelDetails) {
+        labels.push('channelDetails');
+        tasks.push(channelIdPromise.then(id => fetchChannelDetails(id)));
+      }
+      if (options.channelVideos) {
+        labels.push('channelVideos');
+        tasks.push(channelIdPromise.then(id => fetchChannelVideos(id, 10)));
+      }
+    }
+
+    // Video-related
+    const videoId = inputs.videoUrl ? extractYouTubeVideoId(inputs.videoUrl) : null;
+
+    if (options.videoDetails && videoId) {
+      labels.push('videoDetails');
+      tasks.push(fetchVideoDetails(videoId));
+    }
+    if (options.transcript && videoId) {
+      labels.push('transcript');
+      tasks.push((async () => {
+        const pythonResult = await getTranscriptFromPython(videoId);
+        if (pythonResult?.success && pythonResult.transcript) {
+          return { available: true, language: pythonResult.language || 'en', text: pythonResult.transcript };
+        }
+        // Fallback: still return video metadata
+        const details = await fetchVideoDetails(videoId);
+        return { available: false, reason: pythonResult?.error || 'No transcript available', videoTitle: details.title };
+      })());
+    }
+    if (options.videoComments && videoId) {
+      labels.push('videoComments');
+      tasks.push(fetchVideoComments(videoId, 20));
+    }
+
+    // Search
+    if (options.search && inputs.searchQuery) {
+      labels.push('search');
+      tasks.push(searchYouTube(inputs.searchQuery.trim(), 10));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No YouTube options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors });
+  } catch (err) {
+    console.error('YouTube search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/youtube/transcript", async (req, res) => {
   try {
     const { video } = req.query;
