@@ -1,4 +1,4 @@
-import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
+import { getUserIdByUsername, fetchPostsByUserId, fetchUserMentions, fetchFollowers, fetchFollowing, fetchTweetById, searchRecentTweets } from "./xApi.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import { scrapeCreators } from "./utils/scrapeCreators.js";
 import express from 'express';
@@ -88,10 +88,10 @@ const requireUserId = (req, res) => {
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
     const username = req.params.username;
-    const userId = await getUserIdByUsername(username);
-    const posts = await fetchPostsByUserId(userId, 5);
+    const user = await getUserIdByUsername(username);
+    const posts = await fetchPostsByUserId(user.id, 5);
 
-    res.json({ success: true, username, userId, posts });
+    res.json({ success: true, username: user.username || username, userId: user.id, posts });
   } catch (err) {
     console.error("X fetch error:", err.message);
 
@@ -100,6 +100,103 @@ app.get("/api/x/fetch/:username", async (req, res) => {
     }
 
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/x/search
+ * Body: { options: { userLookup, followers, following, userTweets, userMentions, tweetLookup, searchTweets },
+ *         inputs: { username, tweetsUsername, tweetUrl, searchQuery } }
+ * Calls the relevant X API v2 endpoints in parallel and returns combined results.
+ */
+app.post('/api/x/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+    const tasks = [];
+    const labels = [];
+
+    // Resolve user IDs where needed
+    const cleanUsername = (u) => String(u || '').trim().replace(/^@/, '');
+    const extractTweetId = (urlOrId) => {
+      const m = String(urlOrId || '').match(/status\/(\d+)/);
+      return m ? m[1] : String(urlOrId || '').trim();
+    };
+
+    // Profile-related (need username → user object)
+    const profileUsername = cleanUsername(inputs.username);
+    const tweetsUsername = cleanUsername(inputs.tweetsUsername || inputs.username);
+
+    // User Lookup
+    if (options.userLookup && profileUsername) {
+      labels.push('userLookup');
+      tasks.push(getUserIdByUsername(profileUsername));
+    }
+
+    // Followers
+    if (options.followers && profileUsername) {
+      labels.push('followers');
+      tasks.push(
+        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, 20))
+      );
+    }
+
+    // Following
+    if (options.following && profileUsername) {
+      labels.push('following');
+      tasks.push(
+        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, 20))
+      );
+    }
+
+    // User Tweets
+    if (options.userTweets && tweetsUsername) {
+      labels.push('userTweets');
+      tasks.push(
+        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, 10))
+      );
+    }
+
+    // User Mentions
+    if (options.userMentions && tweetsUsername) {
+      labels.push('userMentions');
+      tasks.push(
+        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, 10))
+      );
+    }
+
+    // Single Tweet Lookup
+    if (options.tweetLookup && inputs.tweetUrl) {
+      labels.push('tweetLookup');
+      const tweetId = extractTweetId(inputs.tweetUrl);
+      tasks.push(fetchTweetById(tweetId));
+    }
+
+    // Search
+    if (options.searchTweets && inputs.searchQuery) {
+      labels.push('searchTweets');
+      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), 10));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No X options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors });
+  } catch (err) {
+    console.error('X search error:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

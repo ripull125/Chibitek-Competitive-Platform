@@ -556,28 +556,28 @@ function LinkedinPostCard({ post, onSave }) {
         {commentsArr.length > 0 && (
           <div>
             <Divider label={`Comments (${commentsArr.length})`} my="xs" />
-            <Stack gap="sm">
-              {commentsArr.slice(0, 5).map((c, i) => (
-                <Card key={i} withBorder radius="sm" p="xs">
-                  <Group gap="xs" mb={4}>
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+              {commentsArr.slice(0, 6).map((c, i) => (
+                <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
+                  <Group gap={6} wrap="nowrap" mb={2}>
                     {c.image && (
-                      <img src={c.image} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
+                      <img src={c.image} alt="" style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0 }} />
                     )}
-                    <Text size="sm" fw={500}>{decode(c.author || c.name) || "Unknown"}</Text>
+                    <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || "Unknown"}</Text>
                     {c.datePublished && (
-                      <Text size="xs" c="dimmed">{new Date(c.datePublished).toLocaleDateString()}</Text>
+                      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>{new Date(c.datePublished).toLocaleDateString()}</Text>
                     )}
                   </Group>
-                  <Text size="sm" lineClamp={3}>{decode(c.text || c.description) || "—"}</Text>
+                  <Text size="xs" lineClamp={2} c="dimmed">{decode(c.text || c.description) || "—"}</Text>
                   {(c.likeCount != null || c.commentCount != null) && (
-                    <Group gap="sm" mt={4}>
+                    <Group gap={4} mt={2}>
                       {c.likeCount != null && <Badge size="xs" variant="light">❤️ {c.likeCount}</Badge>}
                       {c.commentCount != null && <Badge size="xs" variant="light">💬 {c.commentCount}</Badge>}
                     </Group>
                   )}
                 </Card>
               ))}
-            </Stack>
+            </SimpleGrid>
           </div>
         )}
 
@@ -616,6 +616,262 @@ function LinkedinPostCard({ post, onSave }) {
     </Card>
   );
 }
+
+/* ─── X / Twitter Result Components ──────────────────────────────────────── */
+
+function XUserCard({ user, onSave }) {
+  if (!user) return null;
+  const m = user.public_metrics || {};
+
+  return (
+    <Card withBorder radius="md" p="lg">
+      <Stack gap="md">
+        <Group justify="space-between" align="start">
+          <Group align="center" gap="md">
+            {user.profile_image_url && (
+              <img
+                src={user.profile_image_url.replace("_normal", "_200x200")}
+                alt={user.name}
+                style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid #e0e0e0" }}
+              />
+            )}
+            <div>
+              <Group gap="xs" align="center">
+                <Text fw={700} size="xl">{user.name}</Text>
+                {user.verified && <Badge size="xs" color="blue" variant="filled">✓</Badge>}
+              </Group>
+              <Text size="sm" c="dimmed">@{user.username}</Text>
+              {user.location && <Text size="xs" c="dimmed">{user.location}</Text>}
+            </div>
+          </Group>
+          <Badge color="dark" variant="light" size="lg">
+            <IconBrandX size={14} style={{ marginRight: 4 }} /> Profile
+          </Badge>
+        </Group>
+
+        <Card withBorder radius="sm" p="sm" bg="gray.0">
+          <Group gap="xl" justify="center" wrap="wrap">
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{(m.followers_count || 0).toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Followers</Text>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{(m.following_count || 0).toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Following</Text>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{(m.tweet_count || 0).toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Tweets</Text>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{(m.listed_count || 0).toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Listed</Text>
+            </div>
+          </Group>
+        </Card>
+
+        {user.description && (
+          <div>
+            <Text fw={600} size="sm" mb={4}>Bio</Text>
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{user.description}</Text>
+          </div>
+        )}
+
+        {user.created_at && (
+          <Text size="xs" c="dimmed">
+            Joined {new Date(user.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+          </Text>
+        )}
+
+        {user.url && (
+          <Text size="sm" c="blue" component="a" href={user.url} target="_blank">
+            {user.url}
+          </Text>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function XTweetCard({ tweet, authorUsername, onSave }) {
+  if (!tweet) return null;
+  const m = tweet.public_metrics || {};
+  const engagement = (m.like_count || 0) + (m.retweet_count || 0) + (m.reply_count || 0) + (m.quote_count || 0);
+
+  return (
+    <Card withBorder radius="sm" p="sm">
+      <Stack gap="xs">
+        <Group justify="space-between" align="start">
+          <div style={{ flex: 1 }}>
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }} lineClamp={4}>{tweet.text}</Text>
+          </div>
+          {onSave && (
+            <SaveButton label="Save" onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
+          )}
+        </Group>
+
+        <Group gap="md" wrap="wrap">
+          <Badge variant="light" size="sm">❤️ {(m.like_count || 0).toLocaleString()}</Badge>
+          <Badge variant="light" size="sm">🔁 {(m.retweet_count || 0).toLocaleString()}</Badge>
+          <Badge variant="light" size="sm">💬 {(m.reply_count || 0).toLocaleString()}</Badge>
+          {m.quote_count > 0 && <Badge variant="light" size="sm">💭 {m.quote_count.toLocaleString()}</Badge>}
+          <Badge variant="light" color="green" size="sm">📊 {engagement.toLocaleString()} total</Badge>
+        </Group>
+
+        <Group gap="xs">
+          {tweet.created_at && (
+            <Text size="xs" c="dimmed">
+              {new Date(tweet.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            </Text>
+          )}
+          {tweet.lang && tweet.lang !== "und" && (
+            <Badge size="xs" variant="light" color="gray">{tweet.lang}</Badge>
+          )}
+          {tweet.source && (
+            <Badge size="xs" variant="light" color="gray">{tweet.source}</Badge>
+          )}
+          <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
+            View →
+          </Text>
+        </Group>
+      </Stack>
+    </Card>
+  );
+}
+
+function XUserListCard({ users, title }) {
+  if (!users?.length) return null;
+
+  return (
+    <div>
+      <Divider label={`${title} (${users.length})`} my="xs" />
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+        {users.slice(0, 12).map((u, i) => (
+          <Card key={u.id || i} withBorder radius="sm" p="xs">
+            <Group gap={8} wrap="nowrap" align="start">
+              {u.profile_image_url && (
+                <img src={u.profile_image_url} alt="" style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }} />
+              )}
+              <div style={{ flex: 1, overflow: "hidden" }}>
+                <Group gap={4} wrap="nowrap">
+                  <Text size="xs" fw={600} lineClamp={1}>{u.name}</Text>
+                  {u.verified && <Badge size="xs" color="blue" variant="filled" p={2}>✓</Badge>}
+                </Group>
+                <Text size="xs" c="dimmed">@{u.username}</Text>
+                {u.public_metrics && (
+                  <Text size="xs" c="dimmed">
+                    {(u.public_metrics.followers_count || 0).toLocaleString()} followers
+                  </Text>
+                )}
+              </div>
+            </Group>
+          </Card>
+        ))}
+      </SimpleGrid>
+    </div>
+  );
+}
+
+function XResults({ data, onSave }) {
+  if (!data?.results) return null;
+  const { results, errors } = data;
+  const resultCount = Object.keys(results).length;
+
+  // Helper to find author username from includes.users
+  const findAuthor = (authorId, users) => {
+    const u = (users || []).find(u => u.id === authorId);
+    return u?.username || "";
+  };
+
+  return (
+    <Stack gap="md">
+      <Divider label={`X Results (${resultCount} returned)`} />
+
+      {errors?.length > 0 && (
+        <Alert variant="light" color="orange" title="Some requests failed" icon={<IconAlertCircle />}>
+          {errors.map((e, i) => (
+            <Text key={i} size="sm"><b>{e.endpoint}:</b> {e.error}</Text>
+          ))}
+        </Alert>
+      )}
+
+      {resultCount === 0 && !errors?.length && (
+        <Alert variant="light" color="gray" title="No results">
+          No data was returned. Please check the inputs and try again.
+        </Alert>
+      )}
+
+      {/* User Lookup */}
+      {results.userLookup && <XUserCard user={results.userLookup} />}
+
+      {/* Followers */}
+      {results.followers && <XUserListCard users={results.followers} title="Followers" />}
+
+      {/* Following */}
+      {results.following && <XUserListCard users={results.following} title="Following" />}
+
+      {/* User Tweets */}
+      {results.userTweets?.length > 0 && (
+        <div>
+          <Divider label={`Tweets (${results.userTweets.length})`} my="xs" />
+          <Stack gap="xs">
+            {results.userTweets.map((t, i) => (
+              <XTweetCard key={t.id || i} tweet={t} onSave={onSave} />
+            ))}
+          </Stack>
+        </div>
+      )}
+
+      {/* User Mentions */}
+      {results.userMentions?.tweets?.length > 0 && (
+        <div>
+          <Divider label={`Mentions (${results.userMentions.tweets.length})`} my="xs" />
+          <Stack gap="xs">
+            {results.userMentions.tweets.map((t, i) => (
+              <XTweetCard
+                key={t.id || i}
+                tweet={t}
+                authorUsername={findAuthor(t.author_id, results.userMentions.users)}
+                onSave={onSave}
+              />
+            ))}
+          </Stack>
+        </div>
+      )}
+
+      {/* Tweet Lookup */}
+      {results.tweetLookup?.tweet && (
+        <div>
+          <Divider label="Tweet Lookup" my="xs" />
+          <XTweetCard
+            tweet={results.tweetLookup.tweet}
+            authorUsername={findAuthor(results.tweetLookup.tweet.author_id, results.tweetLookup.users)}
+            onSave={onSave}
+          />
+        </div>
+      )}
+
+      {/* Search Tweets */}
+      {results.searchTweets?.tweets?.length > 0 && (
+        <div>
+          <Divider label={`Search Results (${results.searchTweets.tweets.length})`} my="xs" />
+          <Stack gap="xs">
+            {results.searchTweets.tweets.map((t, i) => (
+              <XTweetCard
+                key={t.id || i}
+                tweet={t}
+                authorUsername={findAuthor(t.author_id, results.searchTweets.users)}
+                onSave={onSave}
+              />
+            ))}
+          </Stack>
+        </div>
+      )}
+    </Stack>
+  );
+}
+
+/* ─── End X Results ──────────────────────────────────────────────────────── */
 
 function LinkedinResults({ data, onSave }) {
   if (!data?.results) return null;
@@ -700,6 +956,9 @@ export default function CompetitorLookup() {
   const [linkedinResult, setLinkedinResult] = useState(null);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
   const [linkedinError, setLinkedinError] = useState(null);
+  const [xResult, setXResult] = useState(null);
+  const [xLoading, setXLoading] = useState(false);
+  const [xError, setXError] = useState(null);
 
 
 
@@ -960,6 +1219,67 @@ export default function CompetitorLookup() {
       return;
     }
     return tryPostJson("/api/linkedin/save", { type, data, user_id: currentUserId });
+  }
+
+  async function handleXSubmit() {
+    setXError(null);
+    setXResult(null);
+
+    const hasInput =
+      ((xOptions.userLookup || xOptions.followers || xOptions.following) && xInputs.username?.trim()) ||
+      ((xOptions.userTweets || xOptions.userMentions) && (xInputs.tweetsUsername?.trim() || xInputs.username?.trim())) ||
+      (xOptions.tweetLookup && xInputs.tweetUrl?.trim()) ||
+      (xOptions.searchTweets && xInputs.searchQuery?.trim());
+
+    if (!hasInput) {
+      setXError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setXLoading(true);
+    try {
+      const json = await tryPostJson("/api/x/search", {
+        options: xOptions,
+        inputs: xInputs,
+      });
+      setXResult(json);
+    } catch (e) {
+      setXError(e?.message || "Unknown error");
+    } finally {
+      setXLoading(false);
+    }
+  }
+
+  async function handleXSave(type, data) {
+    if (!currentUserId) {
+      setXError("Please sign in to save data.");
+      return;
+    }
+    // Save posts via the existing /api/posts endpoint
+    if (type === "tweet" && data) {
+      const metrics = data.public_metrics || {};
+      const resp = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: 1,
+          platform_user_id: data.author_id || "",
+          username: data._authorUsername || "",
+          platform_post_id: data.id,
+          content: data.text,
+          published_at: data.created_at,
+          likes: metrics.like_count ?? 0,
+          shares: metrics.retweet_count ?? 0,
+          comments: metrics.reply_count ?? 0,
+          user_id: currentUserId,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Save failed: ${resp.status} ${text}`);
+      }
+      return resp.json();
+    }
   }
 
   function BackendBadge({ base }) {
@@ -1334,9 +1654,19 @@ export default function CompetitorLookup() {
                   <Button
                     leftSection={<IconSearch size={16} />}
                     disabled={!Object.values(xOptions).some(Boolean)}
+                    loading={xLoading}
+                    onClick={handleXSubmit}
                   >
                     Search X
                   </Button>
+
+                  {xError && (
+                    <Alert variant="light" color="red" title="Error" icon={<IconAlertCircle />}>
+                      {xError}
+                    </Alert>
+                  )}
+
+                  {xResult && <XResults data={xResult} onSave={handleXSave} />}
                 </Stack>
               </Tabs.Panel>
             )}

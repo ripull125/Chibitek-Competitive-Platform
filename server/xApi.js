@@ -95,13 +95,16 @@ export async function getUserIdByUsername(username) {
     const res = await requestWithTokenFallback({
       method: "get",
       url: `/users/by/username/${encodeURIComponent(username)}`,
+      params: {
+        "user.fields": "created_at,description,location,name,profile_image_url,public_metrics,verified,url,pinned_tweet_id",
+      },
     });
 
     if (!res.data?.data?.id) {
       throw new Error(`No user found for username ${username}`);
     }
 
-    return res.data.data.id;
+    return res.data.data;
   } catch (err) {
     if (err.response) {
       throw new Error(
@@ -110,7 +113,6 @@ export async function getUserIdByUsername(username) {
         )}`
       );
     }
-    // in case of connection error
     if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
       throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
     }
@@ -118,18 +120,93 @@ export async function getUserIdByUsername(username) {
   }
 }
 
-export async function fetchPostsByUserId(userId) {
+const TWEET_FIELDS = "created_at,public_metrics,lang,conversation_id,in_reply_to_user_id,referenced_tweets,entities,source";
+
+export async function fetchPostsByUserId(userId, maxResults = 10) {
   const res = await requestWithTokenFallback({
     method: "get",
     url: `/users/${userId}/tweets`,
     params: {
-      max_results: 5, 
+      max_results: Math.min(Math.max(maxResults, 5), 100),
       exclude: "replies,retweets",
-      "tweet.fields": "created_at,public_metrics,lang",
+      "tweet.fields": TWEET_FIELDS,
     },
   });
+  return res.data?.data || [];
+}
 
-  const tweets = res.data?.data || [];
+export async function fetchUserMentions(userId, maxResults = 10) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/users/${userId}/mentions`,
+    params: {
+      max_results: Math.min(Math.max(maxResults, 5), 100),
+      "tweet.fields": TWEET_FIELDS,
+      "expansions": "author_id",
+      "user.fields": "username,name,profile_image_url",
+    },
+  });
+  return {
+    tweets: res.data?.data || [],
+    users: res.data?.includes?.users || [],
+  };
+}
 
-  return tweets.length > 0 ? [tweets[0]] : [];
+export async function fetchFollowers(userId, maxResults = 20) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/users/${userId}/followers`,
+    params: {
+      max_results: Math.min(Math.max(maxResults, 1), 1000),
+      "user.fields": "created_at,description,public_metrics,profile_image_url,verified,location",
+    },
+  });
+  return res.data?.data || [];
+}
+
+export async function fetchFollowing(userId, maxResults = 20) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/users/${userId}/following`,
+    params: {
+      max_results: Math.min(Math.max(maxResults, 1), 1000),
+      "user.fields": "created_at,description,public_metrics,profile_image_url,verified,location",
+    },
+  });
+  return res.data?.data || [];
+}
+
+export async function fetchTweetById(tweetId) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/tweets/${tweetId}`,
+    params: {
+      "tweet.fields": TWEET_FIELDS,
+      "expansions": "author_id,referenced_tweets.id",
+      "user.fields": "username,name,profile_image_url,public_metrics",
+    },
+  });
+  return {
+    tweet: res.data?.data || null,
+    users: res.data?.includes?.users || [],
+    tweets: res.data?.includes?.tweets || [],
+  };
+}
+
+export async function searchRecentTweets(query, maxResults = 10) {
+  const res = await requestWithTokenFallback({
+    method: "get",
+    url: `/tweets/search/recent`,
+    params: {
+      query,
+      max_results: Math.min(Math.max(maxResults, 10), 100),
+      "tweet.fields": TWEET_FIELDS,
+      "expansions": "author_id",
+      "user.fields": "username,name,profile_image_url,public_metrics",
+    },
+  });
+  return {
+    tweets: res.data?.data || [],
+    users: res.data?.includes?.users || [],
+  };
 }
