@@ -5,6 +5,7 @@ import cors from 'cors';
 import 'dotenv/config';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
+import OpenAI from 'openai';
 import { supabase } from './supabase.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 import { exec } from 'child_process';
@@ -69,8 +70,10 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '10mb' }));
 
-const { OPENAI_API_KEY } = process.env;
-const chatGptModel = 'gpt-4o-mini';
+const { GITHUB_TOKEN } = process.env;
+const githubAiEndpoint = 'https://models.github.ai/inference';
+const chatModel = 'openai/gpt-5-nano';
+const openai = new OpenAI({ baseURL: githubAiEndpoint, apiKey: GITHUB_TOKEN });
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
@@ -160,9 +163,9 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  if (!OPENAI_API_KEY) {
-    console.error('Missing OPENAI_API_KEY on server');
-    return res.status(500).json({ error: 'OPENAI_API_KEY is not configured on the server.' });
+  if (!GITHUB_TOKEN) {
+    console.error('Missing GITHUB_TOKEN on server');
+    return res.status(500).json({ error: 'GITHUB_TOKEN is not configured on the server.' });
   }
 
   try {
@@ -182,35 +185,19 @@ app.post('/api/chat', async (req, res) => {
       ? [...sanitizedMessages, { role: 'user', content: `Attachment context:\n${attachmentContext}` }]
       : sanitizedMessages;
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: chatGptModel, // 'gpt-4o-mini'
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
-          },
-          ...userMessages,
-        ],
-      }),
+    const response = await openai.chat.completions.create({
+      model: chatModel,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
+        },
+        ...userMessages,
+      ],
     });
 
-    if (!openaiResponse.ok) {
-      const errorBody = await openaiResponse.text();
-      console.error('OpenAI API error:', openaiResponse.status, openaiResponse.statusText, errorBody);
-      return res.status(500).json({
-        error: `OpenAI API error: ${openaiResponse.status} ${openaiResponse.statusText}`,
-      });
-    }
-
-    const data = await openaiResponse.json();
-    const reply = data.choices?.[0]?.message?.content || 'No response from model.';
+    const reply = response.choices?.[0]?.message?.content || 'No response from model.';
     return res.json({ reply });
   } catch (error) {
     console.error('Chat completion error:', error);

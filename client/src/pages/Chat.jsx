@@ -215,8 +215,8 @@ export default function ChatInput() {
         ...prev,
         {
           role: "assistant",
-          content: error?.message?.includes("OPENAI_API_KEY")
-            ? "Server is missing the OpenAI API key. Please add it and try again."
+          content: error?.message?.includes("GITHUB_TOKEN")
+            ? "Server is missing the GitHub token. Please add it and try again."
             : "Sorry, I could not reach the language model right now.",
         },
       ]);
