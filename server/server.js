@@ -1,5 +1,6 @@
 import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
+import { scrapeCreators } from "./utils/scrapeCreators.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -691,6 +692,446 @@ app.delete("/api/posts/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ─── LinkedIn ────────────────────────────────────────────────────────────────
+
+const PLATFORM_LINKEDIN = 5; // platform id for linkedin (will be upserted)
+
+// Ensure the LinkedIn platform row exists
+async function ensureLinkedinPlatform() {
+  const { data } = await supabase
+    .from('platforms')
+    .select('id')
+    .eq('name', 'LinkedIn')
+    .maybeSingle();
+  if (data) return data.id;
+
+  const { data: created, error } = await supabase
+    .from('platforms')
+    .insert({ name: 'LinkedIn', api_base_url: 'https://api.scrapecreators.com' })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return created.id;
+}
+
+/**
+ * POST /api/linkedin/search
+ * Body: { options: { profile, company, post }, inputs: { profile, company, post } }
+ * Calls the relevant Scrape Creators endpoints in parallel and returns combined results.
+ */
+app.post('/api/linkedin/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+
+    const tasks = [];
+    const labels = [];
+
+    if (options.profile && inputs.profile) {
+      labels.push('profile');
+      tasks.push(scrapeCreators('/v1/linkedin/profile', { url: inputs.profile }));
+    }
+    if (options.company && inputs.company) {
+      labels.push('company');
+      tasks.push(scrapeCreators('/v1/linkedin/company', { url: inputs.company }));
+    }
+    if (options.post && inputs.post) {
+      labels.push('post');
+      tasks.push(scrapeCreators('/v1/linkedin/post', { url: inputs.post }));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No LinkedIn options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors });
+  } catch (err) {
+    console.error('LinkedIn search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/linkedin/save
+ * Body: { type: "profile"|"company"|"post", data: <raw api data>, user_id: string }
+ * Saves data across competitors, posts, post_metrics, post_details_platform tables.
+ */
+app.post('/api/linkedin/save', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { type, data } = req.body;
+    if (!type || !data) {
+      return res.status(400).json({ error: 'Missing type or data.' });
+    }
+
+    const platformId = await ensureLinkedinPlatform();
+
+    if (type === 'profile') {
+      // Save person profile as a competitor + their recent posts
+      const profileUrl = data.linkedInUrl || data.url || '';
+      const displayName = data.name || 'Unknown';
+      const platformUserId = profileUrl || displayName;
+
+      // Upsert competitor
+      let competitor;
+      const { data: existing } = await supabase
+        .from('competitors')
+        .select('*')
+        .eq('platform_id', platformId)
+        .eq('platform_user_id', platformUserId)
+        .maybeSingle();
+
+      if (existing) {
+        competitor = existing;
+        await supabase.from('competitors').update({
+          display_name: displayName,
+          profile_url: profileUrl,
+        }).eq('id', existing.id);
+      } else {
+        const { data: created, error } = await supabase
+          .from('competitors')
+          .insert({
+            platform_id: platformId,
+            platform_user_id: platformUserId,
+            display_name: displayName,
+            profile_url: profileUrl,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        competitor = created;
+      }
+
+      // Save profile details as a "post" (type=profile_snapshot)
+      const snapshotId = `profile_${platformUserId}_${Date.now()}`;
+      const { data: post, error: postErr } = await supabase
+        .from('posts')
+        .insert({
+          platform_id: platformId,
+          competitor_id: competitor.id,
+          platform_post_id: snapshotId,
+          url: profileUrl,
+          content: data.about || '',
+          published_at: new Date(),
+          user_id: userId,
+        })
+        .select()
+        .single();
+      if (postErr) throw postErr;
+
+      await supabase.from('post_metrics').insert({
+        post_id: post.id,
+        snapshot_at: new Date(),
+        likes: data.followers || 0,
+        shares: 0,
+        comments: 0,
+        other_json: { connections: data.connections },
+      });
+
+      await supabase.from('post_details_platform').insert({
+        post_id: post.id,
+        extra_json: {
+          type: 'linkedin_profile',
+          name: data.name,
+          image: data.image,
+          location: data.location,
+          followers: data.followers,
+          connections: data.connections,
+          about: data.about,
+          experience: data.experience,
+          education: data.education,
+          articles: data.articles,
+        },
+      });
+
+      // Also save each recent post from activity if present
+      const activityPosts = data.activity || data.recentPosts || [];
+      for (const act of activityPosts.slice(0, 10)) {
+        const actUrl = act.link || act.url || '';
+        const actId = actUrl || `activity_${Date.now()}_${Math.random()}`;
+
+        const { data: existingAct } = await supabase
+          .from('posts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('platform_id', platformId)
+          .eq('platform_post_id', actId)
+          .maybeSingle();
+
+        if (!existingAct) {
+          const { data: actPost, error: actErr } = await supabase
+            .from('posts')
+            .insert({
+              platform_id: platformId,
+              competitor_id: competitor.id,
+              platform_post_id: actId,
+              url: actUrl,
+              content: act.title || act.text || '',
+              published_at: act.datePublished || new Date(),
+              user_id: userId,
+            })
+            .select()
+            .single();
+
+          if (!actErr && actPost) {
+            await supabase.from('post_details_platform').insert({
+              post_id: actPost.id,
+              extra_json: {
+                type: 'linkedin_activity',
+                activityType: act.activityType,
+                image: act.image,
+                link: act.link,
+              },
+            });
+          }
+        }
+      }
+
+      return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
+    }
+
+    if (type === 'company') {
+      const companyUrl = data.linkedInUrl || data.url || '';
+      const displayName = data.name || 'Unknown Company';
+      const platformUserId = data.id || companyUrl || displayName;
+
+      let competitor;
+      const { data: existing } = await supabase
+        .from('competitors')
+        .select('*')
+        .eq('platform_id', platformId)
+        .eq('platform_user_id', String(platformUserId))
+        .maybeSingle();
+
+      if (existing) {
+        competitor = existing;
+        await supabase.from('competitors').update({
+          display_name: displayName,
+          profile_url: companyUrl,
+        }).eq('id', existing.id);
+      } else {
+        const { data: created, error } = await supabase
+          .from('competitors')
+          .insert({
+            platform_id: platformId,
+            platform_user_id: String(platformUserId),
+            display_name: displayName,
+            profile_url: companyUrl,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        competitor = created;
+      }
+
+      // Save company page as a snapshot post
+      const snapshotId = `company_${platformUserId}_${Date.now()}`;
+      const { data: post, error: postErr } = await supabase
+        .from('posts')
+        .insert({
+          platform_id: platformId,
+          competitor_id: competitor.id,
+          platform_post_id: snapshotId,
+          url: companyUrl,
+          content: data.description || '',
+          published_at: new Date(),
+          user_id: userId,
+        })
+        .select()
+        .single();
+      if (postErr) throw postErr;
+
+      await supabase.from('post_metrics').insert({
+        post_id: post.id,
+        snapshot_at: new Date(),
+        likes: data.employeeCount || 0,
+        shares: 0,
+        comments: 0,
+        other_json: { followers: data.followers },
+      });
+
+      await supabase.from('post_details_platform').insert({
+        post_id: post.id,
+        extra_json: {
+          type: 'linkedin_company',
+          name: data.name,
+          logo: data.logo,
+          coverImage: data.coverImage,
+          slogan: data.slogan,
+          industry: data.industry,
+          size: data.size,
+          founded: data.founded,
+          headquarters: data.headquarters,
+          companyType: data.type,
+          specialties: data.specialties,
+          website: data.website,
+          employeeCount: data.employeeCount,
+          funding: data.funding,
+        },
+      });
+
+      // Save company posts
+      const compPosts = data.posts || [];
+      for (const cp of compPosts.slice(0, 10)) {
+        const cpUrl = cp.url || '';
+        const cpId = cpUrl || `comppost_${Date.now()}_${Math.random()}`;
+
+        const { data: existingCp } = await supabase
+          .from('posts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('platform_id', platformId)
+          .eq('platform_post_id', cpId)
+          .maybeSingle();
+
+        if (!existingCp) {
+          const { data: cpPost, error: cpErr } = await supabase
+            .from('posts')
+            .insert({
+              platform_id: platformId,
+              competitor_id: competitor.id,
+              platform_post_id: cpId,
+              url: cpUrl,
+              content: cp.text || '',
+              published_at: cp.datePublished || new Date(),
+              user_id: userId,
+            })
+            .select()
+            .single();
+
+          if (!cpErr && cpPost) {
+            await supabase.from('post_details_platform').insert({
+              post_id: cpPost.id,
+              extra_json: {
+                type: 'linkedin_company_post',
+                image: cp.image,
+              },
+            });
+          }
+        }
+      }
+
+      return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
+    }
+
+    if (type === 'post') {
+      const authorName = data.author?.name || 'Unknown';
+      const authorUrl = data.author?.url || '';
+      const platformUserId = authorUrl || authorName;
+      const postUrl = data.url || '';
+
+      let competitor;
+      const { data: existing } = await supabase
+        .from('competitors')
+        .select('*')
+        .eq('platform_id', platformId)
+        .eq('platform_user_id', platformUserId)
+        .maybeSingle();
+
+      if (existing) {
+        competitor = existing;
+      } else {
+        const { data: created, error } = await supabase
+          .from('competitors')
+          .insert({
+            platform_id: platformId,
+            platform_user_id: platformUserId,
+            display_name: authorName,
+            profile_url: authorUrl,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        competitor = created;
+      }
+
+      // Save the post
+      const postPlatformId = postUrl || `post_${Date.now()}`;
+      const { data: existingPost } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('platform_id', platformId)
+        .eq('platform_post_id', postPlatformId)
+        .maybeSingle();
+
+      let post;
+      if (existingPost) {
+        const { data: updated, error: upErr } = await supabase
+          .from('posts')
+          .update({
+            content: data.description || data.headline || '',
+            published_at: data.datePublished || new Date(),
+          })
+          .eq('id', existingPost.id)
+          .select()
+          .single();
+        if (upErr) throw upErr;
+        post = updated;
+      } else {
+        const { data: created, error: crErr } = await supabase
+          .from('posts')
+          .insert({
+            platform_id: platformId,
+            competitor_id: competitor.id,
+            platform_post_id: postPlatformId,
+            url: postUrl,
+            content: data.description || data.headline || '',
+            published_at: data.datePublished || new Date(),
+            user_id: userId,
+          })
+          .select()
+          .single();
+        if (crErr) throw crErr;
+        post = created;
+      }
+
+      await supabase.from('post_metrics').insert({
+        post_id: post.id,
+        snapshot_at: new Date(),
+        likes: data.likeCount || 0,
+        shares: 0,
+        comments: data.commentCount || 0,
+      });
+
+      await supabase.from('post_details_platform').insert({
+        post_id: post.id,
+        extra_json: {
+          type: 'linkedin_post',
+          title: data.name,
+          headline: data.headline,
+          author: data.author,
+          commentCount: data.commentCount,
+          likeCount: data.likeCount,
+          topComments: (data.comments || []).slice(0, 5),
+        },
+      });
+
+      return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
+    }
+
+    return res.status(400).json({ error: `Unknown save type: ${type}` });
+  } catch (err) {
+    console.error('LinkedIn save error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── End LinkedIn ────────────────────────────────────────────────────────────
 
 app.get("/api/youtube/transcript", async (req, res) => {
   try {

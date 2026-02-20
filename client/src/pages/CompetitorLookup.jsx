@@ -53,6 +53,602 @@ function LabelWithInfo({ label, info }) {
   );
 }
 
+/* ─── LinkedIn Results Display ───────────────────────────────────────────── */
+
+function SaveButton({ label, onSave }) {
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  return (
+    <Button
+      size="xs"
+      variant="light"
+      loading={status === "saving"}
+      color={status === "saved" ? "green" : status === "error" ? "red" : "blue"}
+      disabled={status === "saved"}
+      onClick={async () => {
+        setStatus("saving");
+        try {
+          await onSave();
+          setStatus("saved");
+        } catch {
+          setStatus("error");
+        }
+      }}
+    >
+      {status === "saved" ? "Saved ✓" : status === "error" ? "Retry" : label || "Save"}
+    </Button>
+  );
+}
+
+function LinkedinProfileCard({ profile, onSave }) {
+  if (!profile) return null;
+  const posts = profile.activity || profile.recentPosts || [];
+  const articles = profile.articles || [];
+  const recommendations = profile.recommendations || [];
+  const projects = profile.projects || [];
+  const publications = profile.publications || [];
+
+  return (
+    <Card withBorder radius="md" p="lg">
+      <Stack gap="md">
+        {/* Header */}
+        <Group justify="space-between" align="start">
+          <Group align="center" gap="md">
+            {profile.image && (
+              <img
+                src={profile.image}
+                alt={profile.name}
+                style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid #e0e0e0" }}
+              />
+            )}
+            <div>
+              <Text fw={700} size="xl">{profile.name}</Text>
+              {profile.location && <Text size="sm" c="dimmed">{profile.location}</Text>}
+            </div>
+          </Group>
+          <Group gap="xs">
+            <Badge color="blue" variant="light" size="lg">
+              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> Profile
+            </Badge>
+            <SaveButton label="Save Profile" onSave={() => onSave("profile", profile)} />
+          </Group>
+        </Group>
+
+        {/* Key Metrics */}
+        <Card withBorder radius="sm" p="sm" bg="gray.0">
+          <Group gap="xl" justify="center" wrap="wrap">
+            {profile.followers != null && (
+              <div style={{ textAlign: "center" }}>
+                <Text fw={700} size="xl" c="blue">{Number(profile.followers).toLocaleString()}</Text>
+                <Text size="xs" c="dimmed">Followers</Text>
+              </div>
+            )}
+            {profile.connections && (
+              <div style={{ textAlign: "center" }}>
+                <Text fw={700} size="xl" c="blue">{profile.connections}</Text>
+                <Text size="xs" c="dimmed">Connections</Text>
+              </div>
+            )}
+            {posts.length > 0 && (
+              <div style={{ textAlign: "center" }}>
+                <Text fw={700} size="xl" c="blue">{posts.length}</Text>
+                <Text size="xs" c="dimmed">Recent Posts</Text>
+              </div>
+            )}
+            {articles.length > 0 && (
+              <div style={{ textAlign: "center" }}>
+                <Text fw={700} size="xl" c="blue">{articles.length}</Text>
+                <Text size="xs" c="dimmed">Articles</Text>
+              </div>
+            )}
+          </Group>
+        </Card>
+
+        {/* About */}
+        {profile.about && (
+          <div>
+            <Text fw={600} size="sm" mb={4}>About</Text>
+            <ScrollArea h={profile.about.length > 300 ? 150 : undefined}>
+              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{profile.about}</Text>
+            </ScrollArea>
+          </div>
+        )}
+
+        {/* Experience */}
+        {profile.experience?.length > 0 && (
+          <div>
+            <Divider label="Experience" my="xs" />
+            <Stack gap="sm">
+              {profile.experience.slice(0, 5).map((exp, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Group gap="xs" wrap="nowrap" align="start">
+                    <div style={{ flex: 1 }}>
+                      <Text size="sm" fw={600}>{exp.name}</Text>
+                      {exp.location && <Text size="xs" c="dimmed">{exp.location}</Text>}
+                      {exp.member?.description && (
+                        <Text size="xs" c="dimmed" mt={4} lineClamp={2}>{exp.member.description}</Text>
+                      )}
+                    </div>
+                    {exp.url && (
+                      <Text size="xs" c="blue" component="a" href={exp.url} target="_blank">View</Text>
+                    )}
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Education */}
+        {profile.education?.length > 0 && (
+          <div>
+            <Divider label="Education" my="xs" />
+            <Stack gap="sm">
+              {profile.education.map((ed, i) => (
+                <Group key={i} gap="xs" justify="space-between">
+                  <Group gap="xs">
+                    <Text size="sm" fw={500}>{ed.name}</Text>
+                    {ed.url && (
+                      <Text size="xs" c="blue" component="a" href={ed.url} target="_blank">View</Text>
+                    )}
+                  </Group>
+                  {ed.member?.startDate && (
+                    <Badge size="sm" variant="light" color="gray">
+                      {ed.member.startDate}–{ed.member.endDate || "Present"}
+                    </Badge>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Articles */}
+        {articles.length > 0 && (
+          <div>
+            <Divider label="Articles" my="xs" />
+            <Stack gap="sm">
+              {articles.slice(0, 5).map((a, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Group gap="sm" wrap="nowrap" align="start">
+                    {a.image && (
+                      <img src={a.image} alt="" style={{ width: 60, height: 40, borderRadius: 4, objectFit: "cover" }} />
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <Text size="sm" fw={500} lineClamp={1}>{a.headline}</Text>
+                      <Group gap="xs" mt={2}>
+                        {a.datePublished && (
+                          <Text size="xs" c="dimmed">{new Date(a.datePublished).toLocaleDateString()}</Text>
+                        )}
+                      </Group>
+                    </div>
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Publications */}
+        {publications.length > 0 && (
+          <div>
+            <Divider label="Publications" my="xs" />
+            <Stack gap="xs">
+              {publications.slice(0, 5).map((pub, i) => (
+                <Group key={i} gap="xs">
+                  <Text size="sm">{pub.name}</Text>
+                  {pub.url && (
+                    <Text size="xs" c="blue" component="a" href={pub.url} target="_blank">Link</Text>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Projects */}
+        {projects.length > 0 && (
+          <div>
+            <Divider label="Projects" my="xs" />
+            <Stack gap="sm">
+              {projects.slice(0, 5).map((proj, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Group gap="xs" justify="space-between">
+                    <Text size="sm" fw={500}>{proj.name}</Text>
+                    {proj.dateRange && <Badge size="xs" variant="light" color="gray">{proj.dateRange}</Badge>}
+                  </Group>
+                  {proj.description && <Text size="xs" mt={4} lineClamp={2}>{proj.description}</Text>}
+                  {proj.contributors?.length > 0 && (
+                    <Group gap={4} mt={4}>
+                      {proj.contributors.map((c, j) => (
+                        <Tooltip key={j} label={c.name} withArrow>
+                          {c.image ? (
+                            <img src={c.image} alt={c.name} style={{ width: 24, height: 24, borderRadius: "50%" }} />
+                          ) : (
+                            <Badge size="xs" variant="light">{c.name?.charAt(0)}</Badge>
+                          )}
+                        </Tooltip>
+                      ))}
+                    </Group>
+                  )}
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Recommendations */}
+        {recommendations.length > 0 && (
+          <div>
+            <Divider label="Recommendations" my="xs" />
+            <Stack gap="sm">
+              {recommendations.slice(0, 3).map((rec, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Group gap="sm" mb={4}>
+                    {rec.image && (
+                      <img src={rec.image} alt="" style={{ width: 28, height: 28, borderRadius: "50%" }} />
+                    )}
+                    <Text size="sm" fw={500}>{rec.name}</Text>
+                  </Group>
+                  <Text size="xs" c="dimmed" lineClamp={3} style={{ fontStyle: "italic" }}>{rec.text}</Text>
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Recent Activity */}
+        {posts.length > 0 && (
+          <div>
+            <Divider label="Recent Activity" my="xs" />
+            <Stack gap="sm">
+              {posts.slice(0, 5).map((p, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Group gap="sm" wrap="nowrap" align="start">
+                    {p.image && (
+                      <img src={p.image} alt="" style={{ width: 60, height: 40, borderRadius: 4, objectFit: "cover" }} />
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <Text size="sm" lineClamp={2}>{p.title || p.text || "—"}</Text>
+                      <Group gap="xs" mt={4}>
+                        {p.activityType && <Badge size="xs" variant="light" color="gray">{p.activityType}</Badge>}
+                        {p.link && (
+                          <Text size="xs" c="blue" component="a" href={p.link} target="_blank">View →</Text>
+                        )}
+                      </Group>
+                    </div>
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function LinkedinCompanyCard({ company, onSave }) {
+  if (!company) return null;
+  const posts = company.posts || [];
+
+  return (
+    <Card withBorder radius="md" p="lg">
+      <Stack gap="md">
+        <Group justify="space-between" align="start">
+          <Group align="center" gap="md">
+            {company.logo && (
+              <img
+                src={company.logo}
+                alt={company.name}
+                style={{ width: 56, height: 56, borderRadius: 8, objectFit: "contain", background: "#f5f5f5" }}
+              />
+            )}
+            <div>
+              <Text fw={700} size="lg">{company.name}</Text>
+              {company.slogan && <Text size="sm" c="dimmed">{company.slogan}</Text>}
+            </div>
+          </Group>
+          <Group gap="xs">
+            <Badge color="blue" variant="light">
+              <IconBrandLinkedin size={12} style={{ marginRight: 4 }} /> Company
+            </Badge>
+            <SaveButton label="Save Company" onSave={() => onSave("company", company)} />
+          </Group>
+        </Group>
+
+        <Group gap="lg" wrap="wrap">
+          {company.employeeCount != null && (
+            <div>
+              <Text fw={600} size="lg">{Number(company.employeeCount).toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Employees</Text>
+            </div>
+          )}
+          {company.size && (
+            <div>
+              <Text fw={600} size="lg">{company.size}</Text>
+              <Text size="xs" c="dimmed">Company Size</Text>
+            </div>
+          )}
+          {company.founded && (
+            <div>
+              <Text fw={600} size="lg">{company.founded}</Text>
+              <Text size="xs" c="dimmed">Founded</Text>
+            </div>
+          )}
+        </Group>
+
+        <Group gap="xs" wrap="wrap">
+          {company.industry && <Badge variant="light">{company.industry}</Badge>}
+          {company.type && <Badge variant="light" color="gray">{company.type}</Badge>}
+          {company.headquarters && <Badge variant="light" color="gray">{company.headquarters}</Badge>}
+        </Group>
+
+        {company.description && (
+          <div>
+            <Text fw={500} size="sm" mb={4}>About</Text>
+            <Text size="sm" lineClamp={6} style={{ whiteSpace: "pre-wrap" }}>{company.description}</Text>
+          </div>
+        )}
+
+        {company.website && (
+          <Text size="sm">
+            <Text fw={500} span>Website: </Text>
+            <Text c="blue" component="a" href={company.website} target="_blank" span>
+              {company.website}
+            </Text>
+          </Text>
+        )}
+
+        {company.specialties?.length > 0 && (
+          <div>
+            <Text fw={500} size="sm" mb={4}>Specialties</Text>
+            <Group gap={6} wrap="wrap">
+              {company.specialties.map((s, i) => (
+                <Badge key={i} size="sm" variant="outline" color="gray">{s}</Badge>
+              ))}
+            </Group>
+          </div>
+        )}
+
+        {company.funding && (
+          <div>
+            <Text fw={500} size="sm" mb={4}>Funding</Text>
+            <Group gap="xs">
+              <Text size="sm">Rounds: {company.funding.numberOfRounds}</Text>
+              {company.funding.lastRound && (
+                <Badge variant="light" color="green">
+                  {company.funding.lastRound.type} – {company.funding.lastRound.amount}
+                </Badge>
+              )}
+            </Group>
+          </div>
+        )}
+
+        {posts.length > 0 && (
+          <div>
+            <Divider label="Recent Posts" my="xs" />
+            <Stack gap="sm">
+              {posts.slice(0, 5).map((p, i) => (
+                <Card key={i} withBorder radius="sm" p="sm">
+                  <Text size="sm" lineClamp={4} style={{ whiteSpace: "pre-wrap" }}>{p.text || "—"}</Text>
+                  <Group gap="xs" mt={4}>
+                    {p.datePublished && (
+                      <Text size="xs" c="dimmed">{new Date(p.datePublished).toLocaleDateString()}</Text>
+                    )}
+                    {p.url && (
+                      <Text size="xs" c="blue" component="a" href={p.url} target="_blank">
+                        View →
+                      </Text>
+                    )}
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function LinkedinPostCard({ post, onSave }) {
+  if (!post) return null;
+
+  // Decode HTML entities that Scrape Creators sometimes returns (e.g. &#39; &amp;)
+  const decode = (str) => {
+    if (!str) return str;
+    const el = document.createElement("textarea");
+    el.innerHTML = str;
+    return el.value;
+  };
+
+  const title = decode(post.name) || "Untitled Post";
+  const headline = decode(post.headline);
+  const content = decode(post.description);
+  const authorName = post.author?.name || post.author;
+  const authorFollowers = post.author?.followers;
+  const thumb = post.thumbnailUrl;
+  const likes = post.likeCount || 0;
+  const comments = post.commentCount || 0;
+  const commentsArr = post.comments || [];
+  const moreArticles = post.moreArticles || [];
+
+  return (
+    <Card withBorder radius="md" p="lg">
+      <Stack gap="md">
+        {/* Header */}
+        <Group justify="space-between" align="start">
+          <div style={{ flex: 1 }}>
+            <Text fw={700} size="lg" lineClamp={2}>{title}</Text>
+            {headline && headline !== title && (
+              <Text size="sm" c="dimmed" mt={4} lineClamp={2}>{headline}</Text>
+            )}
+          </div>
+          <Group gap="xs">
+            <Badge color="blue" variant="light" size="lg">
+              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> Post
+            </Badge>
+            <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+          </Group>
+        </Group>
+
+        {/* Author */}
+        {authorName && (
+          <Group gap="sm">
+            {typeof authorName === "string" && (
+              <Group gap="xs">
+                <IconUser size={16} />
+                <Text size="sm" fw={500}>{decode(authorName)}</Text>
+              </Group>
+            )}
+            {authorFollowers != null && (
+              <Badge size="sm" variant="light" color="gray">
+                {Number(authorFollowers).toLocaleString()} followers
+              </Badge>
+            )}
+          </Group>
+        )}
+
+        {/* Metrics */}
+        <Card withBorder radius="sm" p="sm" bg="gray.0">
+          <Group gap="xl" justify="center" wrap="wrap">
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{likes.toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Likes</Text>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <Text fw={700} size="xl" c="blue">{comments.toLocaleString()}</Text>
+              <Text size="xs" c="dimmed">Comments</Text>
+            </div>
+            {post.datePublished && (
+              <div style={{ textAlign: "center" }}>
+                <Text fw={700} size="md" c="blue">
+                  {new Date(post.datePublished).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                </Text>
+                <Text size="xs" c="dimmed">Published</Text>
+              </div>
+            )}
+          </Group>
+        </Card>
+
+        {/* Thumbnail + Content */}
+        {(thumb || content) && (
+          <Group gap="md" align="start" wrap="nowrap">
+            {thumb && (
+              <img
+                src={thumb}
+                alt=""
+                style={{ width: 120, height: 80, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
+              />
+            )}
+            {content && (
+              <div style={{ flex: 1 }}>
+                <Text fw={600} size="sm" mb={4}>Content</Text>
+                <ScrollArea h={content.length > 400 ? 180 : undefined}>
+                  <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{content}</Text>
+                </ScrollArea>
+              </div>
+            )}
+          </Group>
+        )}
+
+        {/* Comments */}
+        {commentsArr.length > 0 && (
+          <div>
+            <Divider label={`Comments (${commentsArr.length})`} my="xs" />
+            <Stack gap="sm">
+              {commentsArr.slice(0, 5).map((c, i) => (
+                <Card key={i} withBorder radius="sm" p="xs">
+                  <Group gap="xs" mb={4}>
+                    {c.image && (
+                      <img src={c.image} alt="" style={{ width: 22, height: 22, borderRadius: "50%" }} />
+                    )}
+                    <Text size="sm" fw={500}>{decode(c.author || c.name) || "Unknown"}</Text>
+                    {c.datePublished && (
+                      <Text size="xs" c="dimmed">{new Date(c.datePublished).toLocaleDateString()}</Text>
+                    )}
+                  </Group>
+                  <Text size="sm" lineClamp={3}>{decode(c.text || c.description) || "—"}</Text>
+                  {(c.likeCount != null || c.commentCount != null) && (
+                    <Group gap="sm" mt={4}>
+                      {c.likeCount != null && <Badge size="xs" variant="light">❤️ {c.likeCount}</Badge>}
+                      {c.commentCount != null && <Badge size="xs" variant="light">💬 {c.commentCount}</Badge>}
+                    </Group>
+                  )}
+                </Card>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* More Articles */}
+        {moreArticles.length > 0 && (
+          <div>
+            <Divider label="Related Articles" my="xs" />
+            <Stack gap="xs">
+              {moreArticles.slice(0, 5).map((a, i) => (
+                <Group key={i} gap="sm" wrap="nowrap">
+                  {a.image && (
+                    <img src={a.image} alt="" style={{ width: 48, height: 32, borderRadius: 4, objectFit: "cover" }} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <Text size="sm" lineClamp={1} fw={500}>{decode(a.headline || a.name)}</Text>
+                    {a.author && <Text size="xs" c="dimmed">{a.author}</Text>}
+                  </div>
+                  {a.url && (
+                    <Text size="xs" c="blue" component="a" href={a.url} target="_blank">View</Text>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          </div>
+        )}
+
+        {/* Link */}
+        {post.url && (
+          <Group justify="flex-end">
+            <Text size="sm" c="blue" component="a" href={post.url} target="_blank" fw={500}>
+              View on LinkedIn →
+            </Text>
+          </Group>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function LinkedinResults({ data, onSave }) {
+  if (!data?.results) return null;
+  const { results, errors } = data;
+  const resultCount = Object.keys(results).length;
+
+  return (
+    <Stack gap="md">
+      <Divider label={`LinkedIn Results (${resultCount} returned)`} />
+
+      {errors?.length > 0 && (
+        <Alert variant="light" color="orange" title="Some requests failed" icon={<IconAlertCircle />}>
+          {errors.map((e, i) => (
+            <Text key={i} size="sm"><b>{e.endpoint}:</b> {e.error}</Text>
+          ))}
+        </Alert>
+      )}
+
+      {resultCount === 0 && !errors?.length && (
+        <Alert variant="light" color="gray" title="No results">
+          No data was returned. Please check the URLs and try again.
+        </Alert>
+      )}
+
+      {results.profile && <LinkedinProfileCard profile={results.profile} onSave={onSave} />}
+      {results.company && <LinkedinCompanyCard company={results.company} onSave={onSave} />}
+      {results.post && <LinkedinPostCard post={results.post} onSave={onSave} />}
+    </Stack>
+  );
+}
+
+/* ─── End LinkedIn Results ───────────────────────────────────────────────── */
+
 export default function CompetitorLookup() {
   const [connectedPlatforms, setConnectedPlatforms] = useState(getConnectedPlatforms);
 
@@ -101,6 +697,9 @@ export default function CompetitorLookup() {
   const [youtubeInputs, setYoutubeInputs] = useState({});
   const [redditOptions, setRedditOptions] = useState({});
   const [redditInputs, setRedditInputs] = useState({});
+  const [linkedinResult, setLinkedinResult] = useState(null);
+  const [linkedinLoading, setLinkedinLoading] = useState(false);
+  const [linkedinError, setLinkedinError] = useState(null);
 
 
 
@@ -294,6 +893,73 @@ export default function CompetitorLookup() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function tryPostJson(path, body) {
+    const attempts = [];
+    for (const base of backends) {
+      const url = `${base.replace(/\/+$/, "")}${path}`;
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const ct = resp.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          const text = await resp.text();
+          throw new Error(`Expected JSON from ${base}, got: ${text.slice(0, 300)}`);
+        }
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || `Request failed (${resp.status})`);
+        return json;
+      } catch (e) {
+        attempts.push({ base, error: e?.message || String(e) });
+      }
+    }
+    const err = new Error(
+      `Couldn't connect to the server. Please make sure it's running and try again.`
+    );
+    err.type = "backend_error";
+    err.attempts = attempts;
+    throw err;
+  }
+
+  async function handleLinkedinSubmit() {
+    setLinkedinError(null);
+    setLinkedinResult(null);
+
+    // Validate that at least one option is selected with input
+    const hasInput =
+      (linkedinOptions.profile && linkedinInputs.profile?.trim()) ||
+      (linkedinOptions.company && linkedinInputs.company?.trim()) ||
+      (linkedinOptions.post && linkedinInputs.post?.trim());
+
+    if (!hasInput) {
+      setLinkedinError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setLinkedinLoading(true);
+    try {
+      const json = await tryPostJson("/api/linkedin/search", {
+        options: linkedinOptions,
+        inputs: linkedinInputs,
+      });
+      setLinkedinResult(json);
+    } catch (e) {
+      setLinkedinError(e?.message || "Unknown error");
+    } finally {
+      setLinkedinLoading(false);
+    }
+  }
+
+  async function handleLinkedinSave(type, data) {
+    if (!currentUserId) {
+      setLinkedinError("Please sign in to save data.");
+      return;
+    }
+    return tryPostJson("/api/linkedin/save", { type, data, user_id: currentUserId });
   }
 
   function BackendBadge({ base }) {
@@ -830,9 +1496,19 @@ export default function CompetitorLookup() {
                   <Button
                     leftSection={<IconSearch size={16} />}
                     disabled={!linkedinOptions.profile && !linkedinOptions.company && !linkedinOptions.post}
+                    loading={linkedinLoading}
+                    onClick={handleLinkedinSubmit}
                   >
                     Search LinkedIn
                   </Button>
+
+                  {linkedinError && (
+                    <Alert variant="light" color="red" title="Error" icon={<IconAlertCircle />}>
+                      {linkedinError}
+                    </Alert>
+                  )}
+
+                  {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
                 </Stack>
               </Tabs.Panel>
             )}
