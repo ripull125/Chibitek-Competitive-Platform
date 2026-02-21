@@ -1483,6 +1483,114 @@ app.post('/api/tiktok/search', async (req, res) => {
 
 // ─── End TikTok ──────────────────────────────────────────────────────────────
 
+// ─── Reddit ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normalize subreddit input: strips "r/", leading slashes, or full URLs.
+ *   "r/reactjs"  →  "reactjs"
+ *   "reactjs"    →  "reactjs"
+ *   "https://www.reddit.com/r/reactjs/" → "reactjs"
+ */
+function extractSubreddit(input) {
+  if (!input) return '';
+  const trimmed = String(input).trim();
+  try {
+    const url = new URL(trimmed);
+    const m = url.pathname.match(/\/r\/([\w]+)/);
+    if (m) return m[1];
+  } catch { /* not a URL */ }
+  return trimmed.replace(/^\/?r\//, '');
+}
+
+/**
+ * POST /api/reddit/search
+ * Body: { options: { subredditDetails, subredditPosts, subredditSearch,
+ *                     postComments, search, searchAds, getAd },
+ *         inputs: { subreddit, subredditQuery, postUrl, searchQuery,
+ *                   adSearchQuery, adUrl } }
+ *
+ * Scrape Creators param mapping (discovered via testing):
+ *   /v1/reddit/subreddit/details  → { subreddit }
+ *   /v1/reddit/subreddit          → { subreddit }          (posts)
+ *   /v1/reddit/subreddit/search   → { subreddit, query }
+ *   /v1/reddit/post/comments      → { url }
+ *   /v1/reddit/search             → { query }
+ *   /v1/reddit/ads/search         → { query }
+ *   /v1/reddit/ad                 → { id }
+ */
+app.post('/api/reddit/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+    const tasks = [];
+    const labels = [];
+
+    // ── Subreddit ──────────────────────────────────────────────────────
+    const subreddit = extractSubreddit(inputs.subreddit);
+
+    if (options.subredditDetails && subreddit) {
+      labels.push('subredditDetails');
+      tasks.push(scrapeCreators('/v1/reddit/subreddit/details', { subreddit }));
+    }
+    if (options.subredditPosts && subreddit) {
+      labels.push('subredditPosts');
+      tasks.push(scrapeCreators('/v1/reddit/subreddit', { subreddit }));
+    }
+    if (options.subredditSearch && subreddit && inputs.subredditQuery?.trim()) {
+      labels.push('subredditSearch');
+      tasks.push(scrapeCreators('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }));
+    }
+
+    // ── Posts & Search ─────────────────────────────────────────────────
+    if (options.postComments && inputs.postUrl?.trim()) {
+      labels.push('postComments');
+      tasks.push(scrapeCreators('/v1/reddit/post/comments', { url: inputs.postUrl.trim() }));
+    }
+    if (options.search && inputs.searchQuery?.trim()) {
+      labels.push('search');
+      tasks.push(scrapeCreators('/v1/reddit/search', { query: inputs.searchQuery.trim() }));
+    }
+
+    // ── Ads ────────────────────────────────────────────────────────────
+    if (options.searchAds && inputs.adSearchQuery?.trim()) {
+      labels.push('searchAds');
+      tasks.push(scrapeCreators('/v1/reddit/ads/search', { query: inputs.adSearchQuery.trim() }));
+    }
+    if (options.getAd && inputs.adUrl?.trim()) {
+      labels.push('getAd');
+      // Accept a full ad ID or URL – extract just the ID if possible
+      const adId = inputs.adUrl.trim();
+      tasks.push(scrapeCreators('/v1/reddit/ad', { id: adId }));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No Reddit options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+    let credits_remaining = null;
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+        if (s.value?.credits_remaining != null) {
+          credits_remaining = s.value.credits_remaining;
+        }
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors, credits_remaining });
+  } catch (err) {
+    console.error('Reddit search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── End Reddit ──────────────────────────────────────────────────────────────
+
 // ─── YouTube Helpers ─────────────────────────────────────────────────────────
 
 const YT_BASE = 'https://www.googleapis.com/youtube/v3';

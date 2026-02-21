@@ -967,6 +967,9 @@ export default function CompetitorLookup() {
   const [tiktokResult, setTiktokResult] = useState(null);
   const [tiktokLoading, setTiktokLoading] = useState(false);
   const [tiktokError, setTiktokError] = useState(null);
+  const [redditResult, setRedditResult] = useState(null);
+  const [redditLoading, setRedditLoading] = useState(false);
+  const [redditError, setRedditError] = useState(null);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
 
 
@@ -1466,6 +1469,70 @@ export default function CompetitorLookup() {
           likes: data.stats?.diggCount ?? data.statsV2?.diggCount ?? 0,
           shares: data.stats?.shareCount ?? data.statsV2?.shareCount ?? 0,
           comments: data.stats?.commentCount ?? data.statsV2?.commentCount ?? 0,
+          user_id: currentUserId,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Save failed: ${resp.status} ${text}`);
+      }
+      return resp.json();
+    }
+  }
+
+  /* ─── Reddit Handler ──────────────────────────────────────────────────── */
+
+  async function handleRedditSubmit() {
+    setRedditError(null);
+    setRedditResult(null);
+
+    const hasInput =
+      ((redditOptions.subredditDetails || redditOptions.subredditPosts) && redditInputs.subreddit?.trim()) ||
+      (redditOptions.subredditSearch && redditInputs.subreddit?.trim() && redditInputs.subredditQuery?.trim()) ||
+      (redditOptions.postComments && redditInputs.postUrl?.trim()) ||
+      (redditOptions.search && redditInputs.searchQuery?.trim()) ||
+      (redditOptions.searchAds && redditInputs.adSearchQuery?.trim()) ||
+      (redditOptions.getAd && redditInputs.adUrl?.trim());
+
+    if (!hasInput) {
+      setRedditError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setRedditLoading(true);
+    try {
+      const json = await tryPostJson("/api/reddit/search", {
+        options: redditOptions,
+        inputs: redditInputs,
+      });
+      setRedditResult(json);
+      if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setRedditError(e?.message || "Unknown error");
+    } finally {
+      setRedditLoading(false);
+    }
+  }
+
+  async function handleRedditSave(type, data) {
+    if (!currentUserId) {
+      setRedditError("Please sign in to save data.");
+      return;
+    }
+    if (type === "post" && data) {
+      const resp = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: 6, // Reddit
+          platform_user_id: data.author || data.author_fullname || "",
+          username: data.author || "",
+          platform_post_id: data.id || data.name || "",
+          content: data.title || data.selftext || "",
+          published_at: data.created_utc ? new Date(data.created_utc * 1000).toISOString() : null,
+          likes: data.score ?? data.ups ?? 0,
+          shares: 0,
+          comments: data.num_comments ?? 0,
           user_id: currentUserId,
         }),
       });
@@ -2476,6 +2543,244 @@ export default function CompetitorLookup() {
     );
   }
 
+  /* ─── Reddit Results Display ─────────────────────────────────────────── */
+
+  function RedditSubredditCard({ details }) {
+    if (!details) return null;
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start">
+            <div>
+              <Group gap="xs">
+                <Title order={4}>r/{details.display_name}</Title>
+              </Group>
+              {details.advertiser_category && (
+                <Badge size="xs" variant="outline" mt={2}>{details.advertiser_category}</Badge>
+              )}
+            </div>
+            <Badge variant="light" color="orange">
+              <IconBrandReddit size={14} style={{ marginRight: 4 }} /> Subreddit
+            </Badge>
+          </Group>
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Subscribers", value: fmtNum(details.subscribers) },
+              { label: "Weekly Active", value: fmtNum(details.weekly_active_users) },
+              { label: "Weekly Posts", value: fmtNum(details.weekly_contributions) },
+            ].filter(x => x.value != null).map(({ label, value }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{value}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          {details.description && (
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }} lineClamp={6}>{details.description}</Text>
+          )}
+
+          {details.submit_text && (
+            <Text size="xs" c="dimmed" lineClamp={3}>{details.submit_text}</Text>
+          )}
+
+          {details.rules?.length > 0 && (
+            <div>
+              <Text size="xs" fw={600} mb={4}>Rules ({details.rules.length}):</Text>
+              {details.rules.slice(0, 5).map((r, i) => (
+                <Text key={i} size="xs" c="dimmed">• {r.short_name || r.title || r}</Text>
+              ))}
+            </div>
+          )}
+        </Stack>
+      </Card>
+    );
+  }
+
+  function RedditPostCard({ post, onSave, compact }) {
+    if (!post) return null;
+    const title = post.title || "";
+    const body = post.selftext || post.body || "";
+    const thumb = post.thumbnail && post.thumbnail !== "self" && post.thumbnail !== "default" && post.thumbnail !== "nsfw"
+      ? post.thumbnail : null;
+    const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
+
+    return (
+      <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
+        <Group gap="sm" align="start" wrap="nowrap">
+          {thumb && (
+            <img src={thumb} alt="" style={{ width: compact ? 60 : 80, height: compact ? 60 : 80, objectFit: "cover", borderRadius: 6 }} />
+          )}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>No title</i>}</Text>
+            {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
+            <Text size="xs" c="dimmed">
+              {post.author ? `u/${post.author}` : ""}
+              {post.subreddit ? ` · r/${post.subreddit}` : ""}
+              {created ? ` · ${created}` : ""}
+            </Text>
+            <Group gap="xs">
+              {[
+                { label: "⬆", val: post.score ?? post.ups },
+                { label: "💬", val: post.num_comments },
+                { label: "🏆", val: post.total_awards_received },
+              ].filter(x => x.val != null && x.val > 0).map(({ label, val }) => (
+                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              ))}
+              {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+            </Group>
+            {onSave && (
+              <Group justify="flex-end">
+                <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+              </Group>
+            )}
+          </Stack>
+        </Group>
+      </Card>
+    );
+  }
+
+  function RedditCommentsList({ comments }) {
+    const list = Array.isArray(comments) ? comments : [];
+    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    return (
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+        {list.slice(0, 30).map((c, i) => (
+          <Card key={c.id || i} withBorder radius="sm" p="xs">
+            <Group gap={6} mb={4} wrap="nowrap">
+              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>u/{c.author || "deleted"}</Text>
+              {(c.score > 0) && <Badge size="xs" variant="light">{c.score} ⬆</Badge>}
+            </Group>
+            <Text size="xs" lineClamp={4}>{c.body || c.text || ""}</Text>
+            {c.replies?.length > 0 && (
+              <Text size="xs" c="dimmed" mt={2}>{c.replies.length} replies</Text>
+            )}
+          </Card>
+        ))}
+      </SimpleGrid>
+    );
+  }
+
+  function RedditAdCard({ ad }) {
+    if (!ad) return null;
+    const creative = ad.creative || {};
+    const profile = ad.profile_info || {};
+    return (
+      <Card withBorder radius="md" shadow="sm" p="sm">
+        <Stack gap="xs">
+          <Group justify="space-between">
+            <Text fw={600} size="sm" lineClamp={2}>{creative.title || creative.headline || ad.id}</Text>
+            <Badge variant="light" color="orange" size="xs">Ad</Badge>
+          </Group>
+          {creative.body && <Text size="xs" lineClamp={3}>{creative.body}</Text>}
+          <Group gap="xs">
+            {ad.objective && <Badge size="xs" variant="outline">{ad.objective}</Badge>}
+            {ad.industry && <Badge size="xs" variant="outline">{ad.industry}</Badge>}
+            {ad.budget_category && <Badge size="xs" variant="outline">{ad.budget_category}</Badge>}
+          </Group>
+          {profile.name && <Text size="xs" c="dimmed">By: {profile.name}</Text>}
+        </Stack>
+      </Card>
+    );
+  }
+
+  function RedditResults({ data, onSave }) {
+    if (!data) return null;
+    const { results = {}, errors = [] } = data;
+
+    const detailsData = results.subredditDetails;
+    const subredditPostsArr = results.subredditPosts?.posts || [];
+    const subredditSearchArr = results.subredditSearch?.posts || [];
+    const commentsArr = results.postComments?.comments || [];
+    const searchArr = results.search?.posts || [];
+    const adsArr = results.searchAds?.ads || [];
+    const adDetail = results.getAd?.data || results.getAd;
+
+    const count =
+      (detailsData ? 1 : 0) +
+      subredditPostsArr.length +
+      subredditSearchArr.length +
+      commentsArr.length +
+      searchArr.length +
+      adsArr.length +
+      (adDetail ? 1 : 0);
+
+    return (
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Text fw={600}>Reddit Results</Text>
+          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+        </Group>
+
+        {errors.length > 0 && (
+          <Alert color="orange" title="Some requests failed">
+            {errors.map((e, i) => (
+              <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
+            ))}
+          </Alert>
+        )}
+
+        {detailsData && (
+          <>
+            <Divider label="Subreddit Details" labelPosition="center" />
+            <RedditSubredditCard details={detailsData} />
+          </>
+        )}
+
+        {subredditPostsArr.length > 0 && (
+          <>
+            <Divider label={`Subreddit Posts (${subredditPostsArr.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {subredditPostsArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {subredditSearchArr.length > 0 && (
+          <>
+            <Divider label={`Subreddit Search (${subredditSearchArr.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {subredditSearchArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {commentsArr.length > 0 && (
+          <>
+            <Divider label={`Comments (${commentsArr.length})`} labelPosition="center" />
+            <RedditCommentsList comments={commentsArr} />
+          </>
+        )}
+
+        {searchArr.length > 0 && (
+          <>
+            <Divider label={`Search Results (${searchArr.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {searchArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {adsArr.length > 0 && (
+          <>
+            <Divider label={`Ads (${adsArr.length})`} labelPosition="center" />
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+              {adsArr.map((a, i) => <RedditAdCard key={a.id || i} ad={a} />)}
+            </SimpleGrid>
+          </>
+        )}
+
+        {adDetail && (
+          <>
+            <Divider label="Ad Detail" labelPosition="center" />
+            <RedditAdCard ad={adDetail} />
+          </>
+        )}
+      </Stack>
+    );
+  }
+
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
   return (
@@ -2490,8 +2795,8 @@ export default function CompetitorLookup() {
             </Text>
           </div>
           {creditsRemaining != null && (
-            <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 140, textAlign: "center" }}>
-              <Text size="xs" c="dimmed" fw={500}>Credits Remaining</Text>
+            <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
+              <Text size="xs" c="dimmed" fw={500}>Credits Remaining (this key)</Text>
               <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
                 {creditsRemaining.toLocaleString()}
               </Text>
@@ -3215,10 +3520,22 @@ export default function CompetitorLookup() {
 
                   <Button
                     leftSection={<IconSearch size={16} />}
+                    loading={redditLoading}
                     disabled={!Object.values(redditOptions).some(Boolean)}
+                    onClick={handleRedditSubmit}
                   >
                     Search Reddit
                   </Button>
+
+                  {redditError && (
+                    <Alert color="red" title="Error" icon={<IconAlertCircle />}>
+                      {redditError}
+                    </Alert>
+                  )}
+
+                  {redditResult && (
+                    <RedditResults data={redditResult} onSave={handleRedditSave} />
+                  )}
                 </Stack>
               </Tabs.Panel>
             )}
