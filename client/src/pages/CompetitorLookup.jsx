@@ -964,6 +964,10 @@ export default function CompetitorLookup() {
   const [instagramResult, setInstagramResult] = useState(null);
   const [instagramLoading, setInstagramLoading] = useState(false);
   const [instagramError, setInstagramError] = useState(null);
+  const [tiktokResult, setTiktokResult] = useState(null);
+  const [tiktokLoading, setTiktokLoading] = useState(false);
+  const [tiktokError, setTiktokError] = useState(null);
+  const [creditsRemaining, setCreditsRemaining] = useState(null);
 
 
 
@@ -1211,6 +1215,7 @@ export default function CompetitorLookup() {
         inputs: linkedinInputs,
       });
       setLinkedinResult(json);
+      if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
       setLinkedinError(e?.message || "Unknown error");
     } finally {
@@ -1370,6 +1375,7 @@ export default function CompetitorLookup() {
         inputs: instagramInputs,
       });
       setInstagramResult(json);
+      if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
       setInstagramError(e?.message || "Unknown error");
     } finally {
@@ -1396,6 +1402,70 @@ export default function CompetitorLookup() {
           likes: data.like_count ?? data.likes ?? 0,
           shares: 0,
           comments: data.comment_count ?? data.comments ?? 0,
+          user_id: currentUserId,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Save failed: ${resp.status} ${text}`);
+      }
+      return resp.json();
+    }
+  }
+
+  /* ─── TikTok Handler ──────────────────────────────────────────────────── */
+
+  async function handleTiktokSubmit() {
+    setTiktokError(null);
+    setTiktokResult(null);
+
+    const hasInput =
+      ((tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && tiktokInputs.username?.trim()) ||
+      (tiktokOptions.profileVideos && tiktokInputs.videosUsername?.trim()) ||
+      ((tiktokOptions.transcript || tiktokOptions.comments) && tiktokInputs.videoUrl?.trim()) ||
+      (tiktokOptions.searchUsers && tiktokInputs.userSearchQuery?.trim()) ||
+      (tiktokOptions.searchHashtag && tiktokInputs.hashtag?.trim()) ||
+      (tiktokOptions.searchKeyword && tiktokInputs.keyword?.trim());
+
+    if (!hasInput) {
+      setTiktokError("Please select an option and provide the required input.");
+      return;
+    }
+
+    setTiktokLoading(true);
+    try {
+      const json = await tryPostJson("/api/tiktok/search", {
+        options: tiktokOptions,
+        inputs: tiktokInputs,
+      });
+      setTiktokResult(json);
+      if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setTiktokError(e?.message || "Unknown error");
+    } finally {
+      setTiktokLoading(false);
+    }
+  }
+
+  async function handleTiktokSave(type, data) {
+    if (!currentUserId) {
+      setTiktokError("Please sign in to save data.");
+      return;
+    }
+    if (type === "post" && data) {
+      const resp = await fetch(apiUrl("/api/posts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform_id: 5, // TikTok
+          platform_user_id: data.author?.id || data.author?.uniqueId || "",
+          username: data.author?.uniqueId || data.author?.nickname || "",
+          platform_post_id: data.id || data.aweme_id || "",
+          content: data.desc || data.title || "",
+          published_at: data.createTime ? new Date(data.createTime * 1000).toISOString() : null,
+          likes: data.stats?.diggCount ?? data.statsV2?.diggCount ?? 0,
+          shares: data.stats?.shareCount ?? data.statsV2?.shareCount ?? 0,
+          comments: data.stats?.commentCount ?? data.statsV2?.commentCount ?? 0,
           user_id: currentUserId,
         }),
       });
@@ -2125,17 +2195,308 @@ export default function CompetitorLookup() {
     );
   }
 
+  /* ─── TikTok Results Display ─────────────────────────────────────────── */
+
+  function TkProfileCard({ profile }) {
+    if (!profile) return null;
+    const u = profile.user || profile.data?.user || profile;
+    const stats = profile.stats || profile.statsV2 || u.stats || {};
+    const pic = u.avatarLarger || u.avatarMedium || u.avatarThumb;
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start">
+            <Group gap="sm">
+              {pic && <img src={pic} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />}
+              <div>
+                <Group gap="xs">
+                  <Title order={4}>{u.nickname || u.uniqueId}</Title>
+                  {u.verified && <Badge size="xs" color="blue">Verified</Badge>}
+                  {u.privateAccount && <Badge size="xs" color="gray">Private</Badge>}
+                </Group>
+                <Text size="xs" c="dimmed">@{u.uniqueId}</Text>
+                {u.commerceUserInfo?.category && <Badge size="xs" variant="outline" mt={2}>{u.commerceUserInfo.category}</Badge>}
+              </div>
+            </Group>
+            <Badge variant="light" color="dark">
+              <IconBrandTiktok size={14} style={{ marginRight: 4 }} /> Profile
+            </Badge>
+          </Group>
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Followers", value: fmtNum(stats.followerCount ?? u.followerCount) },
+              { label: "Following", value: fmtNum(stats.followingCount ?? u.followingCount) },
+              { label: "Likes", value: fmtNum(stats.heartCount ?? stats.heart ?? u.heartCount) },
+              { label: "Videos", value: fmtNum(stats.videoCount ?? u.videoCount) },
+            ].map(({ label, value }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{value}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          {u.signature && (
+            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{u.signature}</Text>
+          )}
+
+          {u.bioLink?.link && (
+            <Text size="xs" c="blue">{u.bioLink.link}</Text>
+          )}
+        </Stack>
+      </Card>
+    );
+  }
+
+  function TkVideoCard({ video, onSave, compact }) {
+    if (!video) return null;
+    const desc = video.desc || video.title || "";
+    const thumb =
+      video.video?.cover ||
+      video.video?.dynamicCover ||
+      video.video?.originCover;
+    const stats = video.stats || video.statsV2 || {};
+    const author = video.author || {};
+    const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
+
+    return (
+      <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
+        <Group gap="sm" align="start" wrap="nowrap">
+          {thumb && (
+            <img src={thumb} alt="" style={{ width: compact ? 80 : 110, height: compact ? 110 : 150, objectFit: "cover", borderRadius: 6 }} />
+          )}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>No description</i>}</Text>
+            <Text size="xs" c="dimmed">
+              {author.uniqueId || author.nickname || ""}
+              {created ? ` · ${created}` : ""}
+            </Text>
+            <Group gap="xs">
+              {[
+                { label: "▶", val: stats.playCount },
+                { label: "❤️", val: stats.diggCount },
+                { label: "💬", val: stats.commentCount },
+                { label: "🔗", val: stats.shareCount },
+              ].filter(x => x.val != null).map(({ label, val }) => (
+                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              ))}
+            </Group>
+            {onSave && (
+              <Group justify="flex-end">
+                <SaveButton label="Save Post" onSave={() => onSave("post", video)} />
+              </Group>
+            )}
+          </Stack>
+        </Group>
+      </Card>
+    );
+  }
+
+  function TkCommentsList({ comments }) {
+    const list = Array.isArray(comments) ? comments : comments?.comments || [];
+    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    return (
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+        {list.slice(0, 30).map((c, i) => (
+          <Card key={c.cid || i} withBorder radius="sm" p="xs">
+            <Group gap={6} mb={4} wrap="nowrap">
+              {c.user?.avatar_thumbnail?.url_list?.[0] && (
+                <img src={c.user.avatar_thumbnail.url_list[0]} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
+              )}
+              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>
+                {c.user?.nickname || c.user?.unique_id || "User"}
+              </Text>
+              {(c.digg_count > 0) && <Badge size="xs" variant="light">{c.digg_count} ♥</Badge>}
+            </Group>
+            <Text size="xs" lineClamp={3}>{c.text}</Text>
+            {c.reply_comment_total > 0 && (
+              <Text size="xs" c="dimmed" mt={2}>{c.reply_comment_total} replies</Text>
+            )}
+          </Card>
+        ))}
+      </SimpleGrid>
+    );
+  }
+
+  function TkUserListCard({ users, title }) {
+    const list = Array.isArray(users) ? users : [];
+    if (!list.length) return <Text size="sm" c="dimmed">No users found.</Text>;
+    return (
+      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+        {list.slice(0, 30).map((u, i) => {
+          const user = u.user_info || u;
+          const pic = user.avatar_thumb?.url_list?.[0] || user.avatarThumb || user.avatar_url;
+          return (
+            <Card key={user.uid || user.id || i} withBorder radius="sm" p="xs">
+              <Group gap="sm" wrap="nowrap">
+                {pic && <img src={pic} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="sm" fw={600} lineClamp={1}>{user.nickname || user.unique_id || user.uniqueId}</Text>
+                  <Text size="xs" c="dimmed" lineClamp={1}>@{user.unique_id || user.uniqueId}</Text>
+                  <Group gap="xs" mt={2}>
+                    {user.follower_count != null && <Badge size="xs" variant="light">{fmtNum(user.follower_count)} followers</Badge>}
+                  </Group>
+                </div>
+              </Group>
+            </Card>
+          );
+        })}
+      </SimpleGrid>
+    );
+  }
+
+  function TiktokResults({ data, onSave }) {
+    if (!data) return null;
+    const { results = {}, errors = [] } = data;
+
+    // Profile & stats
+    const profileData = results.profile;
+    // Profile videos from profile endpoint's itemList OR from profileVideos call
+    const profileVideos = results.profileVideos?.itemList || results.profile?.itemList || [];
+    const showProfileVideos = results.profileVideos || (results.profile?.itemList?.length > 0 && !results.profileVideos);
+    // Following & Followers
+    const followingList = results.following?.followings || results.following?.following_list || [];
+    const followersList = results.followers?.followers || [];
+    // Transcript
+    const transcript = results.transcript?.transcript;
+    // Comments
+    const commentsList = results.comments?.comments || [];
+    // Search results
+    const searchUsersList = results.searchUsers?.user_list || [];
+    const searchHashtagList = results.searchHashtag?.aweme_list || [];
+    const searchKeywordList = results.searchKeyword?.search_item_list || [];
+
+    const count =
+      (profileData ? 1 : 0) +
+      profileVideos.length +
+      followingList.length +
+      followersList.length +
+      (transcript ? 1 : 0) +
+      commentsList.length +
+      searchUsersList.length +
+      searchHashtagList.length +
+      searchKeywordList.length;
+
+    return (
+      <Stack gap="md">
+        <Group justify="space-between">
+          <Text fw={600}>TikTok Results</Text>
+          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+        </Group>
+
+        {errors.length > 0 && (
+          <Alert color="orange" title="Some requests failed">
+            {errors.map((e, i) => (
+              <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
+            ))}
+          </Alert>
+        )}
+
+        {profileData && (
+          <>
+            <Divider label="Profile" labelPosition="center" />
+            <TkProfileCard profile={profileData} />
+          </>
+        )}
+
+        {profileVideos.length > 0 && (
+          <>
+            <Divider label={`Profile Videos (${profileVideos.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {profileVideos.map((v, i) => <TkVideoCard key={v.id || i} video={v} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {followingList.length > 0 && (
+          <>
+            <Divider label={`Following (${followingList.length})`} labelPosition="center" />
+            <TkUserListCard users={followingList} title="Following" />
+          </>
+        )}
+
+        {followersList.length > 0 && (
+          <>
+            <Divider label={`Followers (${followersList.length})`} labelPosition="center" />
+            <TkUserListCard users={followersList} title="Followers" />
+          </>
+        )}
+
+        {transcript != null && (
+          <>
+            <Divider label="Transcript" labelPosition="center" />
+            <Card withBorder radius="md" p="md">
+              {transcript ? (
+                <ScrollArea h={300}>
+                  <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{typeof transcript === 'string' ? transcript : JSON.stringify(transcript, null, 2)}</Text>
+                </ScrollArea>
+              ) : (
+                <Text size="sm" c="dimmed">No transcript available for this video.</Text>
+              )}
+            </Card>
+          </>
+        )}
+
+        {commentsList.length > 0 && (
+          <>
+            <Divider label={`Comments (${commentsList.length})`} labelPosition="center" />
+            <TkCommentsList comments={commentsList} />
+          </>
+        )}
+
+        {searchUsersList.length > 0 && (
+          <>
+            <Divider label={`Search Users (${searchUsersList.length})`} labelPosition="center" />
+            <TkUserListCard users={searchUsersList} title="Search Users" />
+          </>
+        )}
+
+        {searchHashtagList.length > 0 && (
+          <>
+            <Divider label={`Hashtag Videos (${searchHashtagList.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {searchHashtagList.map((v, i) => <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />)}
+            </Stack>
+          </>
+        )}
+
+        {searchKeywordList.length > 0 && (
+          <>
+            <Divider label={`Keyword Search (${searchKeywordList.length})`} labelPosition="center" />
+            <Stack gap="xs">
+              {searchKeywordList.map((item, i) => {
+                const v = item.aweme_info || item;
+                return <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />;
+              })}
+            </Stack>
+          </>
+        )}
+      </Stack>
+    );
+  }
+
   const posts = Array.isArray(result?.posts) ? result.posts : [];
 
   return (
     <Card withBorder radius="lg" shadow="sm" p="lg" style={{ position: "relative" }}>
       <LoadingOverlay visible={loading} zIndex={1000} />
       <Stack gap="lg">
-        <Group justify="space-between" align="baseline">
-          <Title order={2}>Competitor Lookup</Title>
-          <Text size="sm" c="dimmed">
-            Search competitors across social platforms
-          </Text>
+        <Group justify="space-between" align="center">
+          <div>
+            <Title order={2}>Competitor Lookup</Title>
+            <Text size="sm" c="dimmed">
+              Search competitors across social platforms
+            </Text>
+          </div>
+          {creditsRemaining != null && (
+            <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 140, textAlign: "center" }}>
+              <Text size="xs" c="dimmed" fw={500}>Credits Remaining</Text>
+              <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
+                {creditsRemaining.toLocaleString()}
+              </Text>
+            </Card>
+          )}
         </Group>
 
         {!Object.values(connectedPlatforms).some(Boolean) && (
@@ -2664,12 +3025,6 @@ export default function CompetitorLookup() {
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Video Info" info="Scrapes detailed info about a specific video including stats, audio, effects, and metadata." />}
-                        checked={tiktokOptions.videoInfo || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, videoInfo: e.target.checked }))}
-                      />
-
-                      <Checkbox
                         label={<LabelWithInfo label="Transcript" info="Extracts the spoken transcript from a TikTok video." />}
                         checked={tiktokOptions.transcript || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
@@ -2686,7 +3041,7 @@ export default function CompetitorLookup() {
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
                       )}
 
-                      {(tiktokOptions.videoInfo || tiktokOptions.transcript || tiktokOptions.comments) && (
+                      {(tiktokOptions.transcript || tiktokOptions.comments) && (
                         <TextInput label="Video URL" placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}
@@ -2735,10 +3090,22 @@ export default function CompetitorLookup() {
 
                   <Button
                     leftSection={<IconSearch size={16} />}
+                    loading={tiktokLoading}
                     disabled={!Object.values(tiktokOptions).some(Boolean)}
+                    onClick={handleTiktokSubmit}
                   >
                     Search TikTok
                   </Button>
+
+                  {tiktokError && (
+                    <Alert color="red" title="Error" icon={<IconAlertCircle />}>
+                      {tiktokError}
+                    </Alert>
+                  )}
+
+                  {tiktokResult && (
+                    <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />
+                  )}
                 </Stack>
               </Tabs.Panel>
             )}

@@ -844,16 +844,20 @@ app.post('/api/linkedin/search', async (req, res) => {
     const settled = await Promise.allSettled(tasks);
     const results = {};
     const errors = [];
+    let credits_remaining = null;
 
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
         results[labels[i]] = s.value;
+        if (s.value?.credits_remaining != null) {
+          credits_remaining = s.value.credits_remaining;
+        }
       } else {
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
       }
     });
 
-    return res.json({ success: true, results, errors });
+    return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
     console.error('LinkedIn search error:', err);
     return res.status(500).json({ error: err.message });
@@ -1335,16 +1339,20 @@ app.post('/api/instagram/search', async (req, res) => {
     const settled = await Promise.allSettled(tasks);
     const results = {};
     const errors = [];
+    let credits_remaining = null;
 
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
         results[labels[i]] = s.value;
+        if (s.value?.credits_remaining != null) {
+          credits_remaining = s.value.credits_remaining;
+        }
       } else {
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
       }
     });
 
-    return res.json({ success: true, results, errors });
+    return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
     console.error('Instagram search error:', err);
     return res.status(500).json({ error: err.message });
@@ -1352,6 +1360,128 @@ app.post('/api/instagram/search', async (req, res) => {
 });
 
 // ─── End Instagram ───────────────────────────────────────────────────────────
+
+// ─── TikTok ──────────────────────────────────────────────────────────────────
+
+/**
+ * Extract a clean TikTok username from various input formats:
+ *   @username, username, https://tiktok.com/@username, etc.
+ */
+function extractTkUsername(input) {
+  if (!input) return '';
+  const trimmed = String(input).trim();
+  // URL: https://www.tiktok.com/@username/...
+  try {
+    const url = new URL(trimmed);
+    const m = url.pathname.match(/\/@?([\w.]+)/);
+    if (m) return m[1];
+  } catch { /* not a URL */ }
+  // @username or plain username
+  return trimmed.replace(/^@/, '');
+}
+
+/**
+ * POST /api/tiktok/search
+ * Body: { options: { profile, following, followers, profileVideos,
+ *                     transcript, comments,
+ *                     searchUsers, searchHashtag, searchKeyword },
+ *         inputs: { username, videosUsername, videoUrl,
+ *                   userSearchQuery, hashtag, keyword } }
+ *
+ * Scrape Creators param mapping (discovered via testing):
+ *   /v1/tiktok/profile          → { handle }
+ *   /v1/tiktok/user/following   → { handle }
+ *   /v1/tiktok/user/followers   → { handle }
+ *   /v1/tiktok/video/transcript → { url }
+ *   /v1/tiktok/video/comments   → { url }
+ *   /v1/tiktok/search/users     → { query }
+ *   /v1/tiktok/search/hashtag   → { hashtag }
+ *   /v1/tiktok/search/keyword   → { query }
+ */
+app.post('/api/tiktok/search', async (req, res) => {
+  try {
+    const { options = {}, inputs = {} } = req.body;
+    const tasks = [];
+    const labels = [];
+
+    // ── Profile & Account ──────────────────────────────────────────────
+    const handle = extractTkUsername(inputs.username);
+
+    if (options.profile && handle) {
+      labels.push('profile');
+      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle }));
+    }
+    if (options.following && handle) {
+      labels.push('following');
+      tasks.push(scrapeCreators('/v1/tiktok/user/following', { handle }));
+    }
+    if (options.followers && handle) {
+      labels.push('followers');
+      tasks.push(scrapeCreators('/v1/tiktok/user/followers', { handle }));
+    }
+
+    // ── Videos & Content ───────────────────────────────────────────────
+    // Profile videos come from the profile endpoint's itemList
+    const videosHandle = extractTkUsername(inputs.videosUsername);
+    if (options.profileVideos && videosHandle) {
+      labels.push('profileVideos');
+      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle: videosHandle }));
+    }
+
+    const videoUrl = inputs.videoUrl?.trim();
+    if (options.transcript && videoUrl) {
+      labels.push('transcript');
+      tasks.push(scrapeCreators('/v1/tiktok/video/transcript', { url: videoUrl }));
+    }
+    if (options.comments && videoUrl) {
+      labels.push('comments');
+      tasks.push(scrapeCreators('/v1/tiktok/video/comments', { url: videoUrl }));
+    }
+
+    // ── Search & Discovery ─────────────────────────────────────────────
+    if (options.searchUsers && inputs.userSearchQuery?.trim()) {
+      labels.push('searchUsers');
+      tasks.push(scrapeCreators('/v1/tiktok/search/users', { query: inputs.userSearchQuery.trim() }));
+    }
+    if (options.searchHashtag && inputs.hashtag?.trim()) {
+      labels.push('searchHashtag');
+      const rawTag = inputs.hashtag.trim().replace(/^#/, '');
+      tasks.push(scrapeCreators('/v1/tiktok/search/hashtag', { hashtag: rawTag }));
+    }
+    if (options.searchKeyword && inputs.keyword?.trim()) {
+      labels.push('searchKeyword');
+      tasks.push(scrapeCreators('/v1/tiktok/search/keyword', { query: inputs.keyword.trim() }));
+    }
+
+    if (!tasks.length) {
+      return res.status(400).json({ error: 'No TikTok options selected or inputs provided.' });
+    }
+
+    const settled = await Promise.allSettled(tasks);
+    const results = {};
+    const errors = [];
+    let credits_remaining = null;
+
+    settled.forEach((s, i) => {
+      if (s.status === 'fulfilled') {
+        results[labels[i]] = s.value;
+        // Capture latest credits_remaining from any successful response
+        if (s.value?.credits_remaining != null) {
+          credits_remaining = s.value.credits_remaining;
+        }
+      } else {
+        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+      }
+    });
+
+    return res.json({ success: true, results, errors, credits_remaining });
+  } catch (err) {
+    console.error('TikTok search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── End TikTok ──────────────────────────────────────────────────────────────
 
 // ─── YouTube Helpers ─────────────────────────────────────────────────────────
 
