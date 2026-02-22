@@ -788,9 +788,12 @@ app.get("/api/keywords", async (req, res) => {
       return { id: p.id, score, rawScore, keywords };
     });
 
-    // 3. Rank posts, define top 20% as high performers
+    // 3. Rank posts, define high performers
+    // Use top 50% for small sets (<20 posts), top 25% for larger sets
+    // so there are always enough posts in each tier for lift to be meaningful
     const sorted = [...scoredPosts].sort((a, b) => b.score - a.score);
-    const topN = Math.max(1, Math.ceil(sorted.length * 0.2));
+    const topPct = sorted.length < 20 ? 0.5 : 0.25;
+    const topN = Math.max(1, Math.ceil(sorted.length * topPct));
     const topPostIds = new Set(sorted.slice(0, topN).map(p => p.id));
 
     const totalPosts = scoredPosts.length;
