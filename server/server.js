@@ -692,6 +692,172 @@ app.delete("/api/posts/:id", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/keywords
+// Lift-score based keyword analysis. No external dependencies.
+// Ranks keywords by how overrepresented they are in high-performing posts.
+// ---------------------------------------------------------------------------
+
+// Extract keywords from post text: hashtags + meaningful bigrams/unigrams
+function extractKeywords(text) {
+  if (!text) return [];
+  const keywords = new Set();
+
+  // 1. Extract hashtags (high signal)
+  const hashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) || [];
+  hashtags.forEach(tag => keywords.add(tag.toLowerCase()));
+
+  // 2. Clean text and extract meaningful words/bigrams
+  const cleaned = text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')      // remove URLs
+    .replace(/#\w+/g, '')                 // remove hashtags (already captured)
+    .replace(/@\w+/g, '')                 // remove mentions
+    .replace(/[^a-z0-9\s]/g, ' ')        // remove punctuation
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const words = cleaned.split(' ').filter(w => w.length > 3 && !KW_STOPWORDS.has(w));
+
+  // Unigrams (meaningful single words)
+  words.forEach(w => keywords.add(w));
+
+  // Bigrams (two-word phrases)
+  for (let i = 0; i < words.length - 1; i++) {
+    keywords.add(`${words[i]} ${words[i+1]}`);
+  }
+
+  return Array.from(keywords).slice(0, 20);
+}
+
+const KW_STOPWORDS = new Set([
+  "this","that","with","have","from","they","been","were","said","each","which",
+  "their","there","will","would","could","should","about","after","before","when",
+  "what","your","just","more","also","into","over","then","than","some","such",
+  "like","very","most","only","make","take","come","know","think","even","well",
+  "much","here","through","while","these","those","being","having","doing","going",
+  "want","need","good","great","time","year","back","down","many","long","look",
+  "people","way","day","how","our","use","now","may","new","you","all","can",
+  "get","got","its","let","him","her","his","she","they","was","are","has","had",
+  "does","did","the","and","for","not","but","with","you","this","from","they",
+]);
+
+app.get("/api/keywords", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  console.log(`[keywords] request for user ${userId}`);
+
+  try {
+    // 1. Fetch ALL posts for this user with their metrics
+    const { data: posts, error: postsError } = await supabase
+      .from("posts")
+      .select("id, content, post_metrics(likes, shares, comments, snapshot_at)")
+      .eq("user_id", userId)
+      .limit(500);
+
+    if (postsError) {
+      console.error("[keywords] supabase error:", postsError);
+      throw postsError;
+    }
+
+    console.log(`[keywords] fetched ${posts?.length ?? 0} posts`);
+
+    if (!posts || posts.length === 0) {
+      return res.json({ keywords: [], totalPosts: 0, debug: "no posts found" });
+    }
+
+    // 2. Compute performance score for each post
+    const scoredPosts = posts.map(p => {
+      const snapshots = Array.isArray(p.post_metrics) ? p.post_metrics : [];
+      // Use latest snapshot
+      const m = snapshots.sort(
+        (a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0)
+      )[0] || {};
+
+      const likes    = Number(m.likes    || 0);
+      const shares   = Number(m.shares   || 0);
+      const comments = Number(m.comments || 0);
+
+      // Engagement score: log(1 + likes + 2*comments + 2*shares)
+      const rawScore = likes + 2 * comments + 2 * shares;
+      const score = Math.log(1 + rawScore);
+
+      const keywords = extractKeywords(p.content || "");
+
+      return { id: p.id, score, rawScore, keywords };
+    });
+
+    // 3. Rank posts, define top 20% as high performers
+    const sorted = [...scoredPosts].sort((a, b) => b.score - a.score);
+    const topN = Math.max(1, Math.ceil(sorted.length * 0.2));
+    const topPostIds = new Set(sorted.slice(0, topN).map(p => p.id));
+
+    const totalPosts = scoredPosts.length;
+    const totalTopPosts = topN;
+
+    console.log(`[keywords] ${totalPosts} total posts, ${totalTopPosts} top posts (top 20%)`);
+
+    // 4. Build keyword frequency counts
+    // kwData[keyword] = { inTop: count, inAll: count }
+    const kwData = {};
+
+    scoredPosts.forEach(post => {
+      const isTop = topPostIds.has(post.id);
+      post.keywords.forEach(kw => {
+        if (!kwData[kw]) kwData[kw] = { inTop: 0, inAll: 0 };
+        kwData[kw].inAll += 1;
+        if (isTop) kwData[kw].inTop += 1;
+      });
+    });
+
+    // 5. Compute lift scores, filter noise
+    const MIN_POSTS = 1; // minimum posts a keyword must appear in
+    const results = [];
+
+    Object.entries(kwData).forEach(([kw, counts]) => {
+      if (counts.inAll < MIN_POSTS) return;
+
+      const topFreq     = counts.inTop / totalTopPosts;         // % of top posts with this kw
+      const overallFreq = counts.inAll / totalPosts;            // % of all posts with this kw
+      const lift        = overallFreq > 0 ? topFreq / overallFreq : 0;
+
+      // Simple confidence: more appearances = more confident
+      const confidence = Math.min(1, counts.inAll / 10);
+
+      results.push({
+        term:         kw,
+        lift:         Math.round(lift * 100) / 100,
+        topFreq:      Math.round(topFreq * 1000) / 10,     // as percentage
+        overallFreq:  Math.round(overallFreq * 1000) / 10, // as percentage
+        sampleSize:   counts.inAll,
+        topCount:     counts.inTop,
+        confidence:   Math.round(confidence * 100),
+      });
+    });
+
+    // 6. Sort by lift score descending, take top 30
+    const keywords = results
+      .sort((a, b) => b.lift - a.lift || b.sampleSize - a.sampleSize)
+      .slice(0, 30);
+
+    console.log(`[keywords] returning ${keywords.length} keywords`);
+
+    return res.json({
+      keywords,
+      totalPosts,
+      totalTopPosts,
+      debug: `Analysed ${totalPosts} posts, ${keywords.length} keywords found`,
+    });
+
+  } catch (err) {
+    console.error("[keywords] failed:", err);
+    return res.status(500).json({ error: err.message });
+
+
+  }
+});
+
 app.get("/api/youtube/transcript", async (req, res) => {
   try {
     const { video } = req.query;
@@ -745,6 +911,59 @@ app.get("/api/youtube/transcript", async (req, res) => {
     }
 
     // Failed to get transcript
+    return res.json({
+      videoId,
+      video: videoInfo,
+      transcriptAvailable: false,
+      transcript: "",
+      reason: pythonResult.error || "No transcript available",
+    });
+  } catch (err) {
+    console.error("YouTube transcript error:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/youtube/transcript", async (req, res) => {
+  try {
+    const { video } = req.query;
+    const videoId = extractYouTubeVideoId(video);
+    if (!videoId) return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
+    if (!process.env.YOUTUBE_API_KEY) return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
+
+    const videoMetaRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
+    );
+    const videoMetaData = await videoMetaRes.json();
+    if (!videoMetaData.items?.length) return res.status(404).json({ error: "Video not found" });
+
+    const videoItem = videoMetaData.items[0];
+    const videoInfo = {
+      title: videoItem.snippet.title,
+      description: videoItem.snippet.description,
+      publishedAt: videoItem.snippet.publishedAt,
+      channelId: videoItem.snippet.channelId,
+      channelTitle: videoItem.snippet.channelTitle,
+      stats: {
+        views: Number(videoItem.statistics.viewCount || 0),
+        likes: Number(videoItem.statistics.likeCount || 0),
+        comments: Number(videoItem.statistics.commentCount || 0),
+      },
+    };
+
+    const pythonResult = await getTranscriptFromPython(videoId);
+
+    if (pythonResult.success && pythonResult.transcript) {
+      return res.json({
+        videoId,
+        video: videoInfo,
+        transcriptAvailable: true,
+        language: pythonResult.language || "en",
+        source: "youtube-transcript-api",
+        transcript: pythonResult.transcript,
+      });
+    }
+
     return res.json({
       videoId,
       video: videoInfo,

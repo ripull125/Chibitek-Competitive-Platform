@@ -1,315 +1,198 @@
 // client/src/pages/KeywordTracking.jsx
 import "../utils/ui.css";
 
-import React, { forwardRef, useEffect } from "react";
+import React, { forwardRef, useEffect, useState } from "react";
 import {
-  Card,
-  Title,
-  Group,
-  Text,
-  Anchor,
-  Select,
-  Modal,
-  ActionIcon,
-  Tooltip,
+  Alert,
+  Badge,
   Button,
-  List,
-  ThemeIcon,
-  Divider,
+  Card,
+  Group,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+  Tooltip,
 } from "@mantine/core";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Legend,
-  Tooltip as RechartsTooltip,
-  CartesianGrid,
-} from "recharts";
-import {
-  IconTriangleFilled,
-  IconInfoCircle,
-  IconTrendingUp,
-  IconActivity,
-  IconChartBar,
-} from "@tabler/icons-react";
-import classes from "./KeywordTracking.module.css";
-
-/* Formatting */
-const formatK = (n) => (n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString());
-const formatPct = (v) => `${Math.round(v * 100)}%`;
-
-/* Rank delta badge (directional only) */
-function DeltaBadge({ delta }) {
-  const up = delta > 0;
-  const flat = delta === 0;
-  const color = flat ? "var(--kt-grey)" : up ? "var(--kt-green)" : "var(--kt-red)";
-  const rotate = flat ? 90 : up ? 0 : 180;
-  return (
-    <Group gap={6} wrap="nowrap" className={classes.delta}>
-      <IconTriangleFilled size={14} style={{ color, transform: `rotate(${rotate}deg)` }} />
-      <Text fw={700} style={{ color }}>
-        {Math.abs(delta)}
-      </Text>
-    </Group>
-  );
-}
-
-/* Demo data (replace with API) */
-const trending = [
-  { term: "burger restaurants", volume: 21000, delta: +1 },
-  { term: "brussels fast food", volume: 15000, delta: -3 },
-  { term: "best burger in brussels", volume: 5000, delta: +1 },
-  { term: "antwerp burgers", volume: 2000, delta: -4 },
-  { term: "belgian fries", volume: 6000, delta: -8 },
-  { term: "milkshakes in brussels", volume: 950, delta: -11 },
-  { term: "vegetarian burgers", volume: 500, delta: -19 },
-];
-
-/* Category series with an avg engagement metric for overlay */
-const BASE_SERIES = [
-  { t: "W1", Burgers: 3200, Fries: 800, Shakes: 160, Veggie: 120, avgEng: 92 },
-  { t: "W2", Burgers: 3600, Fries: 920, Shakes: 180, Veggie: 130, avgEng: 87 },
-  { t: "W3", Burgers: 4100, Fries: 870, Shakes: 210, Veggie: 150, avgEng: 101 },
-  { t: "W4", Burgers: 3900, Fries: 780, Shakes: 240, Veggie: 160, avgEng: 95 },
-  { t: "W5", Burgers: 4550, Fries: 950, Shakes: 220, Veggie: 190, avgEng: 108 },
-  { t: "W6", Burgers: 4800, Fries: 1020, Shakes: 260, Veggie: 210, avgEng: 103 },
-];
-
-const CATEGORY_KEYS = ["Burgers", "Fries", "Shakes", "Veggie"];
-
-/* Normalize counts to shares per bucket */
-function toShare(points, keys) {
-  return points.map((p) => {
-    const total = keys.reduce((s, k) => s + (p[k] || 0), 0) || 1;
-    const next = { ...p };
-    keys.forEach((k) => (next[k] = (p[k] || 0) / total));
-    return next;
-  });
-}
+import { IconAlertCircle, IconRefresh } from "@tabler/icons-react";
+import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
-  const [range, setRange] = React.useState("30d");
-  const [mode, setMode] = React.useState("absolute"); // 'absolute' | 'share'
-  const [overlay, setOverlay] = React.useState("none"); // 'none' | 'avg'
-  const [infoOpen, setInfoOpen] = React.useState(false);
+  const [keywords, setKeywords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(undefined);
 
-  const series = mode === "share" ? toShare(BASE_SERIES, CATEGORY_KEYS) : BASE_SERIES;
-  const yLeftFormatter = mode === "share" ? formatPct : formatK;
+  // Get current user on mount
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) {
+        if (mounted) setCurrentUserId(null);
+        return;
+      }
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (mounted) setCurrentUserId(data?.user?.id ?? null);
+      } catch {
+        if (mounted) setCurrentUserId(null);
+      }
+    };
+    loadUser();
+    return () => { mounted = false; };
+  }, []);
 
-  const tooltipFormatter = (value, name) => {
-    if (name === "Avg engagement") return `${value}`;
-    return mode === "share" ? formatPct(value) : formatK(value);
+  const fetchKeywords = () => {
+    if (!currentUserId) return;
+    setLoading(true);
+    setError(null);
+
+    const url = apiUrl(`/api/keywords?user_id=${encodeURIComponent(currentUserId)}`);
+    console.log("[KeywordTracking] fetching:", url);
+
+    fetch(url)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(d => {
+        console.log("[KeywordTracking] response:", d);
+        if (d.error) throw new Error(d.error);
+        setKeywords(d.keywords || []);
+        setMeta({ totalPosts: d.totalPosts, totalTopPosts: d.totalTopPosts, debug: d.debug });
+      })
+      .catch(err => {
+        console.error("[KeywordTracking] error:", err);
+        setError(err.message);
+      })
+      .finally(() => setLoading(false));
   };
 
-  // Tell AppTourProvider the page is ready (for starting keyword Joyride)
+  // Fetch when user is known
+  useEffect(() => {
+    if (currentUserId === undefined) return; // still loading auth
+    if (!currentUserId) {
+      setLoading(false);
+      setError("Sign in to see keyword data.");
+      return;
+    }
+    fetchKeywords();
+  }, [currentUserId]);
+
+  // Tell AppTourProvider the page is ready
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("chibitek:pageReady", { detail: { page: "keyword-tracking" } })
     );
   }, []);
 
+  const liftColor = (lift) => {
+    if (lift >= 2) return "green";
+    if (lift >= 1.2) return "blue";
+    if (lift >= 0.8) return "gray";
+    return "red";
+  };
+
   return (
-    <div ref={ref} className={classes.wrap}>
-      <Card withBorder shadow="xs" radius="lg" p="lg" className={classes.card}>
-        {/* Header */}
-        <Group justify="space-between" align="center" className={classes.header}>
-          <Title order={3}>Keyword Trends</Title>
-          <Select
-            value={range}
-            onChange={(v) => setRange(v ?? "30d")}
-            data={[
-              { value: "7d", label: "Last 7 days" },
-              { value: "30d", label: "Last 30 days" },
-              { value: "90d", label: "Last 90 days" },
-            ]}
-            w={180}
-          />
+    <div ref={ref}>
+      <Card withBorder shadow="xs" radius="lg" p="lg">
+        <Group justify="space-between" align="center" mb="md">
+          <div>
+            <Title order={3}>Keyword Analysis</Title>
+            <Text size="sm" c="dimmed">
+              Keywords ranked by how overrepresented they are in your top-performing posts
+            </Text>
+          </div>
+          <Button
+            variant="light"
+            leftSection={<IconRefresh size={16} />}
+            loading={loading}
+            onClick={fetchKeywords}
+            disabled={!currentUserId}
+          >
+            Refresh
+          </Button>
         </Group>
 
-        {/* Grid */}
-        <div className={classes.grid}>
-          {/* Highlight 1 */}
-          <div data-tour="keywords-trending">
-            <Card withBorder radius="md" p="lg" className={classes.panel}>
-              <Title order={5} className={classes.panelTitle}>
-                Trending Keywords
-              </Title>
+        {meta && (
+          <Text size="xs" c="dimmed" mb="sm">
+            {meta.debug}
+          </Text>
+        )}
 
-              <div className={classes.listHeader}>
-                <Text className={classes.colTerm}>Keyword</Text>
-                <Text className={classes.colVol}>Volume</Text>
-                <Text className={classes.colDelta}>Δ Rank</Text>
-              </div>
+        {error && (
+          <Alert icon={<IconAlertCircle size={16} />} color="red" radius="md" mb="md">
+            {error}
+          </Alert>
+        )}
 
-              <div className={classes.list}>
-                {trending.map((r) => (
-                  <div key={r.term} className={classes.row}>
-                    <Anchor href="#" underline="never" className={classes.term}>
-                      {r.term}
-                    </Anchor>
-                    <Text fw={600} className={classes.vol}>
-                      {formatK(r.volume)}
-                    </Text>
-                    <DeltaBadge delta={r.delta} />
-                  </div>
-                ))}
-              </div>
+        {/* Column headers */}
+        {!loading && keywords.length > 0 && (
+          <Group px="xs" mb="xs">
+            <Text size="xs" c="dimmed" fw={600} style={{ flex: 1 }}>KEYWORD</Text>
+            <Text size="xs" c="dimmed" fw={600} w={60} ta="center">LIFT</Text>
+            <Text size="xs" c="dimmed" fw={600} w={80} ta="center">IN TOP %</Text>
+            <Text size="xs" c="dimmed" fw={600} w={80} ta="center">OVERALL %</Text>
+            <Text size="xs" c="dimmed" fw={600} w={60} ta="center">POSTS</Text>
+          </Group>
+        )}
+
+        <Stack gap="xs">
+          {loading ? (
+            Array.from({ length: 10 }).map((_, i) => (
+              <Card key={i} withBorder radius="md" p="sm">
+                <Group>
+                  <Skeleton height={14} width="40%" radius="sm" />
+                  <Skeleton height={14} width={40} radius="sm" ml="auto" />
+                  <Skeleton height={14} width={60} radius="sm" />
+                  <Skeleton height={14} width={60} radius="sm" />
+                  <Skeleton height={14} width={40} radius="sm" />
+                </Group>
+              </Card>
+            ))
+          ) : keywords.length === 0 ? (
+            <Card withBorder radius="md" p="xl">
+              <Text c="dimmed" ta="center">
+                No keywords found. Try refreshing, or check that your saved posts contain text.
+              </Text>
             </Card>
-          </div>
+          ) : (
+            keywords.map((kw) => (
+              <Card key={kw.term} withBorder radius="md" p="sm">
+                <Group align="center">
+                  <Text fw={500} style={{ flex: 1 }}>{kw.term}</Text>
 
-          {/* Highlight 2 */}
-          <div data-tour="keywords-categories-chart">
-            <Card withBorder radius="md" p="lg" className={classes.panel}>
-              <Group justify="space-between" align="center" className={classes.controls}>
-                <Group gap="xs" align="center">
-                  <Title order={5} className={classes.panelTitle}>
-                    Keyword Categories Over Time
-                  </Title>
-                  <Tooltip label="How to read this fast">
-                    <ActionIcon
-                      variant="subtle"
-                      onClick={() => setInfoOpen(true)}
-                      aria-label="How to read this chart"
-                      className={classes.infoIcon}
-                    >
-                      <IconInfoCircle size={18} />
-                    </ActionIcon>
+                  <Tooltip label={`Lift score: keyword appears ${kw.lift}x more in top posts than average`} withArrow>
+                    <Badge color={liftColor(kw.lift)} variant="filled" w={60} ta="center">
+                      {kw.lift}x
+                    </Badge>
+                  </Tooltip>
+
+                  <Tooltip label={`Found in ${kw.topFreq}% of your top-performing posts`} withArrow>
+                    <Text size="sm" w={80} ta="center" fw={500}>
+                      {kw.topFreq}%
+                    </Text>
+                  </Tooltip>
+
+                  <Tooltip label={`Found in ${kw.overallFreq}% of all your posts`} withArrow>
+                    <Text size="sm" w={80} ta="center" c="dimmed">
+                      {kw.overallFreq}%
+                    </Text>
+                  </Tooltip>
+
+                  <Tooltip label={`Appears in ${kw.sampleSize} posts total`} withArrow>
+                    <Text size="sm" w={60} ta="center" c="dimmed">
+                      {kw.sampleSize}
+                    </Text>
                   </Tooltip>
                 </Group>
-
-                <Group gap="sm" wrap="wrap">
-                  <Select
-                    value={mode}
-                    onChange={(v) => setMode(v ?? "absolute")}
-                    data={[
-                      { value: "absolute", label: "Mode: Absolute" },
-                      { value: "share", label: "Mode: % Share" },
-                    ]}
-                    w={180}
-                  />
-                  <Select
-                    value={overlay}
-                    onChange={(v) => setOverlay(v ?? "none")}
-                    data={[
-                      { value: "none", label: "Overlay: None" },
-                      { value: "avg", label: "Overlay: Avg engagement" },
-                    ]}
-                    w={240}
-                  />
-                </Group>
-              </Group>
-
-              <div className={classes.chartBox}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={series} margin={{ top: 8, right: 28, left: 10, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="t" tickLine={false} axisLine={false} />
-                    <YAxis
-                      yAxisId="left"
-                      tickFormatter={yLeftFormatter}
-                      tickLine={false}
-                      axisLine={false}
-                      width={64}
-                      domain={mode === "share" ? [0, 1] : ["auto", "auto"]}
-                    />
-                    {overlay === "avg" && (
-                      <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        tickLine={false}
-                        axisLine={false}
-                        width={54}
-                      />
-                    )}
-
-                    <RechartsTooltip
-                      cursor={{ fill: "rgba(0,0,0,0.04)" }}
-                      contentStyle={{ borderRadius: 8 }}
-                      formatter={tooltipFormatter}
-                    />
-                    <Legend />
-
-                    <Line yAxisId="left" type="monotone" dataKey="Burgers" dot={false} strokeWidth={2} />
-                    <Line yAxisId="left" type="monotone" dataKey="Fries" dot={false} strokeWidth={2} />
-                    <Line yAxisId="left" type="monotone" dataKey="Shakes" dot={false} strokeWidth={2} />
-                    <Line yAxisId="left" type="monotone" dataKey="Veggie" dot={false} strokeWidth={2} />
-                    {overlay === "avg" && (
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="avgEng"
-                        name="Avg engagement"
-                        dot={false}
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                      />
-                    )}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </div>
-        </div>
+              </Card>
+            ))
+          )}
+        </Stack>
       </Card>
-
-      <Modal
-        opened={infoOpen}
-        onClose={() => setInfoOpen(false)}
-        title="How to read this chart"
-        centered
-        size="lg"
-        radius="lg"
-        overlayProps={{ opacity: 0.2, blur: 2 }}
-      >
-        <div className={classes.infoContent}>
-          <Text c="dimmed" mb="sm">
-            Quick rules to scan the chart correctly:
-          </Text>
-
-          <div className={classes.infoSection}>
-            <List
-              spacing="xs"
-              size="sm"
-              icon={
-                <ThemeIcon radius="xl" size={20}>
-                  <IconChartBar size={14} />
-                </ThemeIcon>
-              }
-            >
-              <List.Item>
-                <b>Left axis:</b> keyword frequency (mentions) per bucket. In “% Share” mode it shows share of total.
-              </List.Item>
-              <List.Item
-                icon={
-                  <ThemeIcon radius="xl" size={20}>
-                    <IconActivity size={14} />
-                  </ThemeIcon>
-                }
-              >
-                <b>Right axis (overlay):</b> average engagement per mention.
-              </List.Item>
-              <List.Item
-                icon={
-                  <ThemeIcon radius="xl" size={20}>
-                    <IconTrendingUp size={14} />
-                  </ThemeIcon>
-                }
-              >
-                <b>Fast read:</b> ↑ frequency & ↑ engagement means momentum. ↑ frequency & ↓ engagement can mean saturation.
-              </List.Item>
-            </List>
-          </div>
-
-          <Divider my="md" />
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => setInfoOpen(false)}>
-              Got it
-            </Button>
-          </Group>
-        </div>
-      </Modal>
     </div>
   );
 });

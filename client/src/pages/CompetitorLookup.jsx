@@ -173,14 +173,12 @@ export default function CompetitorLookup() {
       const data = await tryFetch(u);
       setResult(data);
 
-      // Convert the data using DataConverter
       try {
         const converted = convertXInput(data);
         setConvertedData(converted);
         console.log('Converted data:', converted);
 
-        // Save last 10 posts to localStorage
-        const postsToSave = (data.posts || []).slice(0, 10).map((post, index) => {
+        const postsToSave = (data.posts || []).slice(0, 10).map((post) => {
           const metrics = post.public_metrics || {};
           const engagement =
             (metrics.like_count || 0) +
@@ -190,7 +188,7 @@ export default function CompetitorLookup() {
             id: post.id,
             username: data.username,
             content: post.text,
-            engagement: engagement,
+            engagement,
             likes: metrics.like_count || 0,
             shares: metrics.retweet_count || 0,
             comments: metrics.reply_count || 0,
@@ -198,16 +196,14 @@ export default function CompetitorLookup() {
           };
         });
 
-        // Get existing posts from localStorage and prepend new ones
         const storageKey = currentUserId
           ? `recentCompetitorPosts_${currentUserId}`
           : 'recentCompetitorPosts';
         const existingPosts = JSON.parse(localStorage.getItem(storageKey) || '[]');
         const allPosts = [...postsToSave, ...existingPosts];
-        // Keep only the last 10 overall
         const recentTen = allPosts.slice(0, 10);
         localStorage.setItem(storageKey, JSON.stringify(recentTen));
-        
+
       } catch (conversionError) {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
@@ -279,15 +275,16 @@ export default function CompetitorLookup() {
   function PostCard({ post }) {
     if (!post?.text) return null;
 
-    const metrics = post.public_metrics || [];
+    const metrics = post.public_metrics || {};
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null); // 'saved' | 'error'
 
     async function handleSave() {
+      if (!currentUserId) {
+        setSaveStatus('error');
+        return;
+      }
       try {
-        if (!currentUserId) {
-          throw new Error("Please sign in to save posts.");
-        }
         setSaving(true);
         setSaveStatus(null);
         const resp = await fetch(apiUrl("/api/posts"), {
@@ -304,11 +301,18 @@ export default function CompetitorLookup() {
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
             user_id: currentUserId,
+            author_name: result.username,
+            author_handle: result.username,
           }),
         });
 
         if (!resp.ok) {
           const errorText = await resp.text();
+          // If it's a duplicate, treat as already saved rather than an error
+          if (errorText.includes("duplicate key") || errorText.includes("unique constraint")) {
+            setSaveStatus('saved');
+            return;
+          }
           throw new Error(`Failed to save post: ${resp.status} ${errorText}`);
         }
 
@@ -324,24 +328,29 @@ export default function CompetitorLookup() {
 
     return (
       <Card withBorder radius="md" shadow="sm">
-        <Group justify="space-between" mt="sm">
-          <Group gap="md">
-            <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
-            <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
-            <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
-          </Group>
+        <Stack gap="sm">
+          <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
+            {post.text}
+          </Text>
+          <Group justify="space-between" align="center">
+            <Group gap="md">
+              <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
+              <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
+              <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
+            </Group>
 
-          <Button
-            size="xs"
-            variant="light"
-            loading={saving}
-            color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
-            onClick={handleSave}
-            disabled={saveStatus === 'saved'}
-          >
-            {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save'}
-          </Button>
-        </Group>
+            <Button
+              size="xs"
+              variant="light"
+              loading={saving}
+              color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
+              onClick={handleSave}
+              disabled={saveStatus === 'saved'}
+            >
+              {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save'}
+            </Button>
+          </Group>
+        </Stack>
       </Card>
     );
   }
@@ -350,10 +359,16 @@ export default function CompetitorLookup() {
     if (!data) return null;
 
     const [saving, setSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null); // 'saved' | 'error'
 
     async function handleSave() {
+      if (!currentUserId) {
+        setSaveStatus('error');
+        return;
+      }
       try {
         setSaving(true);
+        setSaveStatus(null);
         const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -372,19 +387,25 @@ export default function CompetitorLookup() {
             channelTitle: data.video.channelTitle,
             videoId: data.videoId,
             views: data.video.stats.views,
+            user_id: currentUserId,  // FIX: was missing
           }),
         });
 
         if (!resp.ok) {
           const errorText = await resp.text();
+          // If it's a duplicate, treat as already saved
+          if (errorText.includes("duplicate key") || errorText.includes("unique constraint")) {
+            setSaveStatus('saved');
+            return;
+          }
           throw new Error(`Failed to save video: ${resp.status} ${errorText}`);
         }
 
         await resp.json();
-        // Optionally show success message
+        setSaveStatus('saved');
       } catch (e) {
         console.error("Error saving video:", e);
-        // Optionally show error
+        setSaveStatus('error');
       } finally {
         setSaving(false);
       }
@@ -450,9 +471,11 @@ export default function CompetitorLookup() {
               size="xs"
               variant="light"
               loading={saving}
+              color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
               onClick={handleSave}
+              disabled={saveStatus === 'saved'}
             >
-              Save Video
+              {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save Video'}
             </Button>
           </Group>
         </Stack>
