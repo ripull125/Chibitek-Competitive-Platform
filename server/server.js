@@ -1,4 +1,4 @@
-import { getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
+import { getUserByUsername, getUserIdByUsername, fetchPostsByUserId } from "./xApi.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import express from 'express';
 import cors from 'cors';
@@ -84,30 +84,33 @@ const requireUserId = (req, res) => {
   return String(userId);
 };
 
+// Health check - confirms this is the right server version
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, version: "chibitek-v3", timestamp: new Date().toISOString() });
+});
+
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
     const username = req.params.username;
-    const userId = await getUserIdByUsername(username);
-    const posts = await fetchPostsByUserId(userId, 5);
-
-    res.json({ success: true, username, userId, posts });
+    const requestedCount = Math.min(100, Math.max(5, parseInt(req.query.count) || 10)); // X API minimum is 5
+    const user = await getUserByUsername(username);
+    const posts = await fetchPostsByUserId(user.id, requestedCount);
+    res.json({
+      success: true,
+      username: user.username,
+      name: user.name,
+      userId: user.id,
+      followerCount: user.followerCount,
+      posts,
+    });
   } catch (err) {
     console.error("X fetch error:", err.message);
-
-    if (String(err.message).includes("Rate limit")) {
-      return res.status(429).json({ error: err.message });
-    }
-
+    if (String(err.message).includes("Rate limit")) return res.status(429).json({ error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
-
-app.use(express.json());
+// Routes defined below. Server starts after all routes are registered.
 
 app.post("/write", async (req, res) => {
   const { message } = req.body;
@@ -463,6 +466,10 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 });
 
 app.post("/api/posts", async (req, res) => {
+  // Log raw body for debugging save failures
+  const body = req.body || {};
+  console.log("[POST /api/posts] body keys:", Object.keys(body), "user_id:", body.user_id, "platform_id:", body.platform_id);
+
   const {
     platform_id,
     platform_user_id,
@@ -481,10 +488,11 @@ app.post("/api/posts", async (req, res) => {
     views,
     author_name,
     author_handle,
-  } = req.body;
+  } = body;
 
   if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
-    return res.status(400).json({ error: "Missing required fields" });
+    console.log("[POST /api/posts] missing fields: platform_id=", platform_id, "platform_user_id=", platform_user_id, "platform_post_id=", platform_post_id, "user_id=", user_id);
+    return res.status(400).json({ error: "Missing required fields", detail: { platform_id: !!platform_id, platform_user_id: !!platform_user_id, platform_post_id: !!platform_post_id, user_id: !!user_id } });
   }
 
   try {
@@ -600,8 +608,8 @@ app.post("/api/posts", async (req, res) => {
 
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
-    console.error("Save post failed:", err);
-    res.status(500).json({ error: err.message });
+    console.error("[POST /api/posts] Save post failed:", JSON.stringify({ message: err.message, code: err.code, details: err.details, hint: err.hint }));
+    res.status(500).json({ error: err.message, detail: err.details || err.hint || null });
   }
 });
 
@@ -612,18 +620,9 @@ app.get("/api/posts", async (req, res) => {
   try {
     const { data: posts, error } = await supabase
       .from("posts")
-      .select(`
-  id,
-  platform_id,
-  content,
-  published_at,
-  competitors(display_name),
-  post_metrics(likes, shares, comments),
-  post_details_platform(extra_json)
-`)
+      .select(`id, platform_id, content, published_at, competitors(display_name), post_metrics(likes, shares, comments), post_details_platform(extra_json)`)
       .eq("user_id", userId)
       .order("published_at", { ascending: false });
-
     if (error) throw error;
 
     const formattedPosts = posts.map((post) => {
@@ -698,36 +697,29 @@ app.delete("/api/posts/:id", async (req, res) => {
 // Ranks keywords by how overrepresented they are in high-performing posts.
 // ---------------------------------------------------------------------------
 
-// Extract keywords from post text: hashtags + meaningful bigrams/unigrams
+// Extract keywords from post text: hashtags + meaningful single words only
 function extractKeywords(text) {
   if (!text) return [];
   const keywords = new Set();
 
-  // 1. Extract hashtags (high signal)
+  // 1. Hashtags (strip # prefix so they compare with regular words)
   const hashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) || [];
-  hashtags.forEach(tag => keywords.add(tag.toLowerCase()));
+  hashtags.forEach(tag => keywords.add(tag.slice(1).toLowerCase()));
 
-  // 2. Clean text and extract meaningful words/bigrams
+  // 2. Clean text - single meaningful words only
   const cleaned = text
     .toLowerCase()
-    .replace(/https?:\/\/\S+/g, '')      // remove URLs
-    .replace(/#\w+/g, '')                 // remove hashtags (already captured)
-    .replace(/@\w+/g, '')                 // remove mentions
-    .replace(/[^a-z0-9\s]/g, ' ')        // remove punctuation
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/#\w+/g, '')
+    .replace(/@\w+/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
   const words = cleaned.split(' ').filter(w => w.length > 3 && !KW_STOPWORDS.has(w));
-
-  // Unigrams (meaningful single words)
   words.forEach(w => keywords.add(w));
 
-  // Bigrams (two-word phrases)
-  for (let i = 0; i < words.length - 1; i++) {
-    keywords.add(`${words[i]} ${words[i+1]}`);
-  }
-
-  return Array.from(keywords).slice(0, 20);
+  return Array.from(keywords).slice(0, 25);
 }
 
 const KW_STOPWORDS = new Set([
@@ -749,28 +741,27 @@ app.get("/api/keywords", async (req, res) => {
   console.log(`[keywords] request for user ${userId}`);
 
   try {
-    // 1. Fetch ALL posts for this user with their metrics
-    const { data: posts, error: postsError } = await supabase
+    // 1. Fetch posts ordered by published_at so we can detect trends
+    let posts, postsError;
+    ({ data: posts, error: postsError } = await supabase
       .from("posts")
-      .select("id, content, post_metrics(likes, shares, comments, snapshot_at)")
+      .select("id, content, published_at, post_metrics(likes, shares, comments, snapshot_at)")
       .eq("user_id", userId)
-      .limit(500);
+      .order("published_at", { ascending: true })
+      .limit(500));
 
     if (postsError) {
       console.error("[keywords] supabase error:", postsError);
       throw postsError;
     }
 
-    console.log(`[keywords] fetched ${posts?.length ?? 0} posts`);
-
     if (!posts || posts.length === 0) {
-      return res.json({ keywords: [], totalPosts: 0, debug: "no posts found" });
+      return res.json({ keywords: [], trendingKeywords: [], totalPosts: 0, debug: "no posts found" });
     }
 
-    // 2. Compute performance score for each post
-    const scoredPosts = posts.map(p => {
+    // 2. Score each post by engagement (follower-normalized when available)
+    const scoredPosts = posts.map((p, idx) => {
       const snapshots = Array.isArray(p.post_metrics) ? p.post_metrics : [];
-      // Use latest snapshot
       const m = snapshots.sort(
         (a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0)
       )[0] || {};
@@ -778,86 +769,108 @@ app.get("/api/keywords", async (req, res) => {
       const likes    = Number(m.likes    || 0);
       const shares   = Number(m.shares   || 0);
       const comments = Number(m.comments || 0);
+      const rawEngagement = likes + 2 * comments + 2 * shares;
+      const score = Math.log(1 + rawEngagement);
 
-      // Engagement score: log(1 + likes + 2*comments + 2*shares)
-      const rawScore = likes + 2 * comments + 2 * shares;
-      const score = Math.log(1 + rawScore);
-
-      const keywords = extractKeywords(p.content || "");
-
-      return { id: p.id, score, rawScore, keywords };
+      return {
+        id: p.id,
+        score,
+        rawEngagement,
+        keywords: extractKeywords(p.content || ""),
+        chronoIndex: idx, // 0 = oldest, higher = newer
+      };
     });
-
-    // 3. Rank posts, define high performers
-    // Use top 50% for small sets (<20 posts), top 25% for larger sets
-    // so there are always enough posts in each tier for lift to be meaningful
-    const sorted = [...scoredPosts].sort((a, b) => b.score - a.score);
-    const topPct = sorted.length < 20 ? 0.5 : 0.25;
-    const topN = Math.max(1, Math.ceil(sorted.length * topPct));
-    const topPostIds = new Set(sorted.slice(0, topN).map(p => p.id));
 
     const totalPosts = scoredPosts.length;
-    const totalTopPosts = topN;
 
-    console.log(`[keywords] ${totalPosts} total posts, ${totalTopPosts} top posts (top 20%)`);
+    // 3. Identify top performers — strict threshold so only genuinely best posts define keywords
+    // <10 posts: top 1; 10-29 posts: top 20%; 30+ posts: top 15%
+    const sorted = [...scoredPosts].sort((a, b) => b.score - a.score);
+    const topN = totalPosts < 10
+      ? 1
+      : totalPosts < 30
+        ? Math.max(1, Math.ceil(totalPosts * 0.20))
+        : Math.max(2, Math.ceil(totalPosts * 0.15));
+    const topPostIds = new Set(sorted.slice(0, topN).map(p => p.id));
 
-    // 4. Build keyword frequency counts
-    // kwData[keyword] = { inTop: count, inAll: count }
+    // 4. Split posts into recent (newest 33%) vs older (older 67%) for trend detection
+    const recentCutoff = Math.floor(totalPosts * 0.67);
+    const recentPosts  = scoredPosts.filter(p => p.chronoIndex >= recentCutoff);
+    const olderPosts   = scoredPosts.filter(p => p.chronoIndex < recentCutoff);
+    const totalRecent  = Math.max(recentPosts.length, 1);
+    const totalOlder   = Math.max(olderPosts.length, 1);
+
+    // 5. Count keyword appearances across all three views
     const kwData = {};
-
     scoredPosts.forEach(post => {
-      const isTop = topPostIds.has(post.id);
+      const isTop    = topPostIds.has(post.id);
+      const isRecent = post.chronoIndex >= recentCutoff;
       post.keywords.forEach(kw => {
-        if (!kwData[kw]) kwData[kw] = { inTop: 0, inAll: 0 };
-        kwData[kw].inAll += 1;
-        if (isTop) kwData[kw].inTop += 1;
+        if (!kwData[kw]) kwData[kw] = { inTop: 0, inAll: 0, inRecent: 0, inOlder: 0 };
+        kwData[kw].inAll++;
+        if (isTop)    kwData[kw].inTop++;
+        if (isRecent) kwData[kw].inRecent++;
+        else          kwData[kw].inOlder++;
       });
     });
 
-    // 5. Compute lift scores, filter noise
-    const MIN_POSTS = 1; // minimum posts a keyword must appear in
+    // 6. Score each keyword
     const results = [];
-
     Object.entries(kwData).forEach(([kw, counts]) => {
-      if (counts.inAll < MIN_POSTS) return;
+      if (counts.inAll < 1) return;
 
-      const topFreq     = counts.inTop / totalTopPosts;         // % of top posts with this kw
-      const overallFreq = counts.inAll / totalPosts;            // % of all posts with this kw
-      const lift        = overallFreq > 0 ? topFreq / overallFreq : 0;
+      const topFreq     = counts.inTop / topN;
+      const overallFreq = counts.inAll / totalPosts;
+      // Raw lift
+      const lift = overallFreq > 0 ? topFreq / overallFreq : 0;
+      // Power score: lift weighted by log(count) so rare flukes don't rank above consistent words
+      const power = lift * Math.log(1 + counts.inAll);
 
-      // Simple confidence: more appearances = more confident
-      const confidence = Math.min(1, counts.inAll / 10);
+      // Trend: how much more common is this word in recent posts vs older posts?
+      const recentFreq = counts.inRecent / totalRecent;
+      const olderFreq  = counts.inOlder  / totalOlder;
+      const trend = olderFreq > 0
+        ? recentFreq / olderFreq    // >1 = rising, <1 = falling
+        : recentFreq > 0 ? 2 : 1;  // only in recent = strongly rising
 
       results.push({
-        term:         kw,
-        lift:         Math.round(lift * 100) / 100,
-        topFreq:      Math.round(topFreq * 1000) / 10,     // as percentage
-        overallFreq:  Math.round(overallFreq * 1000) / 10, // as percentage
-        sampleSize:   counts.inAll,
-        topCount:     counts.inTop,
-        confidence:   Math.round(confidence * 100),
+        term:        kw,
+        lift:        Math.round(lift  * 100) / 100,
+        power:       Math.round(power * 100) / 100,
+        topFreq:     Math.round(topFreq     * 1000) / 10,
+        overallFreq: Math.round(overallFreq * 1000) / 10,
+        sampleSize:  counts.inAll,
+        topCount:    counts.inTop,
+        trend:       Math.round(trend * 100) / 100,
+        trendDir:    trend >= 1.4 ? "rising" : trend <= 0.7 ? "falling" : "stable",
       });
     });
 
-    // 6. Sort by lift score descending, take top 30
+    // 7. Top keywords: sort by power score (lift × consistency)
     const keywords = results
-      .sort((a, b) => b.lift - a.lift || b.sampleSize - a.sampleSize)
+      .filter(r => r.lift > 0)
+      .sort((a, b) => b.power - a.power || b.sampleSize - a.sampleSize)
       .slice(0, 30);
 
-    console.log(`[keywords] returning ${keywords.length} keywords`);
+    // 8. Trending keywords: recently rising words that also have some engagement signal
+    const trendingKeywords = results
+      .filter(r => r.trendDir === "rising" && r.sampleSize >= 2)
+      .sort((a, b) => b.trend - a.trend || b.power - a.power)
+      .slice(0, 10);
+
+    console.log(`[keywords] ${totalPosts} posts -> ${keywords.length} keywords, ${trendingKeywords.length} trending`);
 
     return res.json({
       keywords,
+      trendingKeywords,
       totalPosts,
-      totalTopPosts,
-      debug: `Analysed ${totalPosts} posts, ${keywords.length} keywords found`,
+      totalTopPosts: topN,
+      debug: `Analysed ${totalPosts} posts · ${topN} top posts · ${keywords.length} keywords`,
     });
 
   } catch (err) {
     console.error("[keywords] failed:", err);
     return res.status(500).json({ error: err.message });
-
-
   }
 });
 
@@ -927,55 +940,8 @@ app.get("/api/youtube/transcript", async (req, res) => {
   }
 });
 
-app.get("/api/youtube/transcript", async (req, res) => {
-  try {
-    const { video } = req.query;
-    const videoId = extractYouTubeVideoId(video);
-    if (!videoId) return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
-    if (!process.env.YOUTUBE_API_KEY) return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
-
-    const videoMetaRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-    const videoMetaData = await videoMetaRes.json();
-    if (!videoMetaData.items?.length) return res.status(404).json({ error: "Video not found" });
-
-    const videoItem = videoMetaData.items[0];
-    const videoInfo = {
-      title: videoItem.snippet.title,
-      description: videoItem.snippet.description,
-      publishedAt: videoItem.snippet.publishedAt,
-      channelId: videoItem.snippet.channelId,
-      channelTitle: videoItem.snippet.channelTitle,
-      stats: {
-        views: Number(videoItem.statistics.viewCount || 0),
-        likes: Number(videoItem.statistics.likeCount || 0),
-        comments: Number(videoItem.statistics.commentCount || 0),
-      },
-    };
-
-    const pythonResult = await getTranscriptFromPython(videoId);
-
-    if (pythonResult.success && pythonResult.transcript) {
-      return res.json({
-        videoId,
-        video: videoInfo,
-        transcriptAvailable: true,
-        language: pythonResult.language || "en",
-        source: "youtube-transcript-api",
-        transcript: pythonResult.transcript,
-      });
-    }
-
-    return res.json({
-      videoId,
-      video: videoInfo,
-      transcriptAvailable: false,
-      transcript: "",
-      reason: pythonResult.error || "No transcript available",
-    });
-  } catch (err) {
-    console.error("YouTube transcript error:", err.message);
-    return res.status(500).json({ error: err.message });
-  }
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`\n✅ Chibitek server v3 running on port ${port}`);
+  console.log(`   Health check: http://localhost:${port}/api/health\n`);
 });

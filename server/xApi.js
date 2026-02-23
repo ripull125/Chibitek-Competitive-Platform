@@ -1,52 +1,38 @@
 import "dotenv/config";
 import axios from "axios";
-import { normalizeXPost } from "./utils/normalizeXPost.js";
 
 function loadBearerTokens() {
   const tokens = [];
-
   if (process.env.X_BEARER_TOKENS) {
-    tokens.push(
-      ...process.env.X_BEARER_TOKENS.split(",").map((s) => s.trim()).filter(Boolean)
-    );
+    tokens.push(...process.env.X_BEARER_TOKENS.split(",").map((s) => s.trim()).filter(Boolean));
   }
-
   if (process.env.X_BEARER_TOKEN) tokens.push(process.env.X_BEARER_TOKEN);
-
-  // Support individually numbered vars: X_BEARER_TOKEN_1 ... X_BEARER_TOKEN_10
   for (let i = 1; i <= 10; i++) {
     const k = `X_BEARER_TOKEN${i}`;
     if (process.env[k]) tokens.push(process.env[k]);
   }
-
-  // dedupe and filter
   return Array.from(new Set(tokens.filter(Boolean)));
 }
 
-// Note: Despite rebranding, the official v2 API host remains api.twitter.com
 const xClient = axios.create({
   baseURL: "https://api.twitter.com/2",
-  headers: {
-    "User-Agent": "Chibitek-App",
-    Accept: "application/json",
-  },
+  headers: { "User-Agent": "Chibitek-App", Accept: "application/json" },
   timeout: 15000,
 });
 
 async function requestWithTokenFallback(requestConfig) {
   const tokens = loadBearerTokens();
   if (!tokens.length) {
-    throw new Error("No X bearer tokens found in environment (X_BEARER_TOKENS, X_BEARER_TOKEN or X_BEARER_TOKEN_1..).");
+    throw new Error("No X bearer tokens found in environment.");
   }
   const attempts = [];
+  let lastError = null;
 
   function mask(tok) {
-    if (!tok) return '(<missing>)';
-    if (tok.length <= 8) return tok.replace(/./g, '*');
+    if (!tok) return "(<missing>)";
+    if (tok.length <= 8) return tok.replace(/./g, "*");
     return `${tok.slice(0, 4)}...${tok.slice(-4)}`;
   }
-
-  let lastError = null;
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -54,13 +40,9 @@ async function requestWithTokenFallback(requestConfig) {
     try {
       const res = await xClient.request({
         ...requestConfig,
-        headers: {
-          ...(requestConfig.headers || {}),
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { ...(requestConfig.headers || {}), Authorization: `Bearer ${token}` },
       });
       attempt.success = true;
-      attempt.status = res.status;
       attempts.push(attempt);
       return res;
     } catch (err) {
@@ -69,67 +51,70 @@ async function requestWithTokenFallback(requestConfig) {
       attempt.errorCode = err.code || null;
       if (err.response) {
         attempt.status = err.response.status;
-        try {
-          attempt.body = JSON.stringify(err.response.data);
-        } catch (e) {
-          attempt.body = String(err.response.data);
-        }
+        attempt.body = JSON.stringify(err.response.data);
       } else {
         attempt.message = err.message;
       }
       attempts.push(attempt);
-      // continue to next token
     }
   }
 
-  const summary = attempts.map(a => ({ index: a.index, token: a.token, success: a.success, status: a.status || null, errorCode: a.errorCode || null, body: a.body || a.message || null }));
-  const agg = new Error(`All bearer tokens failed for request ${requestConfig.method || 'GET'} ${requestConfig.url}. Attempts: ${JSON.stringify(summary, null, 2)}`);
-  // attach attempts array for programmatic access if caller wants it
+  const summary = attempts.map((a) => ({
+    index: a.index, token: a.token, success: a.success,
+    status: a.status || null, errorCode: a.errorCode || null, body: a.body || a.message || null,
+  }));
+  const agg = new Error(`All bearer tokens failed. Attempts: ${JSON.stringify(summary, null, 2)}`);
   agg.attempts = summary;
   agg.lastError = lastError;
   throw agg;
 }
 
-export async function getUserIdByUsername(username) {
+// Returns { id, username, followerCount }
+export async function getUserByUsername(username) {
   try {
     const res = await requestWithTokenFallback({
       method: "get",
       url: `/users/by/username/${encodeURIComponent(username)}`,
+      params: {
+        "user.fields": "public_metrics",
+      },
     });
-
-    if (!res.data?.data?.id) {
-      throw new Error(`No user found for username ${username}`);
-    }
-
-    return res.data.data.id;
+    const user = res.data?.data;
+    if (!user?.id) throw new Error(`No user found for username ${username}`);
+    return {
+      id: user.id,
+      username: user.username || username,
+      name: user.name || username,
+      followerCount: user.public_metrics?.followers_count || 0,
+    };
   } catch (err) {
     if (err.response) {
-      throw new Error(
-        `X API user lookup failed: ${err.response.status} ${JSON.stringify(
-          err.response.data
-        )}`
-      );
+      throw new Error(`X API user lookup failed: ${err.response.status} ${JSON.stringify(err.response.data)}`);
     }
-    // in case of connection error
-    if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-      throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
+    if (["ECONNRESET", "ENOTFOUND", "ETIMEDOUT"].includes(err.code)) {
+      throw new Error(`Network error contacting X API (${err.code}).`);
     }
     throw err;
   }
 }
 
-export async function fetchPostsByUserId(userId) {
+// Keep old function for backwards compat
+export async function getUserIdByUsername(username) {
+  const user = await getUserByUsername(username);
+  return user.id;
+}
+
+// Fetch up to maxResults posts for a user, returns array of tweet objects
+export async function fetchPostsByUserId(userId, maxResults = 10) {
+  const clampedMax = Math.min(Math.max(maxResults, 5), 100); // X API requires min 5
   const res = await requestWithTokenFallback({
     method: "get",
     url: `/users/${userId}/tweets`,
     params: {
-      max_results: 5, 
+      max_results: clampedMax,
       exclude: "replies,retweets",
       "tweet.fields": "created_at,public_metrics,lang",
     },
   });
-
-  const tweets = res.data?.data || [];
-
-  return tweets.length > 0 ? [tweets[0]] : [];
+  return res.data?.data || [];
 }
