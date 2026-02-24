@@ -43,21 +43,17 @@ async function getTranscriptFromPython(videoId) {
     const pythonScript = path.join(__dirname, 'get_transcript.py');
     const { stdout, stderr } = await execAsync(`python3 "${pythonScript}" "${videoId}"`, {
       timeout: 15000,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large transcripts
+      maxBuffer: 10 * 1024 * 1024,
     });
-
-    if (stderr) {
-      console.error('Python stderr:', stderr);
-    }
-
+    if (stderr) console.error('Python stderr:', stderr);
     const result = JSON.parse(stdout);
-    if (!result.success) {
-      console.error('Python transcript extraction failed:', result.error);
-    }
+    if (!result.success) console.error('Python transcript extraction failed:', result.error);
     return result;
   } catch (err) {
     console.error('Python transcript extraction error:', err.message);
-  };
+    // Always return a valid object so callers can safely check .success
+    return { success: false, transcript: "", error: err.message };
+  }
 }
 
 const app = express();
@@ -692,36 +688,8 @@ app.delete("/api/posts/:id", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/keywords
-// Lift-score based keyword analysis. No external dependencies.
-// Ranks keywords by how overrepresented they are in high-performing posts.
+// Keyword extraction — single meaningful words only
 // ---------------------------------------------------------------------------
-
-// Extract keywords from post text: hashtags + meaningful single words only
-function extractKeywords(text) {
-  if (!text) return [];
-  const keywords = new Set();
-
-  // 1. Hashtags (strip # prefix so they compare with regular words)
-  const hashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) || [];
-  hashtags.forEach(tag => keywords.add(tag.slice(1).toLowerCase()));
-
-  // 2. Clean text - single meaningful words only
-  const cleaned = text
-    .toLowerCase()
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/#\w+/g, '')
-    .replace(/@\w+/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const words = cleaned.split(' ').filter(w => w.length > 3 && !KW_STOPWORDS.has(w));
-  words.forEach(w => keywords.add(w));
-
-  return Array.from(keywords).slice(0, 25);
-}
-
 const KW_STOPWORDS = new Set([
   "this","that","with","have","from","they","been","were","said","each","which",
   "their","there","will","would","could","should","about","after","before","when",
@@ -734,138 +702,193 @@ const KW_STOPWORDS = new Set([
   "does","did","the","and","for","not","but","with","you","this","from","they",
 ]);
 
+function extractKeywords(text, extraText) {
+  // extraText = optional bonus content (e.g. YouTube title) to extract from too
+  const combined = [text || "", extraText || ""].join(" ");
+  if (!combined.trim()) return [];
+  const keywords = new Set();
+  const hashtags = combined.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) || [];
+  hashtags.forEach(tag => keywords.add(tag.slice(1).toLowerCase()));
+  const cleaned = combined
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/#\w+/g, "")
+    .replace(/@\w+/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  cleaned.split(" ").filter(w => w.length > 3 && !KW_STOPWORDS.has(w)).forEach(w => keywords.add(w));
+  // Higher cap for long content (YouTube transcripts)
+  const cap = combined.length > 500 ? 80 : 30;
+  return Array.from(keywords).slice(0, cap);
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/keywords  — Bayesian Keyword Performance Index
+//
+// Scoring formula:
+//   weightedEngagement = shares*5 + comments*3 + likes*1
+//   globalMean         = mean weighted engagement across all posts
+//   k                  = 5  (Bayesian confidence constant)
+//   bayesianAvg        = (n * kwAvg + k * globalMean) / (n + k)
+//   consistency        = 1 / (1 + min(stdDev/kwAvg, 1.0))
+//   trendBoost         = min(sqrt(recentAvg / olderAvg), 1.5)  — only upward
+//   rawScore           = bayesianAvg * consistency * trendBoost
+//   kpi                = rawScore normalised to 0–100 index
+// ---------------------------------------------------------------------------
 app.get("/api/keywords", async (req, res) => {
   const userId = requireUserId(req, res);
   if (!userId) return;
-
   console.log(`[keywords] request for user ${userId}`);
 
   try {
-    // 1. Fetch posts ordered by published_at so we can detect trends
-    let posts, postsError;
-    ({ data: posts, error: postsError } = await supabase
+    // 1. Fetch all posts with metrics, oldest first for trend detection
+    const { data: posts, error: postsError } = await supabase
       .from("posts")
-      .select("id, content, published_at, post_metrics(likes, shares, comments, snapshot_at)")
+      .select("id, content, published_at, platform_id, competitor_id, post_metrics(likes, shares, comments, snapshot_at), post_details_platform(extra_json)")
       .eq("user_id", userId)
       .order("published_at", { ascending: true })
-      .limit(500));
+      .limit(500);
 
-    if (postsError) {
-      console.error("[keywords] supabase error:", postsError);
-      throw postsError;
+    if (postsError) throw postsError;
+    if (!posts?.length) {
+      return res.json({ keywords: [], totalPosts: 0, debug: "no posts found" });
     }
 
-    if (!posts || posts.length === 0) {
-      return res.json({ keywords: [], trendingKeywords: [], totalPosts: 0, debug: "no posts found" });
-    }
-
-    // 2. Score each post by engagement (follower-normalized when available)
+    // 2. Compute weighted engagement score for every post
     const scoredPosts = posts.map((p, idx) => {
       const snapshots = Array.isArray(p.post_metrics) ? p.post_metrics : [];
       const m = snapshots.sort(
         (a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0)
       )[0] || {};
-
       const likes    = Number(m.likes    || 0);
       const shares   = Number(m.shares   || 0);
       const comments = Number(m.comments || 0);
-      const rawEngagement = likes + 2 * comments + 2 * shares;
-      const score = Math.log(1 + rawEngagement);
-
-      return {
-        id: p.id,
-        score,
-        rawEngagement,
-        keywords: extractKeywords(p.content || ""),
-        chronoIndex: idx, // 0 = oldest, higher = newer
-      };
+      const weightedScore = shares * 5 + comments * 3 + likes * 1;
+      // For YouTube, extract keywords from title too (most signal-dense text)
+      const youtubeTitle = p.platform_id === 8
+        ? (p.post_details_platform?.[0]?.extra_json?.title || "")
+        : "";
+      return { id: p.id, weightedScore, likes, shares, comments, platform_id: p.platform_id, competitor_id: p.competitor_id, keywords: extractKeywords(p.content || "", youtubeTitle), chronoIdx: idx };
     });
 
     const totalPosts = scoredPosts.length;
 
-    // 3. Identify top performers — strict threshold so only genuinely best posts define keywords
-    // <10 posts: top 1; 10-29 posts: top 20%; 30+ posts: top 15%
-    const sorted = [...scoredPosts].sort((a, b) => b.score - a.score);
-    const topN = totalPosts < 10
-      ? 1
-      : totalPosts < 30
-        ? Math.max(1, Math.ceil(totalPosts * 0.20))
-        : Math.max(2, Math.ceil(totalPosts * 0.15));
-    const topPostIds = new Set(sorted.slice(0, topN).map(p => p.id));
+    // 3. Per-account normalization — prevents one high-engagement account from flooding rankings
+    // Each post score becomes: post_score / that_account's_mean_score
+    // This measures relative outperformance within each account
+    // A post 2x above Obama's mean beats a post 1.1x above MrBeast's mean,
+    // even though MrBeast's absolute numbers are much higher
+    const accountScores = {};
+    scoredPosts.forEach(p => {
+      if (!accountScores[p.competitor_id]) accountScores[p.competitor_id] = [];
+      accountScores[p.competitor_id].push(p.weightedScore);
+    });
+    const accountMeans = {};
+    Object.entries(accountScores).forEach(([id, scores]) => {
+      accountMeans[id] = scores.reduce((s, v) => s + v, 0) / scores.length;
+    });
+    // Apply normalization — floor at 0.01 to avoid division issues on zero-engagement posts
+    scoredPosts.forEach(p => {
+      const mean = accountMeans[p.competitor_id] || 1;
+      p.normalizedScore = mean > 0 ? p.weightedScore / mean : 1.0;
+    });
 
-    // 4. Split posts into recent (newest 33%) vs older (older 67%) for trend detection
+    // In normalized space the global mean is always ~1.0 by definition
+    const K = 10; // Bayesian confidence constant
+
+    // 4. Trend split: newest 33% = recent, older 67% = baseline
     const recentCutoff = Math.floor(totalPosts * 0.67);
-    const recentPosts  = scoredPosts.filter(p => p.chronoIndex >= recentCutoff);
-    const olderPosts   = scoredPosts.filter(p => p.chronoIndex < recentCutoff);
-    const totalRecent  = Math.max(recentPosts.length, 1);
-    const totalOlder   = Math.max(olderPosts.length, 1);
 
-    // 5. Count keyword appearances across all three views
+    // 5. Aggregate per-keyword stats using normalized scores
     const kwData = {};
     scoredPosts.forEach(post => {
-      const isTop    = topPostIds.has(post.id);
-      const isRecent = post.chronoIndex >= recentCutoff;
+      const isRecent = post.chronoIdx >= recentCutoff;
       post.keywords.forEach(kw => {
-        if (!kwData[kw]) kwData[kw] = { inTop: 0, inAll: 0, inRecent: 0, inOlder: 0 };
-        kwData[kw].inAll++;
-        if (isTop)    kwData[kw].inTop++;
-        if (isRecent) kwData[kw].inRecent++;
-        else          kwData[kw].inOlder++;
+        if (!kwData[kw]) kwData[kw] = {
+          scores: [], recentScores: [], olderScores: [],
+          rawScores: [], // keep raw for display purposes
+          totalLikes: 0, totalShares: 0, totalComments: 0,
+        };
+        kwData[kw].scores.push(post.normalizedScore);
+        kwData[kw].rawScores.push(post.weightedScore);
+        kwData[kw].totalLikes    += post.likes;
+        kwData[kw].totalShares   += post.shares;
+        kwData[kw].totalComments += post.comments;
+        if (isRecent) kwData[kw].recentScores.push(post.normalizedScore);
+        else          kwData[kw].olderScores.push(post.normalizedScore);
       });
     });
 
-    // 6. Score each keyword
+    // 6. Score every keyword with the Bayesian KPI formula (in normalized space)
+    const globalMean = 1.0; // always 1.0 after per-account normalization
     const results = [];
-    Object.entries(kwData).forEach(([kw, counts]) => {
-      if (counts.inAll < 1) return;
+    Object.entries(kwData).forEach(([kw, d]) => {
+      const n   = d.scores.length;
+      const avg = d.scores.reduce((s, v) => s + v, 0) / n;
+      const rawAvg = d.rawScores.reduce((s, v) => s + v, 0) / n;
 
-      const topFreq     = counts.inTop / topN;
-      const overallFreq = counts.inAll / totalPosts;
-      // Raw lift
-      const lift = overallFreq > 0 ? topFreq / overallFreq : 0;
-      // Power score: lift weighted by log(count) so rare flukes don't rank above consistent words
-      const power = lift * Math.log(1 + counts.inAll);
+      // Bayesian shrinkage toward 1.0 (the normalized global mean)
+      const bayesianAvg = (n * avg + K * globalMean) / (n + K);
 
-      // Trend: how much more common is this word in recent posts vs older posts?
-      const recentFreq = counts.inRecent / totalRecent;
-      const olderFreq  = counts.inOlder  / totalOlder;
-      const trend = olderFreq > 0
-        ? recentFreq / olderFreq    // >1 = rising, <1 = falling
-        : recentFreq > 0 ? 2 : 1;  // only in recent = strongly rising
+      // Consistency: penalise high variance
+      const variance = d.scores.reduce((s, v) => s + Math.pow(v - avg, 2), 0) / n;
+      const stdDev   = Math.sqrt(variance);
+      const cv       = avg > 0 ? stdDev / avg : 0;
+      const consistency = 1 / (1 + Math.min(cv, 1.0));
+
+      // Trend boost: only upward, capped at 1.5×
+      const recentAvg = d.recentScores.length
+        ? d.recentScores.reduce((s, v) => s + v, 0) / d.recentScores.length
+        : avg;
+      const olderAvg  = d.olderScores.length
+        ? d.olderScores.reduce((s, v) => s + v, 0) / d.olderScores.length
+        : avg;
+      const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
+      const trendBoost = trendRatio > 1 ? Math.min(Math.sqrt(trendRatio), 1.5) : 1.0;
+      const trendDir   = trendRatio >= 1.4 ? "rising" : trendRatio <= 0.7 ? "falling" : "stable";
+
+      const rawScore = bayesianAvg * consistency * trendBoost;
 
       results.push({
-        term:        kw,
-        lift:        Math.round(lift  * 100) / 100,
-        power:       Math.round(power * 100) / 100,
-        topFreq:     Math.round(topFreq     * 1000) / 10,
-        overallFreq: Math.round(overallFreq * 1000) / 10,
-        sampleSize:  counts.inAll,
-        topCount:    counts.inTop,
-        trend:       Math.round(trend * 100) / 100,
-        trendDir:    trend >= 1.4 ? "rising" : trend <= 0.7 ? "falling" : "stable",
+        term:          kw,
+        rawScore,
+        kpi:           0,
+        avgEngagement: Math.round(rawAvg),      // raw for display
+        normalizedAvg: Math.round(avg * 100) / 100,
+        bayesianAvg:   Math.round(bayesianAvg * 100) / 100,
+        sampleSize:    n,
+        consistency:   Math.round(consistency * 100),
+        trend:         Math.round(trendRatio * 100) / 100,
+        trendDir,
+        totalLikes:    d.totalLikes,
+        totalShares:   d.totalShares,
+        totalComments: d.totalComments,
       });
     });
 
-    // 7. Top keywords: sort by power score (lift × consistency)
-    const keywords = results
-      .filter(r => r.lift > 0)
-      .sort((a, b) => b.power - a.power || b.sampleSize - a.sampleSize)
-      .slice(0, 30);
+    // 7. Normalise rawScore → KPI index 0–100
+    const sortedResults = results.sort((a, b) => b.rawScore - a.rawScore);
+    const maxRaw = sortedResults[0]?.rawScore || 1;
+    sortedResults.forEach(r => {
+      r.kpi = Math.round((r.rawScore / maxRaw) * 100);
+      delete r.rawScore; // don't expose internal value
+    });
 
-    // 8. Trending keywords: recently rising words that also have some engagement signal
-    const trendingKeywords = results
-      .filter(r => r.trendDir === "rising" && r.sampleSize >= 2)
-      .sort((a, b) => b.trend - a.trend || b.power - a.power)
-      .slice(0, 10);
+    // Filter keywords with only 1 post when we have enough data to be meaningful
+    // With 10+ posts, single-occurrence words are noise, not signal
+    const minPosts = totalPosts >= 10 ? 2 : 1;
+    const keywords = sortedResults.filter(r => r.sampleSize >= minPosts).slice(0, 50);
 
-    console.log(`[keywords] ${totalPosts} posts -> ${keywords.length} keywords, ${trendingKeywords.length} trending`);
+    const xPosts = scoredPosts.filter(p => p.platform_id === 1).length;
+    const ytPosts = scoredPosts.filter(p => p.platform_id === 8).length;
+    console.log(`[keywords] ${totalPosts} posts (X:${xPosts} YT:${ytPosts}) → ${keywords.length} keywords`);
 
     return res.json({
       keywords,
-      trendingKeywords,
       totalPosts,
-      totalTopPosts: topN,
-      debug: `Analysed ${totalPosts} posts · ${topN} top posts · ${keywords.length} keywords`,
+      globalMean: Math.round(globalMean),
+      debug: `${totalPosts} posts (X: ${xPosts}, YouTube: ${ytPosts}) · ${keywords.length} keywords · global avg ${Math.round(globalMean).toLocaleString()}`,
     });
 
   } catch (err) {
