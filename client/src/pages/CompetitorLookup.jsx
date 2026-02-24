@@ -1,16 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActionIcon, Alert, Badge, Button, Card, Collapse, Divider, Group,
+  Alert, Badge, Button, Card, Collapse, Divider, Group,
   LoadingOverlay, NumberInput, Stack, Text, TextInput, Title, Tabs, Tooltip,
 } from "@mantine/core";
 import {
   IconAlertCircle, IconBrandX, IconBrandYoutube, IconChevronDown, IconChevronUp,
-  IconSearch, IconUser, IconDeviceFloppy, IconUserPlus, IconTrash, IconUsers,
+  IconSearch, IconUser, IconDeviceFloppy,
 } from "@tabler/icons-react";
 import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
-
-const PLATFORM_LABELS = { x: "X / Twitter", youtube: "YouTube" };
 
 function avatarInitial(str) {
   return (str || "?")[0].toUpperCase();
@@ -39,46 +37,16 @@ export default function CompetitorLookup() {
   }, []);
 
   // lookup state
-  const [activeTab, setActiveTab]         = useState("x");
-  const [username, setUsername]           = useState("");
-  const [postCount, setPostCount]         = useState(10);
-  const [youtubeUrl, setYoutubeUrl]       = useState("");
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState(null);
-  const [result, setResult]               = useState(null);
+  const [activeTab, setActiveTab] = useState("x");
+  const [username, setUsername] = useState("");
+  const [postCount, setPostCount] = useState(10);
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
   const [youtubeResult, setYoutubeResult] = useState(null);
-  const [bulkSaving, setBulkSaving]       = useState(false);
-  const [bulkResult, setBulkResult]       = useState(null);
-
-  // following — UI only, localStorage
-  const STORAGE_KEY = "chibitek_followed_accounts";
-  const [followedAccounts, setFollowedAccounts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-    catch { return []; }
-  });
-  const [followInput, setFollowInput]     = useState("");
-  const [followPlatform, setFollowPlatform] = useState("x");
-  const [followError, setFollowError]     = useState("");
-
-  function persistFollowed(accounts) {
-    setFollowedAccounts(accounts);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
-  }
-
-  function handleFollowAdd() {
-    const trimmed = followInput.trim().replace(/^@/, "");
-    if (!trimmed) { setFollowError("Enter a username."); return; }
-    if (followedAccounts.some(a => a.username.toLowerCase() === trimmed.toLowerCase() && a.platform === followPlatform)) {
-      setFollowError("Already following this account."); return;
-    }
-    setFollowError("");
-    persistFollowed([...followedAccounts, { username: trimmed, platform: followPlatform, addedAt: new Date().toISOString() }]);
-    setFollowInput("");
-  }
-
-  function handleFollowRemove(index) {
-    persistFollowed(followedAccounts.filter((_, i) => i !== index));
-  }
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState(null);
 
   // clear results when switching tabs so they don't bleed through
   function handleTabChange(tab) {
@@ -221,12 +189,12 @@ export default function CompetitorLookup() {
   function XPostCard({ post }) {
     if (!post?.text) return null;
     const metrics = post.public_metrics || {};
-    const [expanded, setExpanded]     = useState(false);
-    const [saving, setSaving]         = useState(false);
+    const [expanded, setExpanded] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
-    const isLong  = post.text.length > 280;
+    const isLong = post.text.length > 280;
     const preview = isLong && !expanded ? post.text.slice(0, 280) + "…" : post.text;
-    const date    = post.created_at
+    const date = post.created_at
       ? new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : null;
 
@@ -308,10 +276,10 @@ export default function CompetitorLookup() {
   // ── YouTube Card ───────────────────────────────────────────────────────────
   function YouTubeCard({ data }) {
     if (!data) return null;
-    const [saving, setSaving]           = useState(false);
-    const [saveStatus, setSaveStatus]   = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null);
     const [showTranscript, setShowTranscript] = useState(false);
-    const [showDesc, setShowDesc]       = useState(false);
+    const [showDesc, setShowDesc] = useState(false);
     const descLong = (data.video?.description || "").length > 200;
     const date = data.video?.publishedAt
       ? new Date(data.video.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -430,12 +398,6 @@ export default function CompetitorLookup() {
           <Tabs.List>
             <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>X / Twitter</Tabs.Tab>
             <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} />}>YouTube</Tabs.Tab>
-            <Tabs.Tab value="following" leftSection={<IconUsers size={16} />}>
-              Following
-              {followedAccounts.length > 0 && (
-                <Badge size="xs" variant="filled" ml={6} circle>{followedAccounts.length}</Badge>
-              )}
-            </Tabs.Tab>
           </Tabs.List>
 
           {/* ── X tab ── */}
@@ -554,85 +516,7 @@ export default function CompetitorLookup() {
             </Stack>
           </Tabs.Panel>
 
-          {/* ── Following tab (UI only) ── */}
-          <Tabs.Panel value="following" pt="md">
-            <Stack gap="md">
-              <Text size="sm" c="dimmed">
-                Track accounts to pull posts from on a schedule. Auto-fetching coming soon.
-              </Text>
 
-              <Card withBorder radius="md" p="md">
-                <Text fw={600} size="sm" mb="sm">Follow an account</Text>
-                <Group align="end" gap="sm" wrap="wrap">
-                  <TextInput
-                    value={followInput}
-                    onChange={(e) => { setFollowInput(e.currentTarget.value); setFollowError(""); }}
-                    placeholder="@username or channel name"
-                    label="Account"
-                    maw={280}
-                    leftSection={<IconUser size={16} />}
-                    error={followError}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleFollowAdd(); } }}
-                  />
-                  <div>
-                    <Text size="xs" c="dimmed" mb={4}>Platform</Text>
-                    <Group gap="xs">
-                      <Button size="xs"
-                        variant={followPlatform === "x" ? "filled" : "light"}
-                        leftSection={<IconBrandX size={14} />}
-                        onClick={() => setFollowPlatform("x")}
-                      >X</Button>
-                      <Button size="xs"
-                        variant={followPlatform === "youtube" ? "filled" : "light"}
-                        color="red"
-                        leftSection={<IconBrandYoutube size={14} />}
-                        onClick={() => setFollowPlatform("youtube")}
-                      >YouTube</Button>
-                    </Group>
-                  </div>
-                  <Button leftSection={<IconUserPlus size={16} />}
-                    onClick={handleFollowAdd} disabled={!followInput.trim()}>
-                    Follow
-                  </Button>
-                </Group>
-              </Card>
-
-              {followedAccounts.length === 0 ? (
-                <Alert color="gray" icon={<IconUsers size={16} />}>
-                  No accounts followed yet. Add one above to get started.
-                </Alert>
-              ) : (
-                <Stack gap="xs">
-                  <Text fw={600} size="sm">Followed accounts ({followedAccounts.length})</Text>
-                  {followedAccounts.map((account, i) => (
-                    <Card key={`${account.platform}-${account.username}-${i}`} withBorder radius="md" p="sm">
-                      <Group justify="space-between" align="center">
-                        <Group gap="sm">
-                          {account.platform === "x"
-                            ? <IconBrandX size={18} />
-                            : <IconBrandYoutube size={18} color="red" />
-                          }
-                          <div>
-                            <Text fw={600} size="sm">@{account.username}</Text>
-                            <Text size="xs" c="dimmed">{PLATFORM_LABELS[account.platform] || account.platform}</Text>
-                          </div>
-                        </Group>
-                        <Group gap="xs">
-                          <Badge variant="light" color="gray" size="sm">Auto-fetch: coming soon</Badge>
-                          <Tooltip label="Unfollow account">
-                            <ActionIcon variant="subtle" color="red" size="sm"
-                              onClick={() => handleFollowRemove(i)}>
-                              <IconTrash size={14} />
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      </Group>
-                    </Card>
-                  ))}
-                </Stack>
-              )}
-            </Stack>
-          </Tabs.Panel>
         </Tabs>
       </Stack>
     </Card>
