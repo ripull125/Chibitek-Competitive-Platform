@@ -11,6 +11,7 @@ import {
   IconLogout,
   IconTrendingUp,
   IconLayoutDashboard,
+  IconRobot,
 } from "@tabler/icons-react";
 import { Image } from "@mantine/core";
 import classes from "./NavbarSimple.module.css";
@@ -27,6 +28,7 @@ const linksData = [
   { key: "competitorLookup", icon: IconSearch, path: "/competitor-lookup" },
   { key: "savedPosts", icon: IconBookmark, path: "/savedPosts"},
   { key: "keywordTracking", icon: IconTrendingUp, path: "/keywords" },
+  { key: "watchlist", icon: IconRobot, path: "/watchlist" },
   { key: "reports", icon: IconReport, path: "/reports" },
   { key: "chat", icon: IconMessage, path: "/chat" },
   { key: "settings", icon: IconSettings, path: "/settings" },

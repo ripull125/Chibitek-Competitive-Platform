@@ -67,7 +67,7 @@ app.use(cors({
   origin: 'http://localhost:5173',
   /* credentials: true, */
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-scraper-auth', 'x-http-method-override']
 }))
 app.use(express.json({ limit: '10mb' }));
 
@@ -1933,3 +1933,298 @@ app.get("/api/youtube/transcript", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WATCHLIST — CRUD + Auto-fetch
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// ---------- helpers --------------------------------------------------
+// (extractSubreddit already defined above)
+
+// ---------- GET  /api/watchlist — list all items for the user --------
+app.get('/api/watchlist', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return res.json({ items: data });
+  } catch (err) {
+    console.error('watchlist list error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- POST /api/watchlist — create a new item ------------------
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { platform, scrape_type, target, label, config } = req.body;
+    if (!platform || !scrape_type || !target) {
+      return res.status(400).json({ error: 'platform, scrape_type and target are required.' });
+    }
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .insert({ user_id: userId, platform, scrape_type, target, label: label || target, config: config || {} })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ item: data });
+  } catch (err) {
+    console.error('watchlist create error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- PATCH /api/watchlist/:id — toggle enabled / update -------
+app.patch('/api/watchlist/:id', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const updates = {};
+    if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
+    if (req.body.label !== undefined) updates.label = req.body.label;
+    if (req.body.target !== undefined) updates.target = req.body.target;
+    if (req.body.scrape_type !== undefined) updates.scrape_type = req.body.scrape_type;
+    if (req.body.config !== undefined) updates.config = req.body.config;
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ item: data });
+  } catch (err) {
+    console.error('watchlist update error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- DELETE /api/watchlist/:id --------------------------------
+app.delete('/api/watchlist/:id', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('watchlist delete error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- POST /api/watchlist/run — execute all enabled items ------
+// Can also accept ?item_id=<uuid> to run a single item.
+app.post('/api/watchlist/run', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const singleId = req.query.item_id || req.body.item_id;
+    let query = supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('enabled', true);
+    if (singleId) query = query.eq('id', singleId);
+
+    const { data: items, error: fetchErr } = await query;
+    if (fetchErr) throw fetchErr;
+    if (!items?.length) return res.json({ results: [], message: 'Nothing to run.' });
+
+    const results = [];
+
+    for (const item of items) {
+      try {
+        const data = await executeWatchlistItem(item);
+        results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: true, data });
+
+        // stamp last_run_at
+        await supabase.from('watchlist_items').update({ last_run_at: new Date().toISOString() }).eq('id', item.id);
+      } catch (err) {
+        results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: false, error: err.message });
+      }
+    }
+
+    return res.json({ results });
+  } catch (err) {
+    console.error('watchlist run error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Trim result arrays to respect the user's max_results setting (saves API credits).
+ */
+function trimToLimit(data, limit) {
+  if (!data || !limit) return data;
+  if (Array.isArray(data)) return data.slice(0, limit);
+  if (typeof data !== 'object') return data;
+  const arrayKeys = ['posts', 'tweets', 'items', 'itemList', 'search_item_list', 'children', 'comments', 'reels', 'videos', 'users'];
+  for (const key of arrayKeys) {
+    if (Array.isArray(data[key]) && data[key].length > limit) {
+      return { ...data, [key]: data[key].slice(0, limit) };
+    }
+  }
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+    for (const key of arrayKeys) {
+      if (Array.isArray(data.data[key]) && data.data[key].length > limit) {
+        return { ...data, data: { ...data.data, [key]: data.data[key].slice(0, limit) } };
+      }
+    }
+  }
+  return data;
+}
+
+/**
+ * Core dispatcher — given a watchlist item, call the right API and return raw data.
+ * Post-processes results to trim to the configured max_results.
+ */
+async function executeWatchlistItem(item) {
+  const raw = await _executeWatchlistScrape(item);
+  const limit = item.config?.max_results;
+  return limit ? trimToLimit(raw, limit) : raw;
+}
+
+async function _executeWatchlistScrape(item) {
+  const { platform, scrape_type, target, config = {} } = item;
+
+  switch (platform) {
+    /* ── X / Twitter ─────────────────────────────────────── */
+    case 'x': {
+      const username = target.replace(/^@/, '').trim();
+      const user = await getUserIdByUsername(username);
+      switch (scrape_type) {
+        case 'user_posts':
+          return fetchPostsByUserId(user.id, config.max_results || 10);
+        case 'user_mentions':
+          return fetchUserMentions(user.id, config.max_results || 10);
+        case 'followers':
+          return fetchFollowers(user.id, config.max_results || 20);
+        case 'following':
+          return fetchFollowing(user.id, config.max_results || 20);
+        case 'search':
+          return searchRecentTweets(target, config.max_results || 10);
+        default:
+          throw new Error(`Unknown X scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── YouTube ─────────────────────────────────────────── */
+    case 'youtube': {
+      switch (scrape_type) {
+        case 'channel_videos': {
+          const channelId = await resolveChannelId(target);
+          return fetchChannelVideos(channelId, config.max_results || 10);
+        }
+        case 'channel_details': {
+          const channelId = await resolveChannelId(target);
+          return fetchChannelDetails(channelId);
+        }
+        case 'video_details': {
+          const vid = extractYouTubeVideoId(target);
+          if (!vid) throw new Error('Invalid YouTube video URL or ID');
+          return fetchVideoDetails(vid);
+        }
+        case 'video_comments': {
+          const vid = extractYouTubeVideoId(target);
+          if (!vid) throw new Error('Invalid YouTube video URL or ID');
+          return fetchVideoComments(vid, config.max_results || 20);
+        }
+        case 'search':
+          return searchYouTube(target, config.max_results || 10);
+        default:
+          throw new Error(`Unknown YouTube scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── Reddit ──────────────────────────────────────────── */
+    case 'reddit': {
+      const limit = config.max_results || 25;
+      switch (scrape_type) {
+        case 'subreddit_posts': {
+          const sub = target.replace(/^r\//, '').trim();
+          return scrapeCreators('/v1/reddit/subreddit', { subreddit: sub, limit });
+        }
+        case 'subreddit_details': {
+          const sub = target.replace(/^r\//, '').trim();
+          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub });
+        }
+        case 'search':
+          return scrapeCreators('/v1/reddit/search', { query: target, limit });
+        default:
+          throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── LinkedIn ────────────────────────────────────────── */
+    case 'linkedin': {
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/linkedin/profile', { url: target });
+        case 'company':
+          return scrapeCreators('/v1/linkedin/company', { url: target });
+        case 'post':
+          return scrapeCreators('/v1/linkedin/post', { url: target });
+        default:
+          throw new Error(`Unknown LinkedIn scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── Instagram ───────────────────────────────────────── */
+    case 'instagram': {
+      const username = target.replace(/^@/, '').trim();
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/instagram/profile', { username });
+        case 'user_posts':
+          return scrapeCreators('/v1/instagram/user/posts', { username, limit: config.max_results });
+        case 'user_reels':
+          return scrapeCreators('/v1/instagram/user/reels', { username, limit: config.max_results });
+        default:
+          throw new Error(`Unknown Instagram scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── TikTok ──────────────────────────────────────────── */
+    case 'tiktok': {
+      const username = target.replace(/^@/, '').trim();
+      const limit = config.max_results || 20;
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/tiktok/profile', { username });
+        case 'profile_videos':
+          return scrapeCreators('/v1/tiktok/user/videos', { username, limit });
+        case 'search':
+          return scrapeCreators('/v1/tiktok/search/keyword', { keyword: target, limit });
+        default:
+          throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
+      }
+    }
+
+    default:
+      throw new Error(`Unknown platform: ${platform}`);
+  }
+}
