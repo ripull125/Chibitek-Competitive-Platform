@@ -3,28 +3,33 @@ import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Button, Checkbox, Container, Title, Paper, LoadingOverlay, Text, Select } from "@mantine/core";
-import {
-  Badge,
-  Button,
-  Card,
-  Container,
-  Group,
-  Stack,
-  Text,
-  Title,
-  Switch,
-} from "@mantine/core";
+import { Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
 import { IconDownload } from "@tabler/icons-react";
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+
+// holds posts already converted to universal format
+// previous version used a global var; switched to component state instead
 
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
   const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
-  const [rawPosts, setRawPosts] = useState([]);
+  const [convertedData, setConvertedData] = useState([]);
   const [analysisStarted, setAnalysisStarted] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [toneEngagementData, setToneEngagementData] = useState([]);
@@ -50,6 +55,7 @@ export default function Reports() {
     if (!currentUserId) {
       setToneEngagementData([]);
       setLoading(false);
+      setConvertedData([]);
       return;
     }
 
@@ -58,6 +64,8 @@ export default function Reports() {
       .then((data) => {
         const posts = data.posts || [];
         const converted = convertSavedPosts(posts);
+
+        setConvertedData(converted);
 
         // Create chart data with index for each post
         const chartData = converted.map((post, index) => ({
@@ -149,18 +157,17 @@ export default function Reports() {
           setLoading(true);
           setAnalysisStarted(true);
           try {
-            let posts = rawPosts.slice();
-            if (postLimit > 0 && posts.length > postLimit) {
-              posts = posts.slice(-postLimit);
+            let toAnalyze = convertedData.slice();
+            if (postLimit > 0 && toAnalyze.length > postLimit) {
+              toAnalyze = toAnalyze.slice(-postLimit);
             }
-            const converted = convertSavedPosts(posts);
             let analyzed = [];
             try {
-              analyzed = await analyzeUniversalPosts(converted);
+              analyzed = await analyzeUniversalPosts(toAnalyze);
             } catch (err) {
               console.error('Tone analysis failed:', err);
             }
-            const chartData = (analyzed.length ? analyzed : converted).map((post, index) => ({
+            const chartData = (analyzed.length ? analyzed : toAnalyze).map((post, index) => ({
               index: index + 1,
               engagement: post.Engagement,
               source: post['Name/Source'],

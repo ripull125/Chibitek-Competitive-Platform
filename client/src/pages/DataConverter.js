@@ -70,6 +70,13 @@ async function analyzeUniversalPosts(universalPosts) {
   const analyzed = [];
   
   for (const post of universalPosts) {
+    // ensure there's a non-empty message to send; server rejects falsy
+    const msgText = String(post.Message || '').trim();
+    if (!msgText) {
+      analyzed.push({ ...post, Tone: null, _toneError: 'empty message' });
+      continue;
+    }
+
     let resp;
     let lastError;
 
@@ -84,7 +91,7 @@ async function analyzeUniversalPosts(universalPosts) {
         resp = await fetchWithTimeout(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: post.Message || '' }),
+          body: JSON.stringify({ message: msgText }),
         }, 5000);
         if (resp && resp.ok) break; // success, exit loop
         if (resp) {
