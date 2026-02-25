@@ -14,18 +14,47 @@ import {
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    fetch(apiUrl("/api/posts"))
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setPosts([]);
+      setNotice("Sign in to view your saved posts.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
       .then((r) => r.json())
       .then((d) => setPosts(d.posts || []))
       .finally(() => setLoading(false));
-  }, []);
+
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "saved-posts" } })
+    );
+  }, [currentUserId]);
 
   function openDeleteConfirm(postId) {
     setDeleteModal({ open: true, postId });
@@ -39,17 +68,24 @@ export default function SavedPosts() {
     const postId = deleteModal.postId;
     closeDeleteConfirm();
 
+    if (!currentUserId) {
+      setNotice("Sign in to delete saved posts.");
+      return;
+    }
+
     try {
-      const resp = await fetch(`http://localhost:8080/api/posts/${postId}`, {
+      const resp = await fetch(
+        apiUrl(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUserId)}`),
+        {
         method: "DELETE",
-      });
+        }
+      );
 
       if (!resp.ok) {
         const error = await resp.json();
         throw new Error(error.error || "Failed to delete post");
       }
 
-      // Remove from local state
       setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch (err) {
       console.error("Delete failed:", err);
@@ -60,8 +96,15 @@ export default function SavedPosts() {
   return (
     <Card p="lg" withBorder radius="md" style={{ position: "relative" }}>
       <LoadingOverlay visible={loading} />
+
       <Stack>
         <Title order={2}>Saved Posts</Title>
+
+        {notice ? (
+          <Text size="sm" c="dimmed">
+            {notice}
+          </Text>
+        ) : null}
 
         {posts.map((p) => (
           <Card key={p.id} withBorder radius="md">
@@ -70,26 +113,7 @@ export default function SavedPosts() {
                 <Text fw={500} style={{ flex: 1 }}>
                   {p.content}
                 </Text>
-                <Tooltip label="Delete post" withArrow>
-                  <ActionIcon
-                    color="red"
-                    variant="subtle"
-                    onClick={() => openDeleteConfirm(p.id)}
-                  >
-                    <IconTrash size={18} />
-                  </ActionIcon>
-                </Tooltip>
               </Group>
-
-              <Group>
-                <Badge>❤️ {p.likes}</Badge>
-                <Badge>🔁 {p.shares}</Badge>
-                <Badge>💬 {p.comments}</Badge>
-              </Group>
-
-              <Text size="xs" c="dimmed">
-                {new Date(p.published_at).toLocaleString()}
-              </Text>
             </Stack>
           </Card>
         ))}
@@ -102,7 +126,10 @@ export default function SavedPosts() {
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Text>
+            Are you sure you want to delete this post? This action cannot be
+            undone.
+          </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeDeleteConfirm}>
               Cancel

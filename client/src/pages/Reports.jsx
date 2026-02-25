@@ -1,23 +1,24 @@
-import { useRef, useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Button, Checkbox, Container, Title, Paper, LoadingOverlay, Text, Select } from "@mantine/core";
 import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+  Badge,
+  Button,
+  Card,
+  Container,
+  Group,
+  Stack,
+  Text,
+  Title,
+  Switch,
+} from "@mantine/core";
+import { IconDownload } from "@tabler/icons-react";
 import "../utils/ui.css";
+import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 
 export default function Reports() {
   const chartRef = useRef(null);
@@ -25,55 +26,89 @@ export default function Reports() {
   const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
   const [rawPosts, setRawPosts] = useState([]);
   const [analysisStarted, setAnalysisStarted] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Fetch saved posts once when component mounts. analysis is triggered manually.
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("http://localhost:8080/api/posts");
-        const data = await r.json();
-        setRawPosts(data.posts || []);
-      } catch (error) {
-        console.error("Error fetching posts:", error);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const generatePDF = async () => {
-    if (!includeKeywordTracking) {
-      alert("Please enable Keyword Tracking to generate PDF");
+    if (!currentUserId) {
+      setToneEngagementData([]);
+      setLoading(false);
       return;
     }
 
-    const input = chartRef.current; 
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const posts = data.posts || [];
+        const converted = convertSavedPosts(posts);
 
+        // Create chart data with index for each post
+        const chartData = converted.map((post, index) => ({
+          index: index + 1,
+          engagement: post.Engagement,
+          source: post['Name/Source'],
+          message: post.Message,
+          tone: post.Tone,
+        }));
+
+        setToneEngagementData(chartData);
+      })
+      .catch((error) => console.error("Error fetching posts:", error))
+      .finally(() => setLoading(false));
+  }, [currentUserId]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("chibitek:pageReady", { detail: { page: "reports" } })
+    );
+  }, []);
+
+  const generatePDF = async () => {
+    if (!includeKeywordTracking) return;
+
+    const input = chartRef.current;
     if (!input) return;
 
-    // Convert DOM → canvas
-    const canvas = await html2canvas(input, {
-      scale: 2, // high resolution
-    });
+    setGenerating(true);
+    try {
+      const canvas = await html2canvas(input, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
 
-    const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "pt",
+        format: "a4",
+      });
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "pt",
-      format: "a4",
-    });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const imgWidth = pageWidth - 48;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth - 40; // 20pt margin each side
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.setFontSize(14);
+      pdf.text("Keyword Tracking Report", 24, 28);
+      pdf.addImage(imgData, "PNG", 24, 44, imgWidth, imgHeight);
 
-    pdf.text("Keyword Tracking Report", 20, 30);
-    pdf.addImage(imgData, "PNG", 20, 50, imgWidth, imgHeight);
-
-    pdf.save("keyword-tracking-report.pdf");
+      pdf.save("keyword-tracking-report.pdf");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const TONES = [
