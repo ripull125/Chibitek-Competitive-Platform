@@ -29,8 +29,15 @@ import {
   IconBrandTiktok,
   IconBrandReddit,
   IconCheck,
+  IconChevronDown,
+  IconChevronUp,
   IconCopy,
+  IconEye,
+  IconHeart,
   IconInfoCircle,
+  IconMessage,
+  IconQuote,
+  IconRepeat,
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
@@ -696,40 +703,48 @@ function XUserCard({ user, onSave }) {
 function XTweetCard({ tweet, authorUsername, onSave }) {
   if (!tweet) return null;
   const m = tweet.public_metrics || {};
-  const engagement = (m.like_count || 0) + (m.retweet_count || 0) + (m.reply_count || 0) + (m.quote_count || 0);
+  const date = tweet.created_at
+    ? new Date(tweet.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
 
   return (
-    <Card withBorder radius="sm" p="sm">
-      <Stack gap="xs">
-        <Group justify="space-between" align="start">
-          <div style={{ flex: 1 }}>
-            <Text size="sm" style={{ whiteSpace: "pre-wrap" }} lineClamp={4}>{tweet.text}</Text>
-          </div>
-          {onSave && (
-            <SaveButton label="Save" onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
-          )}
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
+      <Stack gap="sm">
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            {authorUsername && (
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: "#e8f5fd",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 14, color: "#1d9bf0", flexShrink: 0,
+              }}>
+                {(authorUsername || "?")[0].toUpperCase()}
+              </div>
+            )}
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }} lineClamp={4}>{tweet.text}</Text>
+            </div>
+          </Group>
+          <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
+            <IconBrandX size={16} style={{ opacity: 0.5 }} />
+            {onSave && (
+              <SaveButton label="Save" onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
+            )}
+          </Group>
         </Group>
 
-        <Group gap="md" wrap="wrap">
-          <Badge variant="light" size="sm">❤️ {(m.like_count || 0).toLocaleString()}</Badge>
-          <Badge variant="light" size="sm">🔁 {(m.retweet_count || 0).toLocaleString()}</Badge>
-          <Badge variant="light" size="sm">💬 {(m.reply_count || 0).toLocaleString()}</Badge>
-          {m.quote_count > 0 && <Badge variant="light" size="sm">💭 {m.quote_count.toLocaleString()}</Badge>}
-          <Badge variant="light" color="green" size="sm">📊 {engagement.toLocaleString()} total</Badge>
-        </Group>
+        {date && <Text size="xs" c="dimmed">{date}</Text>}
 
-        <Group gap="xs">
-          {tweet.created_at && (
-            <Text size="xs" c="dimmed">
-              {new Date(tweet.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-            </Text>
-          )}
-          {tweet.lang && tweet.lang !== "und" && (
-            <Badge size="xs" variant="light" color="gray">{tweet.lang}</Badge>
-          )}
-          {tweet.source && (
-            <Badge size="xs" variant="light" color="gray">{tweet.source}</Badge>
-          )}
+        <Divider my={0} />
+
+        <Group justify="space-between" align="center">
+          <Group gap="lg">
+            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(m.like_count || 0).toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{(m.retweet_count || 0).toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{(m.reply_count || 0).toLocaleString()}</Text></Group>
+            {m.quote_count > 0 && <Group gap={4} wrap="nowrap"><IconQuote size={14} color="#794bc4" /><Text size="xs" c="dimmed">{m.quote_count.toLocaleString()}</Text></Group>}
+          </Group>
           <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
             View →
           </Text>
@@ -1334,7 +1349,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 5, // YouTube
+          platform_id: 8, // YouTube
           platform_user_id: data.channelId || "",
           username: data.channelTitle || "",
           platform_post_id: data.id,
@@ -1582,9 +1597,15 @@ export default function CompetitorLookup() {
   function PostCard({ post }) {
     if (!post?.text) return null;
 
-    const metrics = post.public_metrics || [];
+    const metrics = post.public_metrics || {};
     const [saving, setSaving] = useState(false);
-    const [saveStatus, setSaveStatus] = useState(null); // 'saved' | 'error'
+    const [saveStatus, setSaveStatus] = useState(null);
+    const [expanded, setExpanded] = useState(false);
+    const isLong = post.text.length > 280;
+    const preview = isLong && !expanded ? post.text.slice(0, 280) + "…" : post.text;
+    const date = post.created_at
+      ? new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : null;
 
     async function handleSave() {
       try {
@@ -1626,25 +1647,56 @@ export default function CompetitorLookup() {
     }
 
     return (
-      <Card withBorder radius="md" shadow="sm">
-        <Group justify="space-between" mt="sm">
-          <Group gap="md">
-            <Badge variant="light">❤️ {metrics.like_count ?? 0}</Badge>
-            <Badge variant="light">🔁 {metrics.retweet_count ?? 0}</Badge>
-            <Badge variant="light">💬 {metrics.reply_count ?? 0}</Badge>
+      <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
+        <Stack gap="sm">
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: "#e8f5fd",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 15, color: "#1d9bf0", flexShrink: 0,
+              }}>
+                {avatarInitial(result?.name || result?.username)}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <Text fw={700} size="sm" lh={1.3} truncate>{result?.name || result?.username}</Text>
+                <Text size="xs" c="dimmed" lh={1.2}>@{result?.username}</Text>
+              </div>
+            </Group>
+            <IconBrandX size={18} style={{ opacity: 0.5, flexShrink: 0 }} />
           </Group>
 
-          <Button
-            size="xs"
-            variant="light"
-            loading={saving}
-            color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
-            onClick={handleSave}
-            disabled={saveStatus === 'saved'}
-          >
-            {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save'}
-          </Button>
-        </Group>
+          <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+
+          {isLong && (
+            <Button variant="subtle" size="xs" p={0} h="auto"
+              leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "Show less" : "Show more"}
+            </Button>
+          )}
+
+          {date && <Text size="xs" c="dimmed" mt={-4}>{date}</Text>}
+
+          <Divider my={0} />
+
+          <Group justify="space-between" align="center">
+            <Group gap="lg">
+              <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(metrics.like_count ?? 0).toLocaleString()}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{(metrics.retweet_count ?? 0).toLocaleString()}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{(metrics.reply_count ?? 0).toLocaleString()}</Text></Group>
+            </Group>
+            <Button size="xs" variant="light" loading={saving}
+              color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
+              onClick={handleSave}
+              disabled={saveStatus === 'saved'}
+            >
+              {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save'}
+            </Button>
+          </Group>
+        </Stack>
       </Card>
     );
   }
@@ -1653,10 +1705,18 @@ export default function CompetitorLookup() {
     if (!data) return null;
 
     const [saving, setSaving] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null);
+    const [showTranscript, setShowTranscript] = useState(false);
+    const [showDesc, setShowDesc] = useState(false);
+    const descLong = (data.video?.description || "").length > 200;
+    const date = data.video?.publishedAt
+      ? new Date(data.video.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : null;
 
     async function handleSave() {
       try {
         setSaving(true);
+        setSaveStatus(null);
         const resp = await fetch(apiUrl("/api/posts"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1675,6 +1735,7 @@ export default function CompetitorLookup() {
             channelTitle: data.video.channelTitle,
             videoId: data.videoId,
             views: data.video.stats.views,
+            user_id: currentUserId,
           }),
         });
 
@@ -1684,78 +1745,93 @@ export default function CompetitorLookup() {
         }
 
         await resp.json();
-        // Optionally show success message
+        setSaveStatus('saved');
       } catch (e) {
         console.error("Error saving video:", e);
-        // Optionally show error
+        setSaveStatus('error');
       } finally {
         setSaving(false);
       }
     }
 
     return (
-      <Card withBorder radius="md" shadow="sm">
-        <Stack gap="md">
-          <Group justify="space-between" align="start">
-            <Title order={4} lineClamp={2}>{data.video?.title || "Untitled Video"}</Title>
-            <Badge variant="light" color="red">
-              <IconBrandYoutube size={14} style={{ marginRight: 4 }} />
-              YouTube
-            </Badge>
-          </Group>
-
-          <Group gap="md" wrap="wrap">
-            <Group gap="xs">
-              <Text fw={500}>Channel:</Text>
-              <Text>{data.video?.channelTitle || "Unknown"}</Text>
-            </Group>
-            <Group gap="xs">
-              <Text fw={500}>Views:</Text>
-              <Text>{(data.video?.stats?.views || 0).toLocaleString()}</Text>
-            </Group>
-            <Group gap="xs">
-              <Text fw={500}>Likes:</Text>
-              <Text>{(data.video?.stats?.likes || 0).toLocaleString()}</Text>
-            </Group>
-            <Group gap="xs">
-              <Text fw={500}>Published:</Text>
-              <Text>{data.video?.publishedAt ? new Date(data.video.publishedAt).toLocaleDateString() : "Unknown"}</Text>
+      <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
+        <Stack gap="sm">
+          {/* header */}
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: "#fde8e8",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>
+                <IconBrandYoutube size={22} color="#ff0000" />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <Text fw={700} size="sm" lh={1.3} truncate>{data.video?.channelTitle || "Unknown Channel"}</Text>
+                {date && <Text size="xs" c="dimmed" lh={1.2}>{date}</Text>}
+              </div>
             </Group>
           </Group>
 
+          {/* title */}
+          <Text fw={600} size="md" lh={1.3}>{data.video?.title || "Untitled Video"}</Text>
+
+          {/* description */}
           {data.video?.description && (
             <div>
-              <Text fw={500} mb="xs">Description:</Text>
-              <Text size="sm" lineClamp={3}>{data.video.description}</Text>
+              <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                {descLong && !showDesc ? data.video.description.slice(0, 200) + "…" : data.video.description}
+              </Text>
+              {descLong && (
+                <Button variant="subtle" size="xs" p={0} h="auto" mt={4}
+                  leftSection={showDesc ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+                  onClick={() => setShowDesc(!showDesc)}
+                >
+                  {showDesc ? "Show less" : "Show more"}
+                </Button>
+              )}
             </div>
           )}
 
-          <Divider />
-
-          <div>
-            <Text fw={500} mb="xs">Transcript:</Text>
-            {data.transcriptAvailable ? (
-              <ScrollArea h={200}>
-                <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-                  {data.transcript}
-                </Text>
-              </ScrollArea>
-            ) : (
-              <Alert color="yellow" title="Transcript unavailable">
+          {/* transcript */}
+          {data.transcriptAvailable && data.transcript ? (
+            <div>
+              <Button variant="subtle" size="xs" p={0} h="auto"
+                leftSection={showTranscript ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+                onClick={() => setShowTranscript(!showTranscript)}
+              >
+                {showTranscript ? "Hide transcript" : "Show transcript"}
+              </Button>
+              {showTranscript && (
+                <ScrollArea h={250} mt="xs">
+                  <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>{data.transcript}</Text>
+                </ScrollArea>
+              )}
+            </div>
+          ) : (
+            !data.transcriptAvailable && (
+              <Alert color="yellow" variant="light" title="Transcript unavailable">
                 YouTube does not allow downloading captions for this video.
-                Showing description instead.
               </Alert>
-            )}
-          </div>
+            )
+          )}
 
-          <Group justify="flex-end">
-            <Button
-              size="xs"
-              variant="light"
-              loading={saving}
+          <Divider my={0} />
+
+          {/* metrics + save */}
+          <Group justify="space-between" align="center">
+            <Group gap="lg">
+              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.views || 0).toLocaleString()}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(data.video?.stats?.likes || 0).toLocaleString()}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.comments || 0).toLocaleString()}</Text></Group>
+            </Group>
+            <Button size="xs" variant="light" loading={saving}
+              color={saveStatus === 'saved' ? 'green' : saveStatus === 'error' ? 'red' : undefined}
+              disabled={saveStatus === 'saved'}
               onClick={handleSave}
             >
-              Save Video
+              {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save Video'}
             </Button>
           </Group>
         </Stack>
@@ -1974,11 +2050,23 @@ export default function CompetitorLookup() {
         {results.videoDetails && (
           <>
             <Divider label="Video Details" labelPosition="center" />
-            <YTVideoCard video={results.videoDetails} onSave={onSave} />
+            <YouTubeCard data={{
+              video: {
+                ...results.videoDetails,
+                stats: {
+                  views: results.videoDetails.views,
+                  likes: results.videoDetails.likes,
+                  comments: results.videoDetails.comments,
+                },
+              },
+              videoId: results.videoDetails.id,
+              transcript: results.transcript?.available ? results.transcript.text : null,
+              transcriptAvailable: results.transcript?.available ?? true,
+            }} />
           </>
         )}
 
-        {results.transcript && (
+        {results.transcript && !results.videoDetails && (
           <>
             <Divider label="Transcript" labelPosition="center" />
             <YTTranscript data={results.transcript} />

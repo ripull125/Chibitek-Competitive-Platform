@@ -202,7 +202,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
               </Group>
 
               <div className={classes.chartBox}>
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <LineChart data={series} margin={{ top: 8, right: 28, left: 10, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="t" tickLine={false} axisLine={false} />

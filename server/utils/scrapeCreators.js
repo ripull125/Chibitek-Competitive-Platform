@@ -31,35 +31,50 @@ function getNextKey() {
  * @param {Record<string,string>} params - query params e.g. { url: "..." }
  * @returns {Promise<object>} parsed JSON body
  */
-export async function scrapeCreators(path, params = {}) {
+export async function scrapeCreators(path, params = {}, { retries = 1 } = {}) {
   const url = new URL(path, SCRAPE_CREATORS_BASE);
   for (const [k, v] of Object.entries(params)) {
     if (v != null && v !== '') url.searchParams.set(k, v);
   }
 
-  const apiKey = getNextKey();
+  let lastError;
 
-  const resp = await fetch(url.toString(), {
-    method: 'GET',
-    headers: { 'x-api-key': apiKey },
-  });
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Wait before retrying (exponential backoff: 1s, 2s, ...)
+      await new Promise(r => setTimeout(r, attempt * 1000));
+    }
 
-  // Scrape Creators sometimes returns JSON with a non-JSON content-type,
-  // so always try to parse the body as JSON first.
-  const text = await resp.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Scrape Creators returned non-JSON (${resp.status}): ${text.slice(0, 500)}`);
+    const apiKey = getNextKey();
+
+    const resp = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey },
+    });
+
+    // Scrape Creators sometimes returns JSON with a non-JSON content-type,
+    // so always try to parse the body as JSON first.
+    const text = await resp.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Scrape Creators returned non-JSON (${resp.status}): ${text.slice(0, 500)}`);
+    }
+
+    if (!resp.ok) {
+      const msg = json?.error || json?.message || `API error ${resp.status}`;
+      lastError = new Error(`External API error (${resp.status}): ${msg}`);
+      lastError.status = resp.status;
+
+      // Retry on 500/502/503/504 errors
+      if (resp.status >= 500 && attempt < retries) continue;
+
+      throw lastError;
+    }
+
+    return json;
   }
 
-  if (!resp.ok) {
-    const msg = json?.error || json?.message || `API error ${resp.status}`;
-    const err = new Error(msg);
-    err.status = resp.status;
-    throw err;
-  }
-
-  return json;
+  throw lastError;
 }
