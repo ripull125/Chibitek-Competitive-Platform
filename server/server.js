@@ -574,11 +574,15 @@ app.post("/api/posts", async (req, res) => {
 
   try {
     // Find or create competitor
-    const profileUrl = platform_id === 1
-      ? `https://x.com/${username}`
-      : platform_id === 8
-        ? `https://www.youtube.com/channel/${platform_user_id}`
-        : null;
+    const profileUrlMap = {
+      1: `https://x.com/${username}`,
+      2: `https://www.instagram.com/${username}`,
+      3: `https://www.linkedin.com/in/${username}`,
+      5: `https://www.tiktok.com/@${username}`,
+      6: `https://www.reddit.com/user/${username}`,
+      8: `https://www.youtube.com/channel/${platform_user_id}`,
+    };
+    const profileUrl = profileUrlMap[platform_id] || `https://unknown/${username}`;
 
     let competitor;
     const { data: existingComp, error: competitorError } = await supabase
@@ -598,8 +602,8 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           platform_user_id,
-          display_name: username,
-          profile_url: profileUrl || `https://x.com/${username}`,
+          display_name: username || platform_user_id,
+          profile_url: profileUrl,
         })
         .select()
         .single();
@@ -683,6 +687,21 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
+    // For Instagram, TikTok, Reddit — save author details
+    if ([2, 5, 6].includes(platform_id)) {
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          author_name: author_name || username,
+          author_handle: author_handle || username,
+          username,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving post details:', detailsError);
+      }
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error("Save post failed:", err);
@@ -725,9 +744,9 @@ app.get("/api/posts", async (req, res) => {
         comments: post.post_metrics?.[0]?.comments || 0,
         extra: {
           ...extra,
-          // Fallback to competitor name for X posts if author_name not set
-          author_name: extra.author_name || (post.platform_id === 1 ? competitorName : undefined),
-          username: extra.username || competitorName,
+          // Fallback to competitor name if author_name not set
+          author_name: extra.author_name || competitorName || undefined,
+          username: extra.username || extra.author_handle || competitorName,
           title: extra.title,
           description: extra.description,
           channelTitle: extra.channelTitle,

@@ -76,12 +76,53 @@ function SaveButton({ label, onSave }) {
         try {
           await onSave();
           setStatus("saved");
-        } catch {
+        } catch (err) {
+          console.error("[SaveButton] Save failed:", err);
           setStatus("error");
         }
       }}
     >
       {status === "saved" ? "Saved ✓" : status === "error" ? "Retry" : label || "Save"}
+    </Button>
+  );
+}
+
+function SaveAllButton({ items, onSave, type = "post" }) {
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+
+  if (!items?.length || items.length <= 1) return null;
+
+  return (
+    <Button
+      size="xs"
+      variant="filled"
+      loading={status === "saving"}
+      color={status === "saved" ? "green" : status === "error" ? "orange" : "blue"}
+      disabled={status === "saved"}
+      onClick={async () => {
+        setStatus("saving");
+        setProgress({ done: 0, total: items.length, failed: 0 });
+        let failed = 0;
+        for (let i = 0; i < items.length; i++) {
+          try {
+            await onSave(type, items[i]);
+          } catch (err) {
+            console.error(`[SaveAll] Item ${i} failed:`, err);
+            failed++;
+          }
+          setProgress(p => ({ ...p, done: i + 1, failed }));
+        }
+        setStatus(failed === items.length ? "error" : "saved");
+      }}
+    >
+      {status === "saving"
+        ? `Saving ${progress.done}/${progress.total}…`
+        : status === "saved"
+          ? `Saved All ✓${progress.failed ? ` (${progress.failed} failed)` : ""}`
+          : status === "error"
+            ? "All Failed – Retry"
+            : `Save All (${items.length})`}
     </Button>
   );
 }
@@ -100,13 +141,6 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Header */}
         <Group justify="space-between" align="start">
           <Group align="center" gap="md">
-            {profile.image && (
-              <img
-                src={profile.image}
-                alt={profile.name}
-                style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid #e0e0e0" }}
-              />
-            )}
             <div>
               <Text fw={700} size="xl">{profile.name}</Text>
               {profile.location && <Text size="sm" c="dimmed">{profile.location}</Text>}
@@ -217,9 +251,6 @@ function LinkedinProfileCard({ profile, onSave }) {
               {articles.slice(0, 5).map((a, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Group gap="sm" wrap="nowrap" align="start">
-                    {a.image && (
-                      <img src={a.image} alt="" style={{ width: 60, height: 40, borderRadius: 4, objectFit: "cover" }} />
-                    )}
                     <div style={{ flex: 1 }}>
                       <Text size="sm" fw={500} lineClamp={1}>{a.headline}</Text>
                       <Group gap="xs" mt={2}>
@@ -268,11 +299,7 @@ function LinkedinProfileCard({ profile, onSave }) {
                     <Group gap={4} mt={4}>
                       {proj.contributors.map((c, j) => (
                         <Tooltip key={j} label={c.name} withArrow>
-                          {c.image ? (
-                            <img src={c.image} alt={c.name} style={{ width: 24, height: 24, borderRadius: "50%" }} />
-                          ) : (
-                            <Badge size="xs" variant="light">{c.name?.charAt(0)}</Badge>
-                          )}
+                          <Badge size="xs" variant="light">{c.name?.charAt(0)}</Badge>
                         </Tooltip>
                       ))}
                     </Group>
@@ -291,9 +318,6 @@ function LinkedinProfileCard({ profile, onSave }) {
               {recommendations.slice(0, 3).map((rec, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Group gap="sm" mb={4}>
-                    {rec.image && (
-                      <img src={rec.image} alt="" style={{ width: 28, height: 28, borderRadius: "50%" }} />
-                    )}
                     <Text size="sm" fw={500}>{rec.name}</Text>
                   </Group>
                   <Text size="xs" c="dimmed" lineClamp={3} style={{ fontStyle: "italic" }}>{rec.text}</Text>
@@ -311,9 +335,6 @@ function LinkedinProfileCard({ profile, onSave }) {
               {posts.slice(0, 5).map((p, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Group gap="sm" wrap="nowrap" align="start">
-                    {p.image && (
-                      <img src={p.image} alt="" style={{ width: 60, height: 40, borderRadius: 4, objectFit: "cover" }} />
-                    )}
                     <div style={{ flex: 1 }}>
                       <Text size="sm" lineClamp={2}>{p.title || p.text || "—"}</Text>
                       <Group gap="xs" mt={4}>
@@ -343,13 +364,6 @@ function LinkedinCompanyCard({ company, onSave }) {
       <Stack gap="md">
         <Group justify="space-between" align="start">
           <Group align="center" gap="md">
-            {company.logo && (
-              <img
-                src={company.logo}
-                alt={company.name}
-                style={{ width: 56, height: 56, borderRadius: 8, objectFit: "contain", background: "#f5f5f5" }}
-              />
-            )}
             <div>
               <Text fw={700} size="lg">{company.name}</Text>
               {company.slogan && <Text size="sm" c="dimmed">{company.slogan}</Text>}
@@ -539,24 +553,13 @@ function LinkedinPostCard({ post, onSave }) {
         </Card>
 
         {/* Thumbnail + Content */}
-        {(thumb || content) && (
-          <Group gap="md" align="start" wrap="nowrap">
-            {thumb && (
-              <img
-                src={thumb}
-                alt=""
-                style={{ width: 120, height: 80, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
-              />
-            )}
-            {content && (
-              <div style={{ flex: 1 }}>
-                <Text fw={600} size="sm" mb={4}>Content</Text>
-                <ScrollArea h={content.length > 400 ? 180 : undefined}>
-                  <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{content}</Text>
-                </ScrollArea>
-              </div>
-            )}
-          </Group>
+        {content && (
+          <div>
+            <Text fw={600} size="sm" mb={4}>Content</Text>
+            <ScrollArea h={content.length > 400 ? 180 : undefined}>
+              <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{content}</Text>
+            </ScrollArea>
+          </div>
         )}
 
         {/* Comments */}
@@ -567,9 +570,6 @@ function LinkedinPostCard({ post, onSave }) {
               {commentsArr.slice(0, 6).map((c, i) => (
                 <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
                   <Group gap={6} wrap="nowrap" mb={2}>
-                    {c.image && (
-                      <img src={c.image} alt="" style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0 }} />
-                    )}
                     <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || "Unknown"}</Text>
                     {c.datePublished && (
                       <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>{new Date(c.datePublished).toLocaleDateString()}</Text>
@@ -595,9 +595,6 @@ function LinkedinPostCard({ post, onSave }) {
             <Stack gap="xs">
               {moreArticles.slice(0, 5).map((a, i) => (
                 <Group key={i} gap="sm" wrap="nowrap">
-                  {a.image && (
-                    <img src={a.image} alt="" style={{ width: 48, height: 32, borderRadius: 4, objectFit: "cover" }} />
-                  )}
                   <div style={{ flex: 1 }}>
                     <Text size="sm" lineClamp={1} fw={500}>{decode(a.headline || a.name)}</Text>
                     {a.author && <Text size="xs" c="dimmed">{a.author}</Text>}
@@ -635,13 +632,6 @@ function XUserCard({ user, onSave }) {
       <Stack gap="md">
         <Group justify="space-between" align="start">
           <Group align="center" gap="md">
-            {user.profile_image_url && (
-              <img
-                src={user.profile_image_url.replace("_normal", "_200x200")}
-                alt={user.name}
-                style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "2px solid #e0e0e0" }}
-              />
-            )}
             <div>
               <Group gap="xs" align="center">
                 <Text fw={700} size="xl">{user.name}</Text>
@@ -764,9 +754,6 @@ function XUserListCard({ users, title }) {
         {users.slice(0, 12).map((u, i) => (
           <Card key={u.id || i} withBorder radius="sm" p="xs">
             <Group gap={8} wrap="nowrap" align="start">
-              {u.profile_image_url && (
-                <img src={u.profile_image_url} alt="" style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }} />
-              )}
               <div style={{ flex: 1, overflow: "hidden" }}>
                 <Group gap={4} wrap="nowrap">
                   <Text size="xs" fw={600} lineClamp={1}>{u.name}</Text>
@@ -828,7 +815,10 @@ function XResults({ data, onSave }) {
       {/* User Tweets */}
       {results.userTweets?.length > 0 && (
         <div>
-          <Divider label={`Tweets (${results.userTweets.length})`} my="xs" />
+          <Group justify="space-between" align="center" my="xs">
+            <Divider label={`Tweets (${results.userTweets.length})`} style={{ flex: 1 }} />
+            <SaveAllButton items={results.userTweets} onSave={onSave} type="tweet" />
+          </Group>
           <Stack gap="xs">
             {results.userTweets.map((t, i) => (
               <XTweetCard key={t.id || i} tweet={t} onSave={onSave} />
@@ -840,7 +830,10 @@ function XResults({ data, onSave }) {
       {/* User Mentions */}
       {results.userMentions?.tweets?.length > 0 && (
         <div>
-          <Divider label={`Mentions (${results.userMentions.tweets.length})`} my="xs" />
+          <Group justify="space-between" align="center" my="xs">
+            <Divider label={`Mentions (${results.userMentions.tweets.length})`} style={{ flex: 1 }} />
+            <SaveAllButton items={results.userMentions.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
+          </Group>
           <Stack gap="xs">
             {results.userMentions.tweets.map((t, i) => (
               <XTweetCard
@@ -869,7 +862,10 @@ function XResults({ data, onSave }) {
       {/* Search Tweets */}
       {results.searchTweets?.tweets?.length > 0 && (
         <div>
-          <Divider label={`Search Results (${results.searchTweets.tweets.length})`} my="xs" />
+          <Group justify="space-between" align="center" my="xs">
+            <Divider label={`Search Results (${results.searchTweets.tweets.length})`} style={{ flex: 1 }} />
+            <SaveAllButton items={results.searchTweets.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
+          </Group>
           <Stack gap="xs">
             {results.searchTweets.tweets.map((t, i) => (
               <XTweetCard
@@ -1291,9 +1287,9 @@ export default function CompetitorLookup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: 1,
-          platform_user_id: data.author_id || "",
+          platform_user_id: String(data.author_id || data._authorUsername || "unknown"),
           username: data._authorUsername || "",
-          platform_post_id: data.id,
+          platform_post_id: String(data.id || Date.now()),
           content: data.text,
           published_at: data.created_at,
           likes: metrics.like_count ?? 0,
@@ -1350,9 +1346,9 @@ export default function CompetitorLookup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: 8, // YouTube
-          platform_user_id: data.channelId || "",
+          platform_user_id: String(data.channelId || data.channelTitle || "unknown"),
           username: data.channelTitle || "",
-          platform_post_id: data.id,
+          platform_post_id: String(data.id || data.videoId || Date.now()),
           content: data.title + (data.description ? "\n\n" + data.description : ""),
           published_at: data.publishedAt,
           likes: data.likes ?? 0,
@@ -1407,20 +1403,39 @@ export default function CompetitorLookup() {
       return;
     }
     if (type === "post" && data) {
+      const platformUserId = String(
+        data.user?.pk || data.user?.id || data.owner?.pk || data.owner?.id ||
+        data.user?.username || data.owner?.username || "unknown"
+      );
+      const platformPostId = String(
+        data.pk || data.id || data.media_id || data.code ||
+        data.shortcode || data.ig_id || data.fbid || Date.now()
+      );
+      let publishedAt = null;
+      if (data.taken_at) {
+        const d = typeof data.taken_at === "number"
+          ? new Date(data.taken_at * 1000)
+          : new Date(data.taken_at);
+        if (!isNaN(d.getTime())) publishedAt = d.toISOString();
+      }
+      const ownerUsername = data.user?.username || data.owner?.username || "";
+      const ownerFullName = data.user?.full_name || data.owner?.full_name || "";
       const resp = await fetch(apiUrl("/api/posts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 2, // Instagram
-          platform_user_id: data.user?.pk || data.owner?.id || "",
-          username: data.user?.username || data.owner?.username || "",
-          platform_post_id: data.pk || data.id || data.code || "",
+          platform_id: 2,
+          platform_user_id: platformUserId,
+          username: ownerUsername || ownerFullName || platformUserId,
+          platform_post_id: platformPostId,
           content: data.caption?.text || data.caption || "",
-          published_at: data.taken_at ? new Date(data.taken_at * 1000).toISOString() : null,
+          published_at: publishedAt,
           likes: data.like_count ?? data.likes ?? 0,
           shares: 0,
           comments: data.comment_count ?? data.comments ?? 0,
           user_id: currentUserId,
+          author_name: ownerFullName || ownerUsername,
+          author_handle: ownerUsername,
         }),
       });
       if (!resp.ok) {
@@ -1476,11 +1491,13 @@ export default function CompetitorLookup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: 5, // TikTok
-          platform_user_id: data.author?.id || data.author?.uniqueId || "",
-          username: data.author?.uniqueId || data.author?.nickname || "",
-          platform_post_id: data.id || data.aweme_id || "",
+          platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.uid || "unknown"),
+          username: data.author?.uniqueId || data.author?.nickname || data.author?.unique_id || "",
+          author_name: data.author?.nickname || data.author?.uniqueId || "",
+          author_handle: data.author?.uniqueId || data.author?.unique_id || "",
+          platform_post_id: String(data.id || data.aweme_id || data.video?.id || Date.now()),
           content: data.desc || data.title || "",
-          published_at: data.createTime ? new Date(data.createTime * 1000).toISOString() : null,
+          published_at: (() => { if (!data.createTime) return null; const d = new Date(typeof data.createTime === 'number' ? data.createTime * 1000 : data.createTime); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
           likes: data.stats?.diggCount ?? data.statsV2?.diggCount ?? 0,
           shares: data.stats?.shareCount ?? data.statsV2?.shareCount ?? 0,
           comments: data.stats?.commentCount ?? data.statsV2?.commentCount ?? 0,
@@ -1540,15 +1557,17 @@ export default function CompetitorLookup() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: 6, // Reddit
-          platform_user_id: data.author || data.author_fullname || "",
+          platform_user_id: String(data.author || data.author_fullname || "unknown"),
           username: data.author || "",
-          platform_post_id: data.id || data.name || "",
+          platform_post_id: String(data.id || data.name || Date.now()),
           content: data.title || data.selftext || "",
-          published_at: data.created_utc ? new Date(data.created_utc * 1000).toISOString() : null,
+          published_at: (() => { if (!data.created_utc) return null; const d = new Date(typeof data.created_utc === 'number' ? data.created_utc * 1000 : data.created_utc); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
           likes: data.score ?? data.ups ?? 0,
           shares: 0,
           comments: data.num_comments ?? 0,
           user_id: currentUserId,
+          author_name: data.author || "",
+          author_handle: data.author || "",
         }),
       });
       if (!resp.ok) {
@@ -1865,9 +1884,6 @@ export default function CompetitorLookup() {
         <Stack gap="sm">
           <Group justify="space-between" align="start">
             <Group gap="sm">
-              {data.thumbnails?.medium?.url && (
-                <img src={data.thumbnails.medium.url} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />
-              )}
               <div>
                 <Title order={4}>{data.title}</Title>
                 {data.customUrl && <Text size="xs" c="dimmed">{data.customUrl}</Text>}
@@ -1877,10 +1893,6 @@ export default function CompetitorLookup() {
               <IconBrandYoutube size={14} style={{ marginRight: 4 }} /> Channel
             </Badge>
           </Group>
-
-          {data.bannerUrl && (
-            <img src={data.bannerUrl} alt="banner" style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: 8 }} />
-          )}
 
           <Group gap="lg" justify="center">
             {[
@@ -1919,42 +1931,29 @@ export default function CompetitorLookup() {
 
   function YTVideoCard({ video, onSave, compact }) {
     if (!video) return null;
-    const thumb = video.thumbnails?.medium?.url || video.thumbnails?.default?.url;
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Group gap="sm" align="start" wrap="nowrap">
-          {thumb && (
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <img src={thumb} alt="" style={{ width: compact ? 120 : 168, borderRadius: 6 }} />
-              {video.duration && (
-                <Badge size="xs" style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,.8)", color: "#fff" }}>
-                  {parseDuration(video.duration)}
-                </Badge>
-              )}
-            </div>
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
+          <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}{video.duration ? ` · ${parseDuration(video.duration)}` : ""}</Text>
+          <Group gap="xs">
+            {[
+              { label: "Views", val: video.views },
+              { label: "Likes", val: video.likes },
+              { label: "Comments", val: video.comments },
+            ].map(({ label, val }) => (
+              <Badge key={label} variant="light" size="xs">{label}: {fmtNum(val)}</Badge>
+            ))}
+          </Group>
+          {!compact && video.description && (
+            <Text size="xs" c="dimmed" lineClamp={2}>{video.description}</Text>
           )}
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-            <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
-            <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}</Text>
-            <Group gap="xs">
-              {[
-                { label: "Views", val: video.views },
-                { label: "Likes", val: video.likes },
-                { label: "Comments", val: video.comments },
-              ].map(({ label, val }) => (
-                <Badge key={label} variant="light" size="xs">{label}: {fmtNum(val)}</Badge>
-              ))}
+          {onSave && (
+            <Group justify="flex-end">
+              <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
             </Group>
-            {!compact && video.description && (
-              <Text size="xs" c="dimmed" lineClamp={2}>{video.description}</Text>
-            )}
-            {onSave && (
-              <Group justify="flex-end">
-                <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
-              </Group>
-            )}
-          </Stack>
-        </Group>
+          )}
+        </Stack>
       </Card>
     );
   }
@@ -1966,7 +1965,6 @@ export default function CompetitorLookup() {
         {comments.map((c, i) => (
           <Card key={i} withBorder radius="sm" p="xs">
             <Group gap={6} mb={4} wrap="nowrap">
-              {c.authorImage && <img src={c.authorImage} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />}
               <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
               {c.likes > 0 && <Badge size="xs" variant="light">{c.likes} ♥</Badge>}
             </Group>
@@ -2038,7 +2036,10 @@ export default function CompetitorLookup() {
 
         {results.channelVideos?.length > 0 && (
           <>
-            <Divider label={`Channel Videos (${results.channelVideos.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Channel Videos (${results.channelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={results.channelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+            </Group>
             <Stack gap="xs">
               {results.channelVideos.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
@@ -2082,7 +2083,10 @@ export default function CompetitorLookup() {
 
         {results.search?.length > 0 && (
           <>
-            <Divider label={`Search Results (${results.search.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Search Results (${results.search.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={results.search.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+            </Group>
             <Stack gap="xs">
               {results.search.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
@@ -2099,13 +2103,11 @@ export default function CompetitorLookup() {
   function IgProfileCard({ profile }) {
     if (!profile) return null;
     const p = profile.data?.user || profile.data || profile.user || profile;
-    const pic = p.profile_pic_url_hd || p.profile_pic_url || p.profilePicture;
     return (
       <Card withBorder radius="md" shadow="sm">
         <Stack gap="sm">
           <Group justify="space-between" align="start">
             <Group gap="sm">
-              {pic && <img src={pic} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />}
               <div>
                 <Group gap="xs">
                   <Title order={4}>{p.full_name || p.fullName || p.username}</Title>
@@ -2149,49 +2151,35 @@ export default function CompetitorLookup() {
   function IgPostCard({ post, onSave, compact }) {
     if (!post) return null;
     const caption = post.caption?.text || post.caption || "";
-    const thumb =
-      post.image_versions2?.candidates?.[0]?.url ||
-      post.thumbnail_url ||
-      post.display_url ||
-      post.carousel_media?.[0]?.image_versions2?.candidates?.[0]?.url;
     const isVideo = post.media_type === 2 || post.video_url || post.is_video;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Group gap="sm" align="start" wrap="nowrap">
-          {thumb && (
-            <div style={{ position: "relative", flexShrink: 0 }}>
-              <img src={thumb} alt="" style={{ width: compact ? 100 : 140, height: compact ? 100 : 140, objectFit: "cover", borderRadius: 6 }} />
-              {isVideo && <Badge size="xs" style={{ position: "absolute", top: 4, left: 4, background: "rgba(0,0,0,.7)", color: "#fff" }}>Video</Badge>}
-              {post.carousel_media_count > 1 && (
-                <Badge size="xs" style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.7)", color: "#fff" }}>
-                  1/{post.carousel_media_count}
-                </Badge>
-              )}
-            </div>
-          )}
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-            <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>No caption</i>}</Text>
-            <Text size="xs" c="dimmed">
-              {post.user?.username || post.owner?.username || ""}
-              {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
-            </Text>
-            <Group gap="xs">
-              {[
-                { label: "❤️", val: post.like_count ?? post.likes },
-                { label: "💬", val: post.comment_count ?? post.comments },
-                { label: "👁", val: post.play_count || post.video_view_count },
-              ].filter(x => x.val != null).map(({ label, val }) => (
-                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
-              ))}
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Group gap="xs">
+            {isVideo && <Badge size="xs" variant="light">Video</Badge>}
+            {post.carousel_media_count > 1 && <Badge size="xs" variant="light">Carousel ({post.carousel_media_count})</Badge>}
+          </Group>
+          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>No caption</i>}</Text>
+          <Text size="xs" c="dimmed">
+            {post.user?.username || post.owner?.username || ""}
+            {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
+          </Text>
+          <Group gap="xs">
+            {[
+              { label: "❤️", val: post.like_count ?? post.likes },
+              { label: "💬", val: post.comment_count ?? post.comments },
+              { label: "👁", val: post.play_count || post.video_view_count },
+            ].filter(x => x.val != null).map(({ label, val }) => (
+              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+            ))}
+          </Group>
+          {onSave && (
+            <Group justify="flex-end">
+              <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
             </Group>
-            {onSave && (
-              <Group justify="flex-end">
-                <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
-              </Group>
-            )}
-          </Stack>
-        </Group>
+          )}
+        </Stack>
       </Card>
     );
   }
@@ -2204,7 +2192,6 @@ export default function CompetitorLookup() {
         {list.slice(0, 30).map((c, i) => (
           <Card key={i} withBorder radius="sm" p="xs">
             <Group gap={6} mb={4} wrap="nowrap">
-              {c.user?.profile_pic_url && <img src={c.user.profile_pic_url} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />}
               <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.user?.username || c.username || "User"}</Text>
               {(c.comment_like_count > 0 || c.likes > 0) && <Badge size="xs" variant="light">{c.comment_like_count || c.likes} ♥</Badge>}
             </Group>
@@ -2215,28 +2202,29 @@ export default function CompetitorLookup() {
     );
   }
 
-  function IgReelCard({ reel, compact }) {
+  function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
-    const thumb = reel.image_versions2?.candidates?.[0]?.url || reel.thumbnail_url || reel.display_url;
     const caption = reel.caption?.text || reel.caption || "";
     return (
       <Card withBorder radius="md" shadow="sm" p="xs">
-        <Group gap="sm" align="start" wrap="nowrap">
-          {thumb && <img src={thumb} alt="" style={{ width: 90, height: 120, objectFit: "cover", borderRadius: 6 }} />}
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-            <Text size="xs" lineClamp={2} fw={500}>{caption || <i>No caption</i>}</Text>
-            <Text size="xs" c="dimmed">{reel.user?.username || ""}</Text>
-            <Group gap="xs">
-              {[
-                { label: "▶", val: reel.play_count || reel.video_view_count },
-                { label: "❤️", val: reel.like_count ?? reel.likes },
-                { label: "💬", val: reel.comment_count ?? reel.comments },
-              ].filter(x => x.val != null).map(({ label, val }) => (
-                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
-              ))}
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Text size="xs" lineClamp={2} fw={500}>{caption || <i>No caption</i>}</Text>
+          <Text size="xs" c="dimmed">{reel.user?.username || ""}</Text>
+          <Group gap="xs">
+            {[
+              { label: "▶", val: reel.play_count || reel.video_view_count },
+              { label: "❤️", val: reel.like_count ?? reel.likes },
+              { label: "💬", val: reel.comment_count ?? reel.comments },
+            ].filter(x => x.val != null).map(({ label, val }) => (
+              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+            ))}
+          </Group>
+          {onSave && (
+            <Group justify="flex-end">
+              <SaveButton label="Save Reel" onSave={() => onSave("post", reel)} />
             </Group>
-          </Stack>
-        </Group>
+          )}
+        </Stack>
       </Card>
     );
   }
@@ -2292,7 +2280,10 @@ export default function CompetitorLookup() {
 
         {postsArr.length > 0 && (
           <>
-            <Divider label={`User Posts (${postsArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`User Posts (${postsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={postsArr} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {postsArr.map((p, i) => <IgPostCard key={p.pk || p.id || i} post={p} onSave={onSave} compact />)}
             </Stack>
@@ -2315,18 +2306,24 @@ export default function CompetitorLookup() {
 
         {reelsSearchArr.length > 0 && (
           <>
-            <Divider label={`Reels Search (${reelsSearchArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Reels Search (${reelsSearchArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={reelsSearchArr} onSave={onSave} type="post" />
+            </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-              {reelsSearchArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} compact />)}
+              {reelsSearchArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} onSave={onSave} compact />)}
             </SimpleGrid>
           </>
         )}
 
         {userReelsArr.length > 0 && (
           <>
-            <Divider label={`User Reels (${userReelsArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`User Reels (${userReelsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={userReelsArr} onSave={onSave} type="post" />
+            </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-              {userReelsArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} compact />)}
+              {userReelsArr.map((r, i) => <IgReelCard key={r.pk || r.id || i} reel={r} onSave={onSave} compact />)}
             </SimpleGrid>
           </>
         )}
@@ -2334,16 +2331,7 @@ export default function CompetitorLookup() {
         {highlightItems.length > 0 && (
           <>
             <Divider label={`Highlight (${highlightItems.length} stories)`} labelPosition="center" />
-            <SimpleGrid cols={{ base: 2, sm: 3, md: 4 }} spacing="xs">
-              {highlightItems.map((item, i) => {
-                const src = item.image_versions2?.candidates?.[0]?.url || item.display_url;
-                return src ? (
-                  <Card key={i} withBorder radius="sm" p={4}>
-                    <img src={src} alt="" style={{ width: "100%", borderRadius: 4 }} />
-                  </Card>
-                ) : null;
-              })}
-            </SimpleGrid>
+            <Text size="sm" c="dimmed">{highlightItems.length} highlight stories found.</Text>
           </>
         )}
       </Stack>
@@ -2356,13 +2344,11 @@ export default function CompetitorLookup() {
     if (!profile) return null;
     const u = profile.user || profile.data?.user || profile;
     const stats = profile.stats || profile.statsV2 || u.stats || {};
-    const pic = u.avatarLarger || u.avatarMedium || u.avatarThumb;
     return (
       <Card withBorder radius="md" shadow="sm">
         <Stack gap="sm">
           <Group justify="space-between" align="start">
             <Group gap="sm">
-              {pic && <img src={pic} alt="" style={{ width: 64, height: 64, borderRadius: "50%" }} />}
               <div>
                 <Group gap="xs">
                   <Title order={4}>{u.nickname || u.uniqueId}</Title>
@@ -2407,43 +2393,34 @@ export default function CompetitorLookup() {
   function TkVideoCard({ video, onSave, compact }) {
     if (!video) return null;
     const desc = video.desc || video.title || "";
-    const thumb =
-      video.video?.cover ||
-      video.video?.dynamicCover ||
-      video.video?.originCover;
     const stats = video.stats || video.statsV2 || {};
     const author = video.author || {};
     const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Group gap="sm" align="start" wrap="nowrap">
-          {thumb && (
-            <img src={thumb} alt="" style={{ width: compact ? 80 : 110, height: compact ? 110 : 150, objectFit: "cover", borderRadius: 6 }} />
-          )}
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-            <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>No description</i>}</Text>
-            <Text size="xs" c="dimmed">
-              {author.uniqueId || author.nickname || ""}
-              {created ? ` · ${created}` : ""}
-            </Text>
-            <Group gap="xs">
-              {[
-                { label: "▶", val: stats.playCount },
-                { label: "❤️", val: stats.diggCount },
-                { label: "💬", val: stats.commentCount },
-                { label: "🔗", val: stats.shareCount },
-              ].filter(x => x.val != null).map(({ label, val }) => (
-                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
-              ))}
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>No description</i>}</Text>
+          <Text size="xs" c="dimmed">
+            {author.uniqueId || author.nickname || ""}
+            {created ? ` · ${created}` : ""}
+          </Text>
+          <Group gap="xs">
+            {[
+              { label: "▶", val: stats.playCount },
+              { label: "❤️", val: stats.diggCount },
+              { label: "💬", val: stats.commentCount },
+              { label: "🔗", val: stats.shareCount },
+            ].filter(x => x.val != null).map(({ label, val }) => (
+              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+            ))}
+          </Group>
+          {onSave && (
+            <Group justify="flex-end">
+              <SaveButton label="Save Post" onSave={() => onSave("post", video)} />
             </Group>
-            {onSave && (
-              <Group justify="flex-end">
-                <SaveButton label="Save Post" onSave={() => onSave("post", video)} />
-              </Group>
-            )}
-          </Stack>
-        </Group>
+          )}
+        </Stack>
       </Card>
     );
   }
@@ -2456,9 +2433,6 @@ export default function CompetitorLookup() {
         {list.slice(0, 30).map((c, i) => (
           <Card key={c.cid || i} withBorder radius="sm" p="xs">
             <Group gap={6} mb={4} wrap="nowrap">
-              {c.user?.avatar_thumbnail?.url_list?.[0] && (
-                <img src={c.user.avatar_thumbnail.url_list[0]} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
-              )}
               <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>
                 {c.user?.nickname || c.user?.unique_id || "User"}
               </Text>
@@ -2481,11 +2455,9 @@ export default function CompetitorLookup() {
       <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
         {list.slice(0, 30).map((u, i) => {
           const user = u.user_info || u;
-          const pic = user.avatar_thumb?.url_list?.[0] || user.avatarThumb || user.avatar_url;
           return (
             <Card key={user.uid || user.id || i} withBorder radius="sm" p="xs">
               <Group gap="sm" wrap="nowrap">
-                {pic && <img src={pic} alt="" style={{ width: 36, height: 36, borderRadius: "50%" }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Text size="sm" fw={600} lineClamp={1}>{user.nickname || user.unique_id || user.uniqueId}</Text>
                   <Text size="xs" c="dimmed" lineClamp={1}>@{user.unique_id || user.uniqueId}</Text>
@@ -2557,7 +2529,10 @@ export default function CompetitorLookup() {
 
         {profileVideos.length > 0 && (
           <>
-            <Divider label={`Profile Videos (${profileVideos.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Profile Videos (${profileVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={profileVideos} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {profileVideos.map((v, i) => <TkVideoCard key={v.id || i} video={v} onSave={onSave} compact />)}
             </Stack>
@@ -2609,7 +2584,10 @@ export default function CompetitorLookup() {
 
         {searchHashtagList.length > 0 && (
           <>
-            <Divider label={`Hashtag Videos (${searchHashtagList.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Hashtag Videos (${searchHashtagList.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={searchHashtagList} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {searchHashtagList.map((v, i) => <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />)}
             </Stack>
@@ -2618,7 +2596,10 @@ export default function CompetitorLookup() {
 
         {searchKeywordList.length > 0 && (
           <>
-            <Divider label={`Keyword Search (${searchKeywordList.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Keyword Search (${searchKeywordList.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={searchKeywordList.map(item => item.aweme_info || item)} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {searchKeywordList.map((item, i) => {
                 const v = item.aweme_info || item;
@@ -2690,41 +2671,34 @@ export default function CompetitorLookup() {
     if (!post) return null;
     const title = post.title || "";
     const body = post.selftext || post.body || "";
-    const thumb = post.thumbnail && post.thumbnail !== "self" && post.thumbnail !== "default" && post.thumbnail !== "nsfw"
-      ? post.thumbnail : null;
     const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Group gap="sm" align="start" wrap="nowrap">
-          {thumb && (
-            <img src={thumb} alt="" style={{ width: compact ? 60 : 80, height: compact ? 60 : 80, objectFit: "cover", borderRadius: 6 }} />
-          )}
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-            <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>No title</i>}</Text>
-            {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
-            <Text size="xs" c="dimmed">
-              {post.author ? `u/${post.author}` : ""}
-              {post.subreddit ? ` · r/${post.subreddit}` : ""}
-              {created ? ` · ${created}` : ""}
-            </Text>
-            <Group gap="xs">
-              {[
-                { label: "⬆", val: post.score ?? post.ups },
-                { label: "💬", val: post.num_comments },
-                { label: "🏆", val: post.total_awards_received },
-              ].filter(x => x.val != null && x.val > 0).map(({ label, val }) => (
-                <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
-              ))}
-              {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>No title</i>}</Text>
+          {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
+          <Text size="xs" c="dimmed">
+            {post.author ? `u/${post.author}` : ""}
+            {post.subreddit ? ` · r/${post.subreddit}` : ""}
+            {created ? ` · ${created}` : ""}
+          </Text>
+          <Group gap="xs">
+            {[
+              { label: "⬆", val: post.score ?? post.ups },
+              { label: "💬", val: post.num_comments },
+              { label: "🏆", val: post.total_awards_received },
+            ].filter(x => x.val != null && x.val > 0).map(({ label, val }) => (
+              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+            ))}
+            {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+          </Group>
+          {onSave && (
+            <Group justify="flex-end">
+              <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
             </Group>
-            {onSave && (
-              <Group justify="flex-end">
-                <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
-              </Group>
-            )}
-          </Stack>
-        </Group>
+          )}
+        </Stack>
       </Card>
     );
   }
@@ -2818,7 +2792,10 @@ export default function CompetitorLookup() {
 
         {subredditPostsArr.length > 0 && (
           <>
-            <Divider label={`Subreddit Posts (${subredditPostsArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Subreddit Posts (${subredditPostsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={subredditPostsArr} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {subredditPostsArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
             </Stack>
@@ -2827,7 +2804,10 @@ export default function CompetitorLookup() {
 
         {subredditSearchArr.length > 0 && (
           <>
-            <Divider label={`Subreddit Search (${subredditSearchArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Subreddit Search (${subredditSearchArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={subredditSearchArr} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {subredditSearchArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
             </Stack>
@@ -2843,7 +2823,10 @@ export default function CompetitorLookup() {
 
         {searchArr.length > 0 && (
           <>
-            <Divider label={`Search Results (${searchArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Search Results (${searchArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={searchArr} onSave={onSave} type="post" />
+            </Group>
             <Stack gap="xs">
               {searchArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
             </Stack>
