@@ -108,35 +108,12 @@ export default function Reports() {
         mb="lg"
       />
 
-      <Button onClick={() => {
-          // kick off analysis based on current limit and rawPosts
+      <Button
+        onClick={async () => {
+          // perform analysis once per click
           setLoading(true);
           setAnalysisStarted(true);
-        }} mb="sm">
-        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
-      </Button>
-
-      <Select
-        label="Analyze last"
-        data={[
-          { value: '5', label: '5 posts' },
-          { value: '10', label: '10 posts' },
-          { value: '15', label: '15 posts' },
-          { value: '20', label: '20 posts' },
-          { value: '50', label: '50 posts' },
-        ]}
-        value={String(postLimit)}
-        onChange={(val) => setPostLimit(Number(val) || 0)}
-        mb="lg"
-        disabled={analysisStarted}
-      />
-
-      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
-
-      {/* perform analysis when requested */}
-      {analysisStarted && (
-        (() => {
-          const doAnalysis = async () => {
+          try {
             let posts = rawPosts.slice();
             if (postLimit > 0 && posts.length > postLimit) {
               posts = posts.slice(-postLimit);
@@ -156,13 +133,32 @@ export default function Reports() {
               tone: post.Tone || null,
             }));
             setToneEngagementData(chartData);
+          } finally {
             setLoading(false);
-          };
-          // immediately invoke
-          doAnalysis();
-          return null;
-        })()
-      )}
+          }
+        }}
+        mb="sm"
+        disabled={loading}
+      >
+        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
+      </Button>
+
+      <Select
+        label="Analyze last"
+        data={[
+          { value: '5', label: '5 posts' },
+          { value: '10', label: '10 posts' },
+          { value: '15', label: '15 posts' },
+          { value: '20', label: '20 posts' },
+          { value: '50', label: '50 posts' },
+        ]}
+        value={String(postLimit)}
+        onChange={(val) => setPostLimit(Number(val) || 0)}
+        mb="lg"
+        disabled={analysisStarted}
+      />
+
+      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
 
       {/* Saved Posts Source-Based Engagement Chart */}
       <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
