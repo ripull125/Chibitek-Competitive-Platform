@@ -9,6 +9,7 @@ const ALLOWED_EMAILS = new Set([
   "evanchin0322@gmail.com",
   "ethan.j.cha@gmail.com",
   "davidpaul.villarosa@gmail.com",
+  "andreasbratu26@gmail.com",
 ]);
 
 export function isAuthorizedEmail(email) {

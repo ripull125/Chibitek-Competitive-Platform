@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
 import { supabase } from './supabase.js';
+import { categorizeTone } from './tone.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -234,8 +235,6 @@ const port = process.env.PORT || 8080;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
-
-app.use(express.json());
 
 app.post("/write", async (req, res) => {
   const { message } = req.body;

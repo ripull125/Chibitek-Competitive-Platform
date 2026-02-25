@@ -46,12 +46,12 @@ export async function suggestKeywordsForBooks(books = []) {
     return books.map((book) => ({ ...book, keywords: [] }));
   }
 
-  const userPayload = books.map((book, index) => ({
-    index,
-    title: book.title,
-    price: book.price,
-    availability: book.availability,
-  }));
+//   const userPayload = books.map((book, index) => ({
+//     index,
+//     title: book.title,
+//     price: book.price,
+//     availability: book.availability,
+//   }));
 
   const response = await openai.chat.completions.create({
     model: chatModel,
@@ -69,7 +69,7 @@ export async function suggestKeywordsForBooks(books = []) {
     ],
   });
 
-  console.log("Query Complete")
+//   console.log("Query Complete")
 
   const content = response.choices?.[0]?.message?.content;
   return parseKeywordsResponse(content, books);
