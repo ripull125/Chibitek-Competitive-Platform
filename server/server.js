@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
 import { supabase } from './supabase.js';
+import { categorizeTone } from './tone.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -71,22 +72,10 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '10mb' }));
 
-const { GITHUB_TOKEN } = process.env;
-const githubAiEndpoint = 'https://models.github.ai/inference';
-const chatModel = 'openai/gpt-5-nano';
-const openai = new OpenAI({ baseURL: githubAiEndpoint, apiKey: GITHUB_TOKEN });
-
-const getUserIdFromRequest = (req) =>
-  req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
-
-const requireUserId = (req, res) => {
-  const userId = getUserIdFromRequest(req);
-  if (!userId) {
-    res.status(401).json({ error: 'Missing user id.' });
-    return null;
-  }
-  return String(userId);
-};
+const { OPENAI_API_KEY } = process.env;
+const chatGptModel = 'gpt-4o-mini';
+const systemPrompt =
+  'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.';
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
@@ -208,8 +197,6 @@ app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
 
-app.use(express.json());
-
 app.post("/write", async (req, res) => {
   const { message } = req.body;
   const { data, error } = await supabase
@@ -283,16 +270,22 @@ app.post('/api/chat', async (req, res) => {
       ? [...sanitizedMessages, { role: 'user', content: `Attachment context:\n${attachmentContext}` }]
       : sanitizedMessages;
 
-    const response = await openai.chat.completions.create({
-      model: chatModel,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
-        },
-        ...userMessages,
-      ],
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: chatGptModel, // 'gpt-4o-mini'
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          ...userMessages,
+        ],
+      }),
     });
 
     const reply = response.choices?.[0]?.message?.content || 'No response from model.';
@@ -300,6 +293,20 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('Chat completion error:', error);
     return res.status(500).json({ error: 'Chat request failed.' });
+  }
+});
+
+// Tone classification endpoint: expects { message: string }
+app.post('/api/tone', async (req, res) => {
+  const { message } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'Missing message in body' });
+
+  try {
+    const result = await categorizeTone(message);
+    return res.json({ success: true, result });
+  } catch (err) {
+    console.error('Tone classification error:', err);
+    return res.status(500).json({ error: 'Tone classification failed' });
   }
 });
 

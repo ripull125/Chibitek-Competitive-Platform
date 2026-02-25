@@ -1,58 +1,18 @@
+import { apiBase } from '../utils/api';
+
 /**
  * @typedef {Object} UniversalDataPoint
  * @property {string} Name/Source - The username or source of the data
  * @property {number} Engagement - Total engagement count (likes + retweets + replies + quotes + bookmarks)
  * @property {string} Message - The post text content
- * @property {string} Tone - Categorized tone: 'positive', 'negative', or 'neutral'
  */
 
-/**
- * Categorizes message tone based on sample sentiment words
- * @param {string} message - The post text content
- * @returns {string} - Tone category: 'positive', 'negative', or 'neutral'
- */
-function categorizeTone(message) {
-  const text = (message || '').toLowerCase();
-  
-  const positiveWords = [
-    'great', 'excellent', 'love', 'amazing', 'wonderful', 'fantastic', 'awesome',
-    'best', 'perfect', 'good', 'happy', 'excited', 'brilliant', 'outstanding',
-    'impressive', 'success', 'thrilled', 'delighted', 'superior', 'powerful',
-    'incredible', 'remarkable', 'beautiful'
-  ];
-  
-  const negativeWords = [
-    'bad', 'terrible', 'hate', 'awful', 'horrible', 'worst', 'poor',
-    'disappointing', 'failed', 'sad', 'angry', 'frustrated', 'disgusting',
-    'useless', 'broken', 'disaster', 'crisis', 'problem', 'wrong', 'issue',
-    'error', 'fail', 'complaint'
-  ];
-  
-  let positiveCount = 0;
-  let negativeCount = 0;
-  
-  positiveWords.forEach(word => {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    positiveCount += (text.match(regex) || []).length;
-  });
-  
-  negativeWords.forEach(word => {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    negativeCount += (text.match(regex) || []).length;
-  });
-  
-  if (positiveCount > negativeCount) {
-    return 'positive';
-  } else if (negativeCount > positiveCount) {
-    return 'negative';
-  }
-  return 'neutral';
-}
+// Client-side sentiment removed.  labels will be provided by the server LLM via `/api/assign-strategy`.
 
 /**
  * Converts X/Twitter API response data into a universal data format
  * @param {Object} input - The X API response object
- * @returns {UniversalDataPoint[]} Array of universal data points with Name/Source, Engagement, Message, and Tone
+ * @returns {UniversalDataPoint[]} Array of universal data points with Name/Source, Engagement, and Message
  */
 function convertXInput(input) {
   // Validate input
@@ -79,19 +39,100 @@ function convertXInput(input) {
     return {
       'Name/Source': source,
       'Engagement': engagement,
-      'Message': messageText,
-      'Tone': categorizeTone(messageText)
+      'Message': messageText
     };
   });
 }
 
 // Export for use in other modules (ES6)
-export { convertXInput, convertSavedPosts, categorizeTone };
+export { convertXInput, convertSavedPosts };
+
+/**
+ * Send universal-format posts to the server for LLM-based tone analysis.
+ * Calls /api/tone for each post individually using Cerebras.
+ * @param {Array<Object>} universalPosts - array of objects with keys 'Name/Source', 'Engagement', 'Message'
+ * @returns {Promise<Array<Object>>} - resolved array of posts augmented with `Tone`
+ */
+// simple fetch wrapper with timeout support
+async function fetchWithTimeout(resource, options = {}, timeout = 5000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(resource, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+async function analyzeUniversalPosts(universalPosts) {
+  if (!Array.isArray(universalPosts)) throw new Error('universalPosts must be an array');
+
+  const analyzed = [];
+  
+  for (const post of universalPosts) {
+    // ensure there's a non-empty message to send; server rejects falsy
+    const msgText = String(post.Message || '').trim();
+    if (!msgText) {
+      analyzed.push({ ...post, Tone: null, _toneError: 'empty message' });
+      continue;
+    }
+
+    let resp;
+    let lastError;
+
+    // try primary backend first if configured
+    const primaryUrl = apiBase ? `${apiBase.replace(/\/+$/,'')}/api/tone` : null;
+    const fallbackUrl = 'http://localhost:8080/api/tone';
+
+    const tryUrls = primaryUrl ? [primaryUrl, fallbackUrl] : [fallbackUrl];
+
+    for (const url of tryUrls) {
+      try {
+        resp = await fetchWithTimeout(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msgText }),
+        }, 5000);
+        if (resp && resp.ok) break; // success, exit loop
+        if (resp) {
+          lastError = `${resp.status}: ${await resp.text().catch(() => '')}`;
+        }
+      } catch (err) {
+        lastError = err.message;
+        // if abort due to timeout, continue to next URL
+      }
+    }
+
+    if (!resp || !resp.ok) {
+      console.error('Tone API error for message:', lastError);
+      analyzed.push({ ...post, Tone: null, _toneError: lastError });
+      continue;
+    }
+
+    try {
+      const data = await resp.json();
+      const toneLabel = data.result?.normalized?.tone || data.result?.parsed?.tone || null;
+      analyzed.push({
+        ...post,
+        Tone: toneLabel,
+        _toneRaw: data.result?.raw,
+        _toneParsed: data.result?.parsed,
+      });
+    } catch (err) {
+      console.error('Failed parsing tone response:', err);
+      analyzed.push({ ...post, Tone: null, _toneError: String(err.message) });
+    }
+  }
+
+  return analyzed;
+}
+
+export { analyzeUniversalPosts };
 
 /**
  * Converts SavedPosts API response data into a universal data format
  * @param {Object[]} posts - Array of saved posts from the API
- * @returns {UniversalDataPoint[]} Array of universal data points with tone categorization
+ * @returns {UniversalDataPoint[]} Array of universal data points
  */
 function convertSavedPosts(posts) {
   if (!Array.isArray(posts)) {
@@ -106,8 +147,7 @@ function convertSavedPosts(posts) {
     return {
       'Name/Source': 'Saved Posts',
       'Engagement': engagement,
-      'Message': messageText,
-      'Tone': categorizeTone(messageText)
+      'Message': messageText
     };
   });
 }
@@ -137,7 +177,7 @@ const exampleInput = {
       "id": "1998536971346690088"
     }
   ],
-  "_usedBackend": "http://localhost:8080"
+  _usedBackend: apiBase || 'unknown'
 };
 
 console.log('=== Testing convertXInput ===');

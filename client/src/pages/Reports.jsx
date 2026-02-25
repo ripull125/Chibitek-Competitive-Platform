@@ -1,27 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
-import { convertSavedPosts } from "./DataConverter";
+import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import {
-  Badge,
-  Button,
-  Card,
-  Container,
-  Group,
-  Stack,
-  Text,
-  Title,
-  Switch,
-} from "@mantine/core";
+import { Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
 import { IconDownload } from "@tabler/icons-react";
+import {
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 
+// holds posts already converted to universal format
+// previous version used a global var; switched to component state instead
+
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
+  const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
+  const [convertedData, setConvertedData] = useState([]);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,11 +50,12 @@ export default function Reports() {
     };
   }, []);
 
-  // Fetch and process saved posts
+  // Fetch saved posts once when component mounts. analysis is triggered manually.
   useEffect(() => {
     if (!currentUserId) {
       setToneEngagementData([]);
       setLoading(false);
+      setConvertedData([]);
       return;
     }
 
@@ -54,6 +64,8 @@ export default function Reports() {
       .then((data) => {
         const posts = data.posts || [];
         const converted = convertSavedPosts(posts);
+
+        setConvertedData(converted);
 
         // Create chart data with index for each post
         const chartData = converted.map((post, index) => ({
@@ -107,71 +119,148 @@ export default function Reports() {
     }
   };
 
-  const COLORS = {
-    positive: "#51cf66",
-    negative: "#ff6b6b",
-    neutral: "#868e96",
-  };
+  const TONES = [
+    'Professional', 'Promotional', 'Informative', 'Persuasive', 'Confident',
+    'Approachable', 'Authoritative', 'Inspirational', 'Conversational', 'Assertive',
+    'Casual', 'Customer-centric', 'Urgent', 'Optimistic', 'Polished'
+  ];
+
+  const PALETTE = [
+    '#2f6fdb','#ff7a59','#51cf66','#ffd43b','#845ef7',
+    '#20c997','#0ca678','#f783ac','#15aabf','#d9480f',
+    '#868e96','#364fc7','#fa5252','#12b886','#495057'
+  ];
+
+  const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
 
   return (
-    <Container size="lg" py="lg">
-      <Stack gap="lg">
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <Stack gap={4}>
-            <Title order={2}>Analysis Reports</Title>
-            <Text c="dimmed">
-              Export a PDF snapshot for sharing, archiving, or quick weekly check ins.
-            </Text>
-          </Stack>
-          <Badge variant="light" radius="sm">
-            PDF Export
-          </Badge>
-        </Group>
+    <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
+      <LoadingOverlay visible={loading} />
+      <Title order={1} mb="lg">
+        Analysis Reports
+      </Title>
+      
+      <Button onClick={generatePDF} mb="lg">
+        Download PDF
+      </Button>
 
-        <Card withBorder radius="lg" p="md">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <Group gap="md" align="center">
-              <Switch
-                checked={includeKeywordTracking}
-                onChange={(e) => setIncludeKeywordTracking(e.currentTarget.checked)}
-                label="Include Keyword Tracking"
-              />
-            </Group>
+      <Checkbox
+        label="Include Keyword Tracking"
+        checked={includeKeywordTracking}
+        onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
+        mb="lg"
+      />
 
-            <Button
-              leftSection={<IconDownload size={16} />}
-              onClick={generatePDF}
-              loading={generating}
-              disabled={!includeKeywordTracking}
-              variant="light"
-              radius="md"
-            >
-              Download PDF
-            </Button>
-          </Group>
+      <Button
+        onClick={async () => {
+          // perform analysis once per click
+          setLoading(true);
+          setAnalysisStarted(true);
+          try {
+            let toAnalyze = convertedData.slice();
+            if (postLimit > 0 && toAnalyze.length > postLimit) {
+              toAnalyze = toAnalyze.slice(-postLimit);
+            }
+            let analyzed = [];
+            try {
+              analyzed = await analyzeUniversalPosts(toAnalyze);
+            } catch (err) {
+              console.error('Tone analysis failed:', err);
+            }
+            const chartData = (analyzed.length ? analyzed : toAnalyze).map((post, index) => ({
+              index: index + 1,
+              engagement: post.Engagement,
+              source: post['Name/Source'],
+              message: post.Message,
+              tone: post.Tone || null,
+            }));
+            setToneEngagementData(chartData);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        mb="sm"
+        disabled={loading}
+      >
+        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
+      </Button>
 
-          {!includeKeywordTracking ? (
-            <Text c="dimmed" mt="sm">
-              Turn on Keyword Tracking to enable the PDF export.
-            </Text>
-          ) : null}
-        </Card>
+      <Select
+        label="Analyze last"
+        data={[
+          { value: '5', label: '5 posts' },
+          { value: '10', label: '10 posts' },
+          { value: '15', label: '15 posts' },
+          { value: '20', label: '20 posts' },
+          { value: '50', label: '50 posts' },
+        ]}
+        value={String(postLimit)}
+        onChange={(val) => setPostLimit(Number(val) || 0)}
+        mb="lg"
+        disabled={analysisStarted}
+      />
 
-        <div data-tour="reports-root">
-          {includeKeywordTracking ? (
-            <KeywordTracking ref={chartRef} />
-          ) : (
-            <Card withBorder radius="lg" p="xl">
-              <Stack gap={6} align="center">
-                <Title order={4}>Keyword Tracking hidden</Title>
-                <Text c="dimmed" ta="center">
-                  Enable Keyword Tracking above to view the report content.
-                </Text>
-              </Stack>
-            </Card>
-          )}
-        </div>
-      </Stack>
+      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
+
+      {/* Saved Posts Source-Based Engagement Chart */}
+      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
+        <Title order={2} size="h3" mb="md">
+          Saved Posts - Engagement by Post Index
+        </Title>
+        {toneEngagementData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={400}>
+            <ScatterChart>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="index" name="Post Index" />
+              <YAxis dataKey="engagement" name="Engagement" />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+              <Legend />
+              {TONES.map((tone) => {
+                const pts = toneEngagementData.filter((d) => d.tone === tone);
+                if (!pts || !pts.length) return null;
+                return (
+                  <Scatter
+                    key={tone}
+                    name={tone}
+                    data={pts}
+                    dataKey="engagement"
+                    fill={TONE_COLOR[tone]}
+                  />
+                );
+              })}
+              {/* Fallback for unlabelled posts */}
+              {toneEngagementData.some((d) => !d.tone) && (
+                <Scatter
+                  name="Unlabeled"
+                  data={toneEngagementData.filter((d) => !d.tone)}
+                  dataKey="engagement"
+                  fill="#adb5bd"
+                />
+              )}
+            </ScatterChart>
+          </ResponsiveContainer>
+        ) : (
+          <Title order={4} c="dimmed">No saved posts to display</Title>
+        )}
+      </Paper>
+
+      {/* Source Distribution Pie Chart */}
+      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
+        <Title order={2} size="h3" mb="md">
+          Post Statistics
+        </Title>
+        {toneEngagementData.length > 0 ? (
+          <div style={{ display: "flex", gap: "1rem" }}>
+            <div style={{ flex: 1 }}>
+              <Text><strong>Total Posts:</strong> {toneEngagementData.length}</Text>
+              <Text><strong>Average Engagement:</strong> {(toneEngagementData.reduce((sum, p) => sum + p.engagement, 0) / toneEngagementData.length).toFixed(2)}</Text>
+              <Text><strong>Total Engagement:</strong> {toneEngagementData.reduce((sum, p) => sum + p.engagement, 0)}</Text>
+            </div>
+          </div>
+        ) : (
+          <Title order={4} c="dimmed">No saved posts to display</Title>
+        )}
+      </Paper>
     </Container>
   );
 }
