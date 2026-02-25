@@ -3,7 +3,7 @@ import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Button, Checkbox, Container, Title, Paper, LoadingOverlay, Text } from "@mantine/core";
+import { Button, Checkbox, Container, Title, Paper, LoadingOverlay, Text, Select } from "@mantine/core";
 import {
   ScatterChart,
   Scatter,
@@ -22,36 +22,19 @@ import "../utils/ui.css";
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
+  const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
+  const [rawPosts, setRawPosts] = useState([]);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch and process saved posts
+  // Fetch saved posts once when component mounts. analysis is triggered manually.
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch("http://localhost:8080/api/posts");
         const data = await r.json();
-        const posts = data.posts || [];
-        const converted = convertSavedPosts(posts);
-
-        // Send universal-format posts to server for tone analysis
-        let analyzed = [];
-        try {
-          analyzed = await analyzeUniversalPosts(converted);
-        } catch (err) {
-          console.error('Tone analysis failed:', err);
-        }
-
-        // Create chart data with index for each post (use analyzed order if available)
-        const chartData = (analyzed.length ? analyzed : converted).map((post, index) => ({
-          index: index + 1,
-          engagement: post.Engagement,
-          source: post['Name/Source'],
-          message: post.Message,
-          tone: post.Tone || null,
-        }));
-
-        setToneEngagementData(chartData);
+        setRawPosts(data.posts || []);
       } catch (error) {
         console.error("Error fetching posts:", error);
       } finally {
@@ -125,7 +108,61 @@ export default function Reports() {
         mb="lg"
       />
 
+      <Button onClick={() => {
+          // kick off analysis based on current limit and rawPosts
+          setLoading(true);
+          setAnalysisStarted(true);
+        }} mb="sm">
+        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
+      </Button>
+
+      <Select
+        label="Analyze last"
+        data={[
+          { value: '5', label: '5 posts' },
+          { value: '10', label: '10 posts' },
+          { value: '15', label: '15 posts' },
+          { value: '20', label: '20 posts' },
+          { value: '50', label: '50 posts' },
+        ]}
+        value={String(postLimit)}
+        onChange={(val) => setPostLimit(Number(val) || 0)}
+        mb="lg"
+        disabled={analysisStarted}
+      />
+
       {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
+
+      {/* perform analysis when requested */}
+      {analysisStarted && (
+        (() => {
+          const doAnalysis = async () => {
+            let posts = rawPosts.slice();
+            if (postLimit > 0 && posts.length > postLimit) {
+              posts = posts.slice(-postLimit);
+            }
+            const converted = convertSavedPosts(posts);
+            let analyzed = [];
+            try {
+              analyzed = await analyzeUniversalPosts(converted);
+            } catch (err) {
+              console.error('Tone analysis failed:', err);
+            }
+            const chartData = (analyzed.length ? analyzed : converted).map((post, index) => ({
+              index: index + 1,
+              engagement: post.Engagement,
+              source: post['Name/Source'],
+              message: post.Message,
+              tone: post.Tone || null,
+            }));
+            setToneEngagementData(chartData);
+            setLoading(false);
+          };
+          // immediately invoke
+          doAnalysis();
+          return null;
+        })()
+      )}
 
       {/* Saved Posts Source-Based Engagement Chart */}
       <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>

@@ -1,3 +1,5 @@
+import { apiBase } from '../utils/api';
+
 /**
  * @typedef {Object} UniversalDataPoint
  * @property {string} Name/Source - The username or source of the data
@@ -51,29 +53,58 @@ export { convertXInput, convertSavedPosts };
  * @param {Array<Object>} universalPosts - array of objects with keys 'Name/Source', 'Engagement', 'Message'
  * @returns {Promise<Array<Object>>} - resolved array of posts augmented with `Tone`
  */
+// simple fetch wrapper with timeout support
+async function fetchWithTimeout(resource, options = {}, timeout = 5000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(resource, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 async function analyzeUniversalPosts(universalPosts) {
   if (!Array.isArray(universalPosts)) throw new Error('universalPosts must be an array');
 
   const analyzed = [];
   
   for (const post of universalPosts) {
-    try {
-      const resp = await fetch('http://localhost:8080/api/tone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: post.Message || '' }),
-      });
+    let resp;
+    let lastError;
 
-      if (!resp.ok) {
-        const body = await resp.text();
-        console.error(`Tone API error for message:`, resp.status, body);
-        analyzed.push({ ...post, Tone: null, _toneError: `${resp.status}: ${body}` });
-        continue;
+    // try primary backend first if configured
+    const primaryUrl = apiBase ? `${apiBase.replace(/\/+$/,'')}/api/tone` : null;
+    const fallbackUrl = 'http://localhost:8080/api/tone';
+
+    const tryUrls = primaryUrl ? [primaryUrl, fallbackUrl] : [fallbackUrl];
+
+    for (const url of tryUrls) {
+      try {
+        resp = await fetchWithTimeout(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: post.Message || '' }),
+        }, 5000);
+        if (resp && resp.ok) break; // success, exit loop
+        if (resp) {
+          lastError = `${resp.status}: ${await resp.text().catch(() => '')}`;
+        }
+      } catch (err) {
+        lastError = err.message;
+        // if abort due to timeout, continue to next URL
       }
+    }
 
+    if (!resp || !resp.ok) {
+      console.error('Tone API error for message:', lastError);
+      analyzed.push({ ...post, Tone: null, _toneError: lastError });
+      continue;
+    }
+
+    try {
       const data = await resp.json();
       const toneLabel = data.result?.normalized?.tone || data.result?.parsed?.tone || null;
-
       analyzed.push({
         ...post,
         Tone: toneLabel,
@@ -81,7 +112,7 @@ async function analyzeUniversalPosts(universalPosts) {
         _toneParsed: data.result?.parsed,
       });
     } catch (err) {
-      console.error('Tone call failed:', err);
+      console.error('Failed parsing tone response:', err);
       analyzed.push({ ...post, Tone: null, _toneError: String(err.message) });
     }
   }
@@ -139,7 +170,7 @@ const exampleInput = {
       "id": "1998536971346690088"
     }
   ],
-  "_usedBackend": "http://localhost:8080"
+  _usedBackend: apiBase || 'unknown'
 };
 
 console.log('=== Testing convertXInput ===');
