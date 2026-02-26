@@ -330,7 +330,12 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Recent Activity */}
         {posts.length > 0 && (
           <div>
-            <Divider label="Recent Activity" my="xs" />
+            <Group justify="space-between" align="center" my="xs">
+              <Divider label="Recent Activity" style={{ flex: 1 }} />
+              {posts.length > 1 && (
+                <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} type="activity" />
+              )}
+            </Group>
             <Stack gap="sm">
               {posts.slice(0, 5).map((p, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
@@ -344,6 +349,7 @@ function LinkedinProfileCard({ profile, onSave }) {
                         )}
                       </Group>
                     </div>
+                    <SaveButton label="Save" onSave={() => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} />
                   </Group>
                 </Card>
               ))}
@@ -447,20 +453,28 @@ function LinkedinCompanyCard({ company, onSave }) {
 
         {posts.length > 0 && (
           <div>
-            <Divider label="Recent Posts" my="xs" />
+            <Group justify="space-between" align="center" my="xs">
+              <Divider label="Recent Posts" style={{ flex: 1 }} />
+              {posts.length > 1 && (
+                <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} type="companyPost" />
+              )}
+            </Group>
             <Stack gap="sm">
               {posts.slice(0, 5).map((p, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Text size="sm" lineClamp={4} style={{ whiteSpace: "pre-wrap" }}>{p.text || "—"}</Text>
-                  <Group gap="xs" mt={4}>
-                    {p.datePublished && (
-                      <Text size="xs" c="dimmed">{new Date(p.datePublished).toLocaleDateString()}</Text>
-                    )}
-                    {p.url && (
-                      <Text size="xs" c="blue" component="a" href={p.url} target="_blank">
-                        View →
-                      </Text>
-                    )}
+                  <Group gap="xs" mt={4} justify="space-between">
+                    <Group gap="xs">
+                      {p.datePublished && (
+                        <Text size="xs" c="dimmed">{new Date(p.datePublished).toLocaleDateString()}</Text>
+                      )}
+                      {p.url && (
+                        <Text size="xs" c="blue" component="a" href={p.url} target="_blank">
+                          View →
+                        </Text>
+                      )}
+                    </Group>
+                    <SaveButton label="Save" onSave={() => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} />
                   </Group>
                 </Card>
               ))}
@@ -565,7 +579,12 @@ function LinkedinPostCard({ post, onSave }) {
         {/* Comments */}
         {commentsArr.length > 0 && (
           <div>
-            <Divider label={`Comments (${commentsArr.length})`} my="xs" />
+            <Group justify="space-between" align="center" my="xs">
+              <Divider label={`Comments (${commentsArr.length})`} style={{ flex: 1 }} />
+              {commentsArr.length > 1 && (
+                <SaveAllButton items={commentsArr.slice(0, 6)} onSave={(_type, c) => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || "Unknown", likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} type="comment" />
+              )}
+            </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
               {commentsArr.slice(0, 6).map((c, i) => (
                 <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
@@ -582,6 +601,9 @@ function LinkedinPostCard({ post, onSave }) {
                       {c.commentCount != null && <Badge size="xs" variant="light">💬 {c.commentCount}</Badge>}
                     </Group>
                   )}
+                  <Group justify="flex-end" mt={4}>
+                    <SaveButton label="Save" onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || "Unknown", likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
+                  </Group>
                 </Card>
               ))}
             </SimpleGrid>
@@ -591,7 +613,12 @@ function LinkedinPostCard({ post, onSave }) {
         {/* More Articles */}
         {moreArticles.length > 0 && (
           <div>
-            <Divider label="Related Articles" my="xs" />
+            <Group justify="space-between" align="center" my="xs">
+              <Divider label="Related Articles" style={{ flex: 1 }} />
+              {moreArticles.length > 1 && (
+                <SaveAllButton items={moreArticles.slice(0, 5)} onSave={(_type, a) => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} type="article" />
+              )}
+            </Group>
             <Stack gap="xs">
               {moreArticles.slice(0, 5).map((a, i) => (
                 <Group key={i} gap="sm" wrap="nowrap">
@@ -599,9 +626,12 @@ function LinkedinPostCard({ post, onSave }) {
                     <Text size="sm" lineClamp={1} fw={500}>{decode(a.headline || a.name)}</Text>
                     {a.author && <Text size="xs" c="dimmed">{a.author}</Text>}
                   </div>
-                  {a.url && (
-                    <Text size="xs" c="blue" component="a" href={a.url} target="_blank">View</Text>
-                  )}
+                  <Group gap="xs" wrap="nowrap">
+                    {a.url && (
+                      <Text size="xs" c="blue" component="a" href={a.url} target="_blank">View</Text>
+                    )}
+                    <SaveButton label="Save" onSave={() => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} />
+                  </Group>
                 </Group>
               ))}
             </Stack>
@@ -644,6 +674,9 @@ function XUserCard({ user, onSave }) {
           <Badge color="dark" variant="light" size="lg">
             <IconBrandX size={14} style={{ marginRight: 4 }} /> Profile
           </Badge>
+          {onSave && (
+            <SaveButton label="Save Profile" onSave={() => onSave("profile", user)} />
+          )}
         </Group>
 
         <Card withBorder radius="sm" p="sm" bg="gray.0">
@@ -744,12 +777,17 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
   );
 }
 
-function XUserListCard({ users, title }) {
+function XUserListCard({ users, title, onSaveUser }) {
   if (!users?.length) return null;
 
   return (
     <div>
-      <Divider label={`${title} (${users.length})`} my="xs" />
+      <Group justify="space-between" align="center" my="xs">
+        <Divider label={`${title} (${users.length})`} style={{ flex: 1 }} />
+        {onSaveUser && users.length > 1 && (
+          <SaveAllButton items={users} onSave={(_type, u) => onSaveUser(u)} type="user" />
+        )}
+      </Group>
       <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
         {users.slice(0, 12).map((u, i) => (
           <Card key={u.id || i} withBorder radius="sm" p="xs">
@@ -766,6 +804,9 @@ function XUserListCard({ users, title }) {
                   </Text>
                 )}
               </div>
+              {onSaveUser && (
+                <SaveButton label="Save" onSave={() => onSaveUser(u)} />
+              )}
             </Group>
           </Card>
         ))}
@@ -804,13 +845,13 @@ function XResults({ data, onSave }) {
       )}
 
       {/* User Lookup */}
-      {results.userLookup && <XUserCard user={results.userLookup} />}
+      {results.userLookup && <XUserCard user={results.userLookup} onSave={onSave} />}
 
       {/* Followers */}
-      {results.followers && <XUserListCard users={results.followers} title="Followers" />}
+      {results.followers && <XUserListCard users={results.followers} title="Followers" onSaveUser={(u) => onSave("user", u)} />}
 
       {/* Following */}
-      {results.following && <XUserListCard users={results.following} title="Following" />}
+      {results.following && <XUserListCard users={results.following} title="Following" onSaveUser={(u) => onSave("user", u)} />}
 
       {/* User Tweets */}
       {results.userTweets?.length > 0 && (
@@ -983,7 +1024,17 @@ export default function CompetitorLookup() {
   const [redditError, setRedditError] = useState(null);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
 
+  // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
+  const [platformIds, setPlatformIds] = useState({
+    x: 1, instagram: 3, tiktok: 5, reddit: 6, youtube: 8, linkedin: 2,
+  });
 
+  useEffect(() => {
+    fetch(apiUrl("/api/platforms"))
+      .then(r => r.json())
+      .then(data => { if (data.platforms) setPlatformIds(data.platforms); })
+      .catch(() => { }); // fallback to defaults
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -1229,6 +1280,10 @@ export default function CompetitorLookup() {
         inputs: linkedinInputs,
       });
       setLinkedinResult(json);
+      // Show errors from individual endpoints if any
+      if (json.errors?.length > 0 && !json.results?.profile && !json.results?.company && !json.results?.post) {
+        setLinkedinError(`LinkedIn API errors: ${json.errors.map(e => `${e.endpoint}: ${e.error}`).join("; ")}`);
+      }
       if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
       setLinkedinError(e?.message || "Unknown error");
@@ -1286,7 +1341,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 1,
+          platform_id: platformIds.x,
           platform_user_id: String(data.author_id || data._authorUsername || "unknown"),
           username: data._authorUsername || "",
           platform_post_id: String(data.id || Date.now()),
@@ -1296,6 +1351,8 @@ export default function CompetitorLookup() {
           shares: metrics.retweet_count ?? 0,
           comments: metrics.reply_count ?? 0,
           user_id: currentUserId,
+          author_name: data._authorUsername || "",
+          author_handle: data._authorUsername || "",
         }),
       });
       if (!resp.ok) {
@@ -1303,6 +1360,14 @@ export default function CompetitorLookup() {
         throw new Error(`Save failed: ${resp.status} ${text}`);
       }
       return resp.json();
+    }
+    // Save X profile
+    if (type === "profile" && data) {
+      return saveXProfile(data);
+    }
+    // Save X user (follower/following)
+    if (type === "user" && data) {
+      return saveXUser(data);
     }
   }
 
@@ -1345,7 +1410,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 8, // YouTube
+          platform_id: platformIds.youtube,
           platform_user_id: String(data.channelId || data.channelTitle || "unknown"),
           username: data.channelTitle || "",
           platform_post_id: String(data.id || data.videoId || Date.now()),
@@ -1355,6 +1420,11 @@ export default function CompetitorLookup() {
           shares: 0,
           comments: data.comments ?? 0,
           user_id: currentUserId,
+          title: data.title || "",
+          description: data.description || "",
+          channelTitle: data.channelTitle || "",
+          videoId: data.id || data.videoId || "",
+          views: data.views ?? 0,
         }),
       });
       if (!resp.ok) {
@@ -1424,15 +1494,15 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 2,
+          platform_id: platformIds.instagram, // Instagram
           platform_user_id: platformUserId,
           username: ownerUsername || ownerFullName || platformUserId,
           platform_post_id: platformPostId,
           content: data.caption?.text || data.caption || "",
           published_at: publishedAt,
-          likes: data.like_count ?? data.likes ?? 0,
+          likes: Math.max(0, data.like_count ?? data.likes ?? 0),
           shares: 0,
-          comments: data.comment_count ?? data.comments ?? 0,
+          comments: Math.max(0, data.comment_count ?? data.comments ?? 0),
           user_id: currentUserId,
           author_name: ownerFullName || ownerUsername,
           author_handle: ownerUsername,
@@ -1490,7 +1560,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 5, // TikTok
+          platform_id: platformIds.tiktok, // TikTok
           platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.uid || "unknown"),
           username: data.author?.uniqueId || data.author?.nickname || data.author?.unique_id || "",
           author_name: data.author?.nickname || data.author?.uniqueId || "",
@@ -1498,9 +1568,9 @@ export default function CompetitorLookup() {
           platform_post_id: String(data.id || data.aweme_id || data.video?.id || Date.now()),
           content: data.desc || data.title || "",
           published_at: (() => { if (!data.createTime) return null; const d = new Date(typeof data.createTime === 'number' ? data.createTime * 1000 : data.createTime); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
-          likes: data.stats?.diggCount ?? data.statsV2?.diggCount ?? 0,
-          shares: data.stats?.shareCount ?? data.statsV2?.shareCount ?? 0,
-          comments: data.stats?.commentCount ?? data.statsV2?.commentCount ?? 0,
+          likes: Math.max(0, data.stats?.diggCount ?? data.statsV2?.diggCount ?? data.statistics?.digg_count ?? data.statistics?.diggCount ?? data.diggCount ?? data.digg_count ?? 0),
+          shares: Math.max(0, data.stats?.shareCount ?? data.statsV2?.shareCount ?? data.statistics?.share_count ?? data.statistics?.shareCount ?? data.shareCount ?? data.share_count ?? 0),
+          comments: Math.max(0, data.stats?.commentCount ?? data.statsV2?.commentCount ?? data.statistics?.comment_count ?? data.statistics?.commentCount ?? data.commentCount ?? data.comment_count ?? 0),
           user_id: currentUserId,
         }),
       });
@@ -1556,15 +1626,15 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          platform_id: 6, // Reddit
+          platform_id: platformIds.reddit, // Reddit
           platform_user_id: String(data.author || data.author_fullname || "unknown"),
           username: data.author || "",
           platform_post_id: String(data.id || data.name || Date.now()),
           content: data.title || data.selftext || "",
           published_at: (() => { if (!data.created_utc) return null; const d = new Date(typeof data.created_utc === 'number' ? data.created_utc * 1000 : data.created_utc); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
-          likes: data.score ?? data.ups ?? 0,
+          likes: Math.max(0, data.score ?? data.ups ?? data.upvote_count ?? 0),
           shares: 0,
-          comments: data.num_comments ?? 0,
+          comments: Math.max(0, data.num_comments ?? data.comment_count ?? 0),
           user_id: currentUserId,
           author_name: data.author || "",
           author_handle: data.author || "",
@@ -1576,6 +1646,264 @@ export default function CompetitorLookup() {
       }
       return resp.json();
     }
+  }
+
+  /* ─── Generic save helper (for profiles, comments, transcripts, users, ads) ─── */
+
+  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, authorName, authorHandle }) {
+    if (!currentUserId) throw new Error("Please sign in to save data.");
+    const pid = platformIds[platformKey];
+    if (!pid) throw new Error(`Unknown platform: ${platformKey}`);
+    const resp = await fetch(apiUrl("/api/posts"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform_id: pid,
+        platform_user_id: String(platformUserId || "unknown"),
+        username: String(username || platformUserId || "unknown"),
+        platform_post_id: String(postId || Date.now()),
+        content: String(content || ""),
+        published_at: publishedAt || null,
+        likes: likes ?? 0,
+        shares: shares ?? 0,
+        comments: comments ?? 0,
+        user_id: currentUserId,
+        author_name: authorName || username || "",
+        author_handle: authorHandle || username || "",
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Save failed: ${resp.status} ${text}`);
+    }
+    return resp.json();
+  }
+
+  // X profile save
+  function saveXProfile(user) {
+    const m = user.public_metrics || {};
+    return handleGenericSave("x", {
+      platformUserId: user.id || user.username,
+      username: user.username,
+      postId: `profile_${user.username}_${Date.now()}`,
+      content: `${user.name}\n@${user.username}\n${user.description || ""}`,
+      publishedAt: user.created_at || null,
+      likes: m.followers_count ?? 0,
+      comments: m.tweet_count ?? 0,
+      authorName: user.name,
+      authorHandle: user.username,
+    });
+  }
+
+  // X user (follower/following) save
+  function saveXUser(user) {
+    return handleGenericSave("x", {
+      platformUserId: user.id || user.username,
+      username: user.username,
+      postId: `user_${user.username}_${Date.now()}`,
+      content: `${user.name} (@${user.username})${user.description ? "\n" + user.description : ""}`,
+      likes: user.public_metrics?.followers_count ?? 0,
+      authorName: user.name,
+      authorHandle: user.username,
+    });
+  }
+
+  // YouTube comment save — uses /api/comments endpoint
+  async function saveYoutubeComment(comment, videoContext) {
+    if (!currentUserId) throw new Error("Please sign in to save data.");
+    const ctx = videoContext || {};
+    const resp = await fetch(apiUrl("/api/comments"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: currentUserId,
+        platform_id: platformIds.youtube,
+        platform_comment_id: `yt_comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        parent_post_id: ctx.videoId || null,
+        parent_title: ctx.videoTitle || null,
+        parent_author: ctx.channelTitle || null,
+        author_name: comment.author || "unknown",
+        author_handle: comment.author || "unknown",
+        content: comment.text || "",
+        published_at: comment.publishedAt || null,
+        likes: comment.likes ?? 0,
+        replies: comment.replyCount ?? 0,
+        extra_json: {
+          channelId: ctx.channelId || null,
+          videoTitle: ctx.videoTitle || null,
+          channelTitle: ctx.channelTitle || null,
+        },
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`Save failed: ${resp.status} ${text}`);
+    }
+    return resp.json();
+  }
+
+  // YouTube channel save
+  function saveYoutubeChannel(data) {
+    return handleGenericSave("youtube", {
+      platformUserId: data.customUrl || data.title,
+      username: data.title,
+      postId: `channel_${data.customUrl || data.title}_${Date.now()}`,
+      content: `${data.title}\n${data.description || ""}`,
+      likes: data.subscribers ?? 0,
+      comments: data.videoCount ?? 0,
+      authorName: data.title,
+      authorHandle: data.customUrl || data.title,
+    });
+  }
+
+  // YouTube transcript save
+  function saveYoutubeTranscript(data) {
+    return handleGenericSave("youtube", {
+      platformUserId: "transcript",
+      username: data.videoTitle || "transcript",
+      postId: `transcript_${Date.now()}`,
+      content: `[Transcript] ${data.videoTitle || ""}\n\n${data.text || ""}`,
+      authorName: data.videoTitle || "Transcript",
+    });
+  }
+
+  // Instagram profile save
+  function saveInstagramProfile(profile) {
+    const p = profile.data?.user || profile.data || profile.user || profile;
+    return handleGenericSave("instagram", {
+      platformUserId: p.pk || p.id || p.username,
+      username: p.username,
+      postId: `profile_${p.username}_${Date.now()}`,
+      content: `${p.full_name || p.username}\n@${p.username}\n${p.biography || p.bio || ""}`,
+      likes: p.follower_count ?? p.edge_followed_by?.count ?? 0,
+      comments: p.media_count ?? 0,
+      authorName: p.full_name || p.username,
+      authorHandle: p.username,
+    });
+  }
+
+  // Instagram comment save
+  function saveInstagramComment(comment) {
+    return handleGenericSave("instagram", {
+      platformUserId: comment.user?.pk || comment.user?.username || "unknown",
+      username: comment.user?.username || comment.username || "User",
+      postId: `comment_${comment.pk || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      content: comment.text || "",
+      likes: comment.comment_like_count ?? comment.likes ?? 0,
+      authorName: comment.user?.full_name || comment.user?.username || "",
+      authorHandle: comment.user?.username || comment.username || "",
+    });
+  }
+
+  // TikTok profile save
+  function saveTiktokProfile(profile) {
+    const u = profile.user || profile.data?.user || profile;
+    const stats = profile.stats || profile.statsV2 || u.stats || {};
+    return handleGenericSave("tiktok", {
+      platformUserId: u.id || u.uniqueId,
+      username: u.uniqueId,
+      postId: `profile_${u.uniqueId}_${Date.now()}`,
+      content: `${u.nickname || u.uniqueId}\n@${u.uniqueId}\n${u.signature || ""}`,
+      likes: stats.followerCount ?? u.followerCount ?? 0,
+      comments: stats.videoCount ?? u.videoCount ?? 0,
+      authorName: u.nickname || u.uniqueId,
+      authorHandle: u.uniqueId,
+    });
+  }
+
+  // TikTok comment save
+  function saveTiktokComment(comment) {
+    return handleGenericSave("tiktok", {
+      platformUserId: comment.user?.uid || comment.user?.unique_id || "unknown",
+      username: comment.user?.unique_id || comment.user?.nickname || "User",
+      postId: `comment_${comment.cid || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      content: comment.text || "",
+      likes: comment.digg_count ?? 0,
+      comments: comment.reply_comment_total ?? 0,
+      authorName: comment.user?.nickname || "",
+      authorHandle: comment.user?.unique_id || "",
+    });
+  }
+
+  // TikTok user (follower/following/search) save
+  function saveTiktokUser(u) {
+    const user = u.user_info || u;
+    return handleGenericSave("tiktok", {
+      platformUserId: user.uid || user.id || user.unique_id,
+      username: user.unique_id || user.uniqueId,
+      postId: `user_${user.unique_id || user.uniqueId}_${Date.now()}`,
+      content: `${user.nickname || user.unique_id || user.uniqueId} (@${user.unique_id || user.uniqueId})`,
+      likes: user.follower_count ?? 0,
+      authorName: user.nickname || user.unique_id,
+      authorHandle: user.unique_id || user.uniqueId,
+    });
+  }
+
+  // TikTok transcript save
+  function saveTiktokTranscript(transcript) {
+    const text = typeof transcript === "string" ? transcript : JSON.stringify(transcript, null, 2);
+    return handleGenericSave("tiktok", {
+      platformUserId: "transcript",
+      username: "transcript",
+      postId: `transcript_${Date.now()}`,
+      content: `[TikTok Transcript]\n\n${text}`,
+      authorName: "TikTok Transcript",
+    });
+  }
+
+  // Reddit subreddit save
+  function saveRedditSubreddit(details) {
+    return handleGenericSave("reddit", {
+      platformUserId: details.display_name,
+      username: details.display_name,
+      postId: `subreddit_${details.display_name}_${Date.now()}`,
+      content: `r/${details.display_name}\n${details.description || ""}`,
+      likes: details.subscribers ?? 0,
+      comments: details.weekly_contributions ?? 0,
+      authorName: `r/${details.display_name}`,
+      authorHandle: details.display_name,
+    });
+  }
+
+  // Reddit comment save
+  function saveRedditComment(comment) {
+    return handleGenericSave("reddit", {
+      platformUserId: comment.author || "deleted",
+      username: comment.author || "deleted",
+      postId: `comment_${comment.id || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      content: comment.body || comment.text || "",
+      likes: comment.score ?? 0,
+      authorName: comment.author || "deleted",
+      authorHandle: comment.author || "deleted",
+    });
+  }
+
+  // Reddit ad save
+  function saveRedditAd(ad) {
+    const creative = ad.creative || {};
+    const profile = ad.profile_info || {};
+    return handleGenericSave("reddit", {
+      platformUserId: profile.name || ad.advertiser_id || "ad",
+      username: profile.name || "Advertiser",
+      postId: `ad_${ad.id || Date.now()}`,
+      content: `${creative.title || creative.headline || ""}\n${creative.body || ""}`,
+      authorName: profile.name || "Advertiser",
+      authorHandle: profile.name || "",
+    });
+  }
+
+  // LinkedIn sub-item saves (activity posts, company posts, comments, articles)
+  function saveLinkedinSubItem(type, item) {
+    const { type: liType, data } = { type, data: item };
+    return fetch(apiUrl("/api/linkedin/save"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: liType,
+        data,
+        user_id: currentUserId,
+      }),
+    }).then(async r => { if (!r.ok) { const t = await r.text(); throw new Error(t); } return r.json(); });
   }
 
   function BackendBadge({ base }) {
@@ -1637,7 +1965,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platform_id: 1,
+            platform_id: platformIds.x,
             platform_user_id: result.userId,
             username: result.username,
             platform_post_id: post.id,
@@ -1740,7 +2068,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            platform_id: 8,
+            platform_id: platformIds.youtube,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
             platform_post_id: data.videoId,
@@ -1907,6 +2235,10 @@ export default function CompetitorLookup() {
             ))}
           </Group>
 
+          <Group justify="flex-end">
+            <SaveButton label="Save Channel" onSave={() => saveYoutubeChannel(data)} />
+          </Group>
+
           {data.description && (
             <ScrollArea h={80}>
               <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.description}</Text>
@@ -1958,21 +2290,33 @@ export default function CompetitorLookup() {
     );
   }
 
-  function YTCommentsList({ comments }) {
+  function YTCommentsList({ comments, videoContext }) {
     if (!comments?.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    const ctx = videoContext || {};
     return (
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-        {comments.map((c, i) => (
-          <Card key={i} withBorder radius="sm" p="xs">
-            <Group gap={6} mb={4} wrap="nowrap">
-              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
-              {c.likes > 0 && <Badge size="xs" variant="light">{c.likes} ♥</Badge>}
-            </Group>
-            <Text size="xs" lineClamp={3}>{c.text}</Text>
-            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{c.replyCount} {c.replyCount === 1 ? "reply" : "replies"}</Text>}
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Stack gap="xs">
+        {ctx.videoTitle && (
+          <Text size="xs" c="dimmed" fs="italic">Comments on: {ctx.videoTitle}{ctx.channelTitle ? ` by ${ctx.channelTitle}` : ""}</Text>
+        )}
+        <Group justify="flex-end">
+          <SaveAllButton items={comments} onSave={(_type, c) => saveYoutubeComment(c, ctx)} type="comment" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+          {comments.map((c, i) => (
+            <Card key={i} withBorder radius="sm" p="xs">
+              <Group gap={6} mb={4} wrap="nowrap">
+                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
+                {c.likes > 0 && <Badge size="xs" variant="light">{c.likes} ♥</Badge>}
+              </Group>
+              <Text size="xs" lineClamp={3}>{c.text}</Text>
+              {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{c.replyCount} {c.replyCount === 1 ? "reply" : "replies"}</Text>}
+              <Group justify="flex-end" mt={4}>
+                <SaveButton label="Save" onSave={() => saveYoutubeComment(c, ctx)} />
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
     );
   }
 
@@ -1991,7 +2335,10 @@ export default function CompetitorLookup() {
         <Stack gap="xs">
           <Group justify="space-between">
             <Text fw={600}>Transcript</Text>
-            <Badge size="xs" variant="light">{data.language || "en"}</Badge>
+            <Group gap="xs">
+              <Badge size="xs" variant="light">{data.language || "en"}</Badge>
+              <SaveButton label="Save Transcript" onSave={() => saveYoutubeTranscript(data)} />
+            </Group>
           </Group>
           <ScrollArea h={250}>
             <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.text}</Text>
@@ -2077,7 +2424,15 @@ export default function CompetitorLookup() {
         {results.videoComments?.length > 0 && (
           <>
             <Divider label={`Comments (${results.videoComments.length})`} labelPosition="center" />
-            <YTCommentsList comments={results.videoComments} />
+            <YTCommentsList
+              comments={results.videoComments}
+              videoContext={{
+                videoTitle: results.videoDetails?.title,
+                channelTitle: results.videoDetails?.channelTitle,
+                channelId: results.videoDetails?.channelId,
+                videoId: results.videoDetails?.id,
+              }}
+            />
           </>
         )}
 
@@ -2121,6 +2476,7 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="pink">
               <IconBrandInstagram size={14} style={{ marginRight: 4 }} /> Profile
             </Badge>
+            <SaveButton label="Save Profile" onSave={() => saveInstagramProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
@@ -2188,17 +2544,25 @@ export default function CompetitorLookup() {
     const list = Array.isArray(comments) ? comments : comments?.comments || [];
     if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
     return (
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-        {list.slice(0, 30).map((c, i) => (
-          <Card key={i} withBorder radius="sm" p="xs">
-            <Group gap={6} mb={4} wrap="nowrap">
-              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.user?.username || c.username || "User"}</Text>
-              {(c.comment_like_count > 0 || c.likes > 0) && <Badge size="xs" variant="light">{c.comment_like_count || c.likes} ♥</Badge>}
-            </Group>
-            <Text size="xs" lineClamp={3}>{c.text}</Text>
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Stack gap="xs">
+        <Group justify="flex-end">
+          <SaveAllButton items={list} onSave={(_type, c) => saveInstagramComment(c)} type="comment" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+          {list.slice(0, 30).map((c, i) => (
+            <Card key={i} withBorder radius="sm" p="xs">
+              <Group gap={6} mb={4} wrap="nowrap">
+                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.user?.username || c.username || "User"}</Text>
+                {(c.comment_like_count > 0 || c.likes > 0) && <Badge size="xs" variant="light">{c.comment_like_count || c.likes} ♥</Badge>}
+              </Group>
+              <Text size="xs" lineClamp={3}>{c.text}</Text>
+              <Group justify="flex-end" mt={4}>
+                <SaveButton label="Save" onSave={() => saveInstagramComment(c)} />
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
     );
   }
 
@@ -2362,6 +2726,7 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="dark">
               <IconBrandTiktok size={14} style={{ marginRight: 4 }} /> Profile
             </Badge>
+            <SaveButton label="Save Profile" onSave={() => saveTiktokProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
@@ -2393,7 +2758,7 @@ export default function CompetitorLookup() {
   function TkVideoCard({ video, onSave, compact }) {
     if (!video) return null;
     const desc = video.desc || video.title || "";
-    const stats = video.stats || video.statsV2 || {};
+    const stats = video.stats || video.statsV2 || video.statistics || {};
     const author = video.author || {};
     const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
 
@@ -2402,15 +2767,15 @@ export default function CompetitorLookup() {
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>No description</i>}</Text>
           <Text size="xs" c="dimmed">
-            {author.uniqueId || author.nickname || ""}
+            {author.uniqueId || author.unique_id || author.nickname || ""}
             {created ? ` · ${created}` : ""}
           </Text>
           <Group gap="xs">
             {[
-              { label: "▶", val: stats.playCount },
-              { label: "❤️", val: stats.diggCount },
-              { label: "💬", val: stats.commentCount },
-              { label: "🔗", val: stats.shareCount },
+              { label: "▶", val: stats.playCount ?? stats.play_count },
+              { label: "❤️", val: stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count },
+              { label: "💬", val: stats.commentCount ?? stats.comment_count },
+              { label: "🔗", val: stats.shareCount ?? stats.share_count },
             ].filter(x => x.val != null).map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
             ))}
@@ -2429,22 +2794,30 @@ export default function CompetitorLookup() {
     const list = Array.isArray(comments) ? comments : comments?.comments || [];
     if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
     return (
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-        {list.slice(0, 30).map((c, i) => (
-          <Card key={c.cid || i} withBorder radius="sm" p="xs">
-            <Group gap={6} mb={4} wrap="nowrap">
-              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>
-                {c.user?.nickname || c.user?.unique_id || "User"}
-              </Text>
-              {(c.digg_count > 0) && <Badge size="xs" variant="light">{c.digg_count} ♥</Badge>}
-            </Group>
-            <Text size="xs" lineClamp={3}>{c.text}</Text>
-            {c.reply_comment_total > 0 && (
-              <Text size="xs" c="dimmed" mt={2}>{c.reply_comment_total} replies</Text>
-            )}
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Stack gap="xs">
+        <Group justify="flex-end">
+          <SaveAllButton items={list} onSave={(_type, c) => saveTiktokComment(c)} type="comment" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+          {list.slice(0, 30).map((c, i) => (
+            <Card key={c.cid || i} withBorder radius="sm" p="xs">
+              <Group gap={6} mb={4} wrap="nowrap">
+                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>
+                  {c.user?.nickname || c.user?.unique_id || "User"}
+                </Text>
+                {(c.digg_count > 0) && <Badge size="xs" variant="light">{c.digg_count} ♥</Badge>}
+              </Group>
+              <Text size="xs" lineClamp={3}>{c.text}</Text>
+              {c.reply_comment_total > 0 && (
+                <Text size="xs" c="dimmed" mt={2}>{c.reply_comment_total} replies</Text>
+              )}
+              <Group justify="flex-end" mt={4}>
+                <SaveButton label="Save" onSave={() => saveTiktokComment(c)} />
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
     );
   }
 
@@ -2452,24 +2825,30 @@ export default function CompetitorLookup() {
     const list = Array.isArray(users) ? users : [];
     if (!list.length) return <Text size="sm" c="dimmed">No users found.</Text>;
     return (
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-        {list.slice(0, 30).map((u, i) => {
-          const user = u.user_info || u;
-          return (
-            <Card key={user.uid || user.id || i} withBorder radius="sm" p="xs">
-              <Group gap="sm" wrap="nowrap">
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Text size="sm" fw={600} lineClamp={1}>{user.nickname || user.unique_id || user.uniqueId}</Text>
-                  <Text size="xs" c="dimmed" lineClamp={1}>@{user.unique_id || user.uniqueId}</Text>
-                  <Group gap="xs" mt={2}>
-                    {user.follower_count != null && <Badge size="xs" variant="light">{fmtNum(user.follower_count)} followers</Badge>}
-                  </Group>
-                </div>
-              </Group>
-            </Card>
-          );
-        })}
-      </SimpleGrid>
+      <Stack gap="xs">
+        <Group justify="flex-end">
+          <SaveAllButton items={list} onSave={(_type, u) => saveTiktokUser(u)} type="user" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
+          {list.slice(0, 30).map((u, i) => {
+            const user = u.user_info || u;
+            return (
+              <Card key={user.uid || user.id || i} withBorder radius="sm" p="xs">
+                <Group gap="sm" wrap="nowrap">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text size="sm" fw={600} lineClamp={1}>{user.nickname || user.unique_id || user.uniqueId}</Text>
+                    <Text size="xs" c="dimmed" lineClamp={1}>@{user.unique_id || user.uniqueId}</Text>
+                    <Group gap="xs" mt={2}>
+                      {user.follower_count != null && <Badge size="xs" variant="light">{fmtNum(user.follower_count)} followers</Badge>}
+                    </Group>
+                  </div>
+                  <SaveButton label="Save" onSave={() => saveTiktokUser(u)} />
+                </Group>
+              </Card>
+            );
+          })}
+        </SimpleGrid>
+      </Stack>
     );
   }
 
@@ -2558,9 +2937,14 @@ export default function CompetitorLookup() {
             <Divider label="Transcript" labelPosition="center" />
             <Card withBorder radius="md" p="md">
               {transcript ? (
-                <ScrollArea h={300}>
-                  <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{typeof transcript === 'string' ? transcript : JSON.stringify(transcript, null, 2)}</Text>
-                </ScrollArea>
+                <>
+                  <Group justify="flex-end" mb="xs">
+                    <SaveButton label="Save Transcript" onSave={() => saveTiktokTranscript(transcript)} />
+                  </Group>
+                  <ScrollArea h={300}>
+                    <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{typeof transcript === 'string' ? transcript : JSON.stringify(transcript, null, 2)}</Text>
+                  </ScrollArea>
+                </>
               ) : (
                 <Text size="sm" c="dimmed">No transcript available for this video.</Text>
               )}
@@ -2631,6 +3015,7 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="orange">
               <IconBrandReddit size={14} style={{ marginRight: 4 }} /> Subreddit
             </Badge>
+            <SaveButton label="Save Subreddit" onSave={() => saveRedditSubreddit(details)} />
           </Group>
 
           <Group gap="lg" justify="center">
@@ -2707,20 +3092,28 @@ export default function CompetitorLookup() {
     const list = Array.isArray(comments) ? comments : [];
     if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
     return (
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-        {list.slice(0, 30).map((c, i) => (
-          <Card key={c.id || i} withBorder radius="sm" p="xs">
-            <Group gap={6} mb={4} wrap="nowrap">
-              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>u/{c.author || "deleted"}</Text>
-              {(c.score > 0) && <Badge size="xs" variant="light">{c.score} ⬆</Badge>}
-            </Group>
-            <Text size="xs" lineClamp={4}>{c.body || c.text || ""}</Text>
-            {c.replies?.length > 0 && (
-              <Text size="xs" c="dimmed" mt={2}>{c.replies.length} replies</Text>
-            )}
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Stack gap="xs">
+        <Group justify="flex-end">
+          <SaveAllButton items={list} onSave={(_type, c) => saveRedditComment(c)} type="comment" />
+        </Group>
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+          {list.slice(0, 30).map((c, i) => (
+            <Card key={c.id || i} withBorder radius="sm" p="xs">
+              <Group gap={6} mb={4} wrap="nowrap">
+                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>u/{c.author || "deleted"}</Text>
+                {(c.score > 0) && <Badge size="xs" variant="light">{c.score} ⬆</Badge>}
+              </Group>
+              <Text size="xs" lineClamp={4}>{c.body || c.text || ""}</Text>
+              {c.replies?.length > 0 && (
+                <Text size="xs" c="dimmed" mt={2}>{c.replies.length} replies</Text>
+              )}
+              <Group justify="flex-end" mt={4}>
+                <SaveButton label="Save" onSave={() => saveRedditComment(c)} />
+              </Group>
+            </Card>
+          ))}
+        </SimpleGrid>
+      </Stack>
     );
   }
 
@@ -2733,7 +3126,10 @@ export default function CompetitorLookup() {
         <Stack gap="xs">
           <Group justify="space-between">
             <Text fw={600} size="sm" lineClamp={2}>{creative.title || creative.headline || ad.id}</Text>
-            <Badge variant="light" color="orange" size="xs">Ad</Badge>
+            <Group gap="xs">
+              <Badge variant="light" color="orange" size="xs">Ad</Badge>
+              <SaveButton label="Save" onSave={() => saveRedditAd(ad)} />
+            </Group>
           </Group>
           {creative.body && <Text size="xs" lineClamp={3}>{creative.body}</Text>}
           <Group gap="xs">
@@ -2835,7 +3231,10 @@ export default function CompetitorLookup() {
 
         {adsArr.length > 0 && (
           <>
-            <Divider label={`Ads (${adsArr.length})`} labelPosition="center" />
+            <Group justify="space-between" align="center">
+              <Divider label={`Ads (${adsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={adsArr} onSave={(_type, a) => saveRedditAd(a)} type="ad" />
+            </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
               {adsArr.map((a, i) => <RedditAdCard key={a.id || i} ad={a} />)}
             </SimpleGrid>
@@ -3686,7 +4085,28 @@ export default function CompetitorLookup() {
               </>
             )}
 
-            <Divider label="Posts" />
+            <Group justify="space-between" align="center">
+              <Divider label="Posts" style={{ flex: 1 }} />
+              {posts.length > 1 && (
+                <SaveAllButton
+                  items={posts.filter(p => p?.text)}
+                  saveFn={(p) => {
+                    const m = p.public_metrics || {};
+                    return handleGenericSave("x", {
+                      platform_post_id: p.id,
+                      username: result.username,
+                      platform_user_id: result.userId,
+                      content: p.text,
+                      published_at: p.created_at,
+                      likes: m.like_count ?? 0,
+                      shares: m.retweet_count ?? 0,
+                      comments: m.reply_count ?? 0,
+                    });
+                  }}
+                  label="Save All Posts"
+                />
+              )}
+            </Group>
 
             {posts.length === 0 ? (
               <Alert variant="light" color="gray" title="No posts returned">

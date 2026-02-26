@@ -63,6 +63,37 @@ async function getTranscriptFromPython(videoId) {
   };
 }
 
+// Helper: extract user_id from body (POST) or query (GET)
+function requireUserId(req, res) {
+  const userId = req.body?.user_id || req.query?.user_id;
+  if (!userId) {
+    res.status(401).json({ error: 'Missing user_id' });
+    return null;
+  }
+  return userId;
+}
+
+// Ensure Reddit platform row exists
+let REDDIT_PLATFORM_ID = 6; // default, will be confirmed/created at startup
+async function ensureRedditPlatform() {
+  const { data } = await supabase
+    .from('platforms')
+    .select('id')
+    .ilike('name', 'reddit')
+    .maybeSingle();
+  if (data) { REDDIT_PLATFORM_ID = data.id; return data.id; }
+
+  // Create with id=6 since it's unused in the DB
+  const { data: created, error } = await supabase
+    .from('platforms')
+    .insert({ name: 'Reddit' })
+    .select('id')
+    .single();
+  if (error) throw error;
+  REDDIT_PLATFORM_ID = created.id;
+  return created.id;
+}
+
 const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -71,6 +102,20 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json({ limit: '10mb' }));
+
+// Return platform name → id mapping so clients use correct IDs
+app.get('/api/platforms', async (_req, res) => {
+  try {
+    const { data, error } = await supabase.from('platforms').select('id, name');
+    if (error) throw error;
+    // Build a lowercase-name keyed map: { x: 1, instagram: 3, tiktok: 5, ... }
+    const map = {};
+    for (const p of data) map[p.name.toLowerCase()] = p.id;
+    res.json({ platforms: map });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
@@ -193,8 +238,14 @@ app.post('/api/x/search', async (req, res) => {
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
+  try {
+    const redditId = await ensureRedditPlatform();
+    console.log(`Reddit platform ensured (id=${redditId})`);
+  } catch (e) {
+    console.error('Failed to ensure Reddit platform:', e.message);
+  }
 });
 
 app.post("/write", async (req, res) => {
@@ -300,6 +351,10 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/tone', async (req, res) => {
   const { message } = req.body || {};
   if (!message) return res.status(400).json({ error: 'Missing message in body' });
+
+  if (!process.env.CEREBRAS_API_KEY) {
+    return res.status(503).json({ error: 'Tone classification unavailable (CEREBRAS_API_KEY not configured)' });
+  }
 
   try {
     const result = await categorizeTone(message);
@@ -583,12 +638,12 @@ app.post("/api/posts", async (req, res) => {
     // Find or create competitor
     const profileUrlMap = {
       1: `https://x.com/${username}`,
-      2: `https://www.instagram.com/${username}`,
-      3: `https://www.linkedin.com/in/${username}`,
+      3: `https://www.instagram.com/${username}`,
       5: `https://www.tiktok.com/@${username}`,
-      6: `https://www.reddit.com/user/${username}`,
       8: `https://www.youtube.com/channel/${platform_user_id}`,
     };
+    // Reddit platform ID is dynamic (ensured at startup)
+    profileUrlMap[REDDIT_PLATFORM_ID] = `https://www.reddit.com/user/${username}`;
     const profileUrl = profileUrlMap[platform_id] || `https://unknown/${username}`;
 
     let competitor;
@@ -695,7 +750,7 @@ app.post("/api/posts", async (req, res) => {
     }
 
     // For Instagram, TikTok, Reddit — save author details
-    if ([2, 5, 6].includes(platform_id)) {
+    if ([3, 5, REDDIT_PLATFORM_ID].includes(platform_id)) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -713,6 +768,130 @@ app.post("/api/posts", async (req, res) => {
   } catch (err) {
     console.error("Save post failed:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── Comments CRUD ───────────────────────────────────────────────────────── */
+
+app.post("/api/comments", async (req, res) => {
+  const {
+    user_id,
+    platform_id,
+    platform_comment_id,
+    parent_post_id,
+    parent_title,
+    parent_author,
+    author_name,
+    author_handle,
+    content,
+    published_at,
+    likes,
+    replies,
+    extra_json,
+  } = req.body;
+
+  if (!user_id || !platform_id || !platform_comment_id) {
+    return res.status(400).json({ error: "Missing required fields: user_id, platform_id, platform_comment_id" });
+  }
+
+  try {
+    const { data: existing } = await supabase
+      .from("comments")
+      .select("id")
+      .eq("user_id", user_id)
+      .eq("platform_id", platform_id)
+      .eq("platform_comment_id", platform_comment_id)
+      .maybeSingle();
+
+    if (existing) {
+      const { data: updated, error: updateErr } = await supabase
+        .from("comments")
+        .update({ content, likes, replies, parent_title, parent_author, extra_json })
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (updateErr) throw updateErr;
+      return res.json({ saved: true, comment_id: updated.id, updated: true });
+    }
+
+    const { data: newComment, error: insertErr } = await supabase
+      .from("comments")
+      .insert({
+        user_id,
+        platform_id,
+        platform_comment_id,
+        parent_post_id: parent_post_id || null,
+        parent_title: parent_title || null,
+        parent_author: parent_author || null,
+        author_name: author_name || "unknown",
+        author_handle: author_handle || "unknown",
+        content: content || "",
+        published_at: published_at || null,
+        likes: likes ?? 0,
+        replies: replies ?? 0,
+        extra_json: extra_json || {},
+      })
+      .select()
+      .single();
+    if (insertErr) throw insertErr;
+    return res.json({ saved: true, comment_id: newComment.id });
+  } catch (err) {
+    if (err?.code === 'PGRST205' || err?.message?.includes('Could not find')) {
+      console.warn('[comments] Table not found – run the migration SQL in Supabase.');
+      return res.status(503).json({ error: 'Comments table not created yet. Run the migration SQL in Supabase.' });
+    }
+    console.error("Save comment failed:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/comments", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const { data: comments, error } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      // Table doesn't exist yet (PGRST205) → return empty gracefully
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find')) {
+        console.warn('[comments] Table not found – returning empty. Run the migration SQL in Supabase.');
+        return res.json({ comments: [] });
+      }
+      throw error;
+    }
+    return res.json({ comments: comments || [] });
+  } catch (err) {
+    console.error("Fetch comments failed:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/comments/:id", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+  const commentId = req.params.id;
+
+  try {
+    const { data: comment, error: findErr } = await supabase
+      .from("comments")
+      .select("id")
+      .eq("id", commentId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (findErr) throw findErr;
+    if (!comment) return res.status(404).json({ error: "Comment not found." });
+
+    const { error: delErr } = await supabase.from("comments").delete().eq("id", commentId);
+    if (delErr) throw delErr;
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error("Delete comment failed:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -805,7 +984,7 @@ app.delete("/api/posts/:id", async (req, res) => {
 
 // ─── LinkedIn ────────────────────────────────────────────────────────────────
 
-const PLATFORM_LINKEDIN = 5; // platform id for linkedin (will be upserted)
+// LinkedIn platform ID is resolved dynamically by ensureLinkedinPlatform()
 
 // Ensure the LinkedIn platform row exists
 async function ensureLinkedinPlatform() {
@@ -826,6 +1005,45 @@ async function ensureLinkedinPlatform() {
 }
 
 /**
+ * Normalise LinkedIn inputs so the Scrape Creators API always receives a full URL.
+ *   profile: "parrsam"         → "https://www.linkedin.com/in/parrsam"
+ *   company: "shopify"         → "https://www.linkedin.com/company/shopify"
+ *   post:    "/posts/abc-123"  → "https://www.linkedin.com/posts/abc-123"
+ * Full URLs are passed through unchanged.
+ */
+function normalizeLinkedinUrl(raw, type) {
+  if (!raw) return raw;
+  let v = raw.trim();
+
+  // Already a full URL
+  if (/^https?:\/\//i.test(v)) return v;
+
+  // Remove leading slashes / "linkedin.com" prefix without scheme
+  v = v.replace(/^\/+/, '').replace(/^(www\.)?linkedin\.com\/?/i, '');
+
+  switch (type) {
+    case 'profile': {
+      // Strip "in/" prefix if present, then wrap
+      const slug = v.replace(/^in\//i, '').replace(/\/+$/, '');
+      return `https://www.linkedin.com/in/${slug}`;
+    }
+    case 'company': {
+      const slug = v.replace(/^company\//i, '').replace(/\/+$/, '');
+      return `https://www.linkedin.com/company/${slug}`;
+    }
+    case 'post': {
+      // Could be /posts/... or /pulse/... — just prefix LinkedIn base
+      if (/^(posts|pulse|feed)\//i.test(v)) {
+        return `https://www.linkedin.com/${v}`;
+      }
+      return `https://www.linkedin.com/posts/${v}`;
+    }
+    default:
+      return v;
+  }
+}
+
+/**
  * POST /api/linkedin/search
  * Body: { options: { profile, company, post }, inputs: { profile, company, post } }
  * Calls the relevant Scrape Creators endpoints in parallel and returns combined results.
@@ -838,16 +1056,22 @@ app.post('/api/linkedin/search', async (req, res) => {
     const labels = [];
 
     if (options.profile && inputs.profile) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.profile, 'profile');
+      console.log('[LinkedIn] Profile search →', normalizedUrl);
       labels.push('profile');
-      tasks.push(scrapeCreators('/v1/linkedin/profile', { url: inputs.profile }));
+      tasks.push(scrapeCreators('/v1/linkedin/profile', { url: normalizedUrl }));
     }
     if (options.company && inputs.company) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.company, 'company');
+      console.log('[LinkedIn] Company search →', normalizedUrl);
       labels.push('company');
-      tasks.push(scrapeCreators('/v1/linkedin/company', { url: inputs.company }));
+      tasks.push(scrapeCreators('/v1/linkedin/company', { url: normalizedUrl }));
     }
     if (options.post && inputs.post) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.post, 'post');
+      console.log('[LinkedIn] Post search →', normalizedUrl);
       labels.push('post');
-      tasks.push(scrapeCreators('/v1/linkedin/post', { url: inputs.post }));
+      tasks.push(scrapeCreators('/v1/linkedin/post', { url: normalizedUrl }));
     }
 
     if (!tasks.length) {
@@ -1238,6 +1462,74 @@ app.post('/api/linkedin/save', async (req, res) => {
       return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
     }
 
+    // Generic sub-item save for activity, companyPost, comment, article
+    if (['activity', 'companyPost', 'comment', 'article'].includes(type)) {
+      const authorName = data.author || data.profileName || data.companyName || 'LinkedIn';
+      const platformUserId = authorName;
+      const content = data.text || data.headline || data.body || '';
+      const postUrl = data.url || data.link || '';
+
+      let competitor;
+      const { data: existing } = await supabase
+        .from('competitors')
+        .select('*')
+        .eq('platform_id', platformId)
+        .eq('platform_user_id', platformUserId)
+        .maybeSingle();
+
+      if (existing) {
+        competitor = existing;
+      } else {
+        const { data: created, error } = await supabase
+          .from('competitors')
+          .insert({
+            platform_id: platformId,
+            platform_user_id: platformUserId,
+            display_name: authorName,
+            profile_url: postUrl,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        competitor = created;
+      }
+
+      const postPlatformId = postUrl || `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { data: post, error: postErr } = await supabase
+        .from('posts')
+        .insert({
+          platform_id: platformId,
+          competitor_id: competitor.id,
+          platform_post_id: postPlatformId,
+          url: postUrl,
+          content,
+          published_at: data.datePublished || new Date(),
+          user_id: userId,
+        })
+        .select()
+        .single();
+      if (postErr) throw postErr;
+
+      await supabase.from('post_metrics').insert({
+        post_id: post.id,
+        snapshot_at: new Date(),
+        likes: data.likeCount || 0,
+        shares: 0,
+        comments: data.commentCount || 0,
+      });
+
+      await supabase.from('post_details_platform').insert({
+        post_id: post.id,
+        extra_json: {
+          type: `linkedin_${type}`,
+          author_name: authorName,
+          ...data,
+        },
+      });
+
+      return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
+    }
+
     return res.status(400).json({ error: `Unknown save type: ${type}` });
   } catch (err) {
     console.error('LinkedIn save error:', err);
@@ -1281,10 +1573,10 @@ function extractIgUsername(input) {
  *
  * Scrape Creators param mapping (discovered via testing):
  *   /v1/instagram/profile        → { handle }
- *   /v1/instagram/user/posts     → { handle }
+ *   /v2/instagram/user/posts     → { handle }
  *   /v1/instagram/post           → { url }   (full IG post URL)
- *   /v1/instagram/post/comments  → { url }   (full IG post URL)
- *   /v1/instagram/reels/search   → { query }
+ *   /v2/instagram/post/comments  → { url }   (full IG post URL)
+ *   /v2/instagram/reels/search   → { query }
  *   /v1/instagram/user/reels     → { handle }
  *   /v1/instagram/user/highlights→ { handle }
  */
@@ -1306,7 +1598,7 @@ app.post('/api/instagram/search', async (req, res) => {
     const postsHandle = extractIgUsername(inputs.userPostsUsername);
     if (options.userPosts && postsHandle) {
       labels.push('userPosts');
-      tasks.push(scrapeCreators('/v1/instagram/user/posts', { handle: postsHandle }));
+      tasks.push(scrapeCreators('/v2/instagram/user/posts', { handle: postsHandle }));
     }
 
     // For single post & comments the API expects the full post URL
@@ -1323,13 +1615,13 @@ app.post('/api/instagram/search', async (req, res) => {
     }
     if (options.postComments && canonicalPostUrl) {
       labels.push('postComments');
-      tasks.push(scrapeCreators('/v1/instagram/post/comments', { url: canonicalPostUrl }));
+      tasks.push(scrapeCreators('/v2/instagram/post/comments', { url: canonicalPostUrl }));
     }
 
     // ── Reels ────────────────────────────────────────────────────────────
     if (options.reelsSearch && inputs.reelsSearchTerm?.trim()) {
       labels.push('reelsSearch');
-      tasks.push(scrapeCreators('/v1/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }));
+      tasks.push(scrapeCreators('/v2/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }));
     }
 
     const reelsHandle = extractIgUsername(inputs.userReelsUsername);

@@ -430,23 +430,122 @@ function GenericPostCard({ post, onDelete }) {
 
 /* ── platform config ─────────────────────────────────────────────────────── */
 
-const PLATFORM_MAP = {
-  1: { label: "X / Twitter", icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
-  2: { label: "Instagram", icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
-  3: { label: "LinkedIn", icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
-  5: { label: "TikTok", icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
-  6: { label: "Reddit", icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
-  8: { label: "YouTube", icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
+/* ── Comment card ─────────────────────────────────────────────────────── */
+
+function CommentCard({ comment, onDelete, platformMap }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = (comment.content || "").length > 280;
+  const preview = isLong && !expanded ? comment.content.slice(0, 280) + "…" : comment.content;
+  const cfg = platformMap?.[comment.platform_id];
+
+  return (
+    <Card withBorder radius="md" p="lg" style={{ borderLeft: `3px solid ${cfg?.color || "#868e96"}` }}>
+      <Stack gap="sm">
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%",
+              background: "#f0f0f0",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 700, fontSize: 15, color: cfg?.color || "#868e96", flexShrink: 0,
+            }}>
+              {(comment.author_name || "?")[0].toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <Text fw={700} size="sm" lh={1.3} truncate>{comment.author_name || "Unknown"}</Text>
+              <Text size="xs" c="dimmed" lh={1.2}>@{comment.author_handle || "unknown"}</Text>
+            </div>
+          </Group>
+          <Group gap={6} wrap="nowrap">
+            <Badge size="xs" variant="light" color="gray">Comment</Badge>
+            <Tooltip label="Remove saved comment">
+              <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
+                <IconTrash size={15} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Group>
+
+        {comment.parent_title && (
+          <Text size="xs" c="dimmed" fs="italic">
+            On: {comment.parent_title}{comment.parent_author ? ` by ${comment.parent_author}` : ""}
+          </Text>
+        )}
+
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+
+        {isLong && (
+          <Button variant="subtle" size="xs" p={0} h="auto"
+            leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "Show less" : "Show more"}
+          </Button>
+        )}
+
+        {comment.published_at && (
+          <Text size="xs" c="dimmed" mt={-4}>{formatDate(comment.published_at)}</Text>
+        )}
+
+        <Divider my={0} />
+
+        <Group gap="lg">
+          <Metric icon={<IconHeart size={14} color="#e0245e" />} value={comment.likes} />
+          <Metric icon={<IconMessage size={14} color="#868e96" />} value={comment.replies} />
+        </Group>
+      </Stack>
+    </Card>
+  );
+}
+
+/* ── platform config (default IDs; overridden dynamically from server) ──── */
+
+const PLATFORM_CARD_CONFIG = {
+  x: { label: "X / Twitter", icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
+  instagram: { label: "Instagram", icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
+  tiktok: { label: "TikTok", icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
+  youtube: { label: "YouTube", icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
+  linkedin: { label: "LinkedIn", icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
+  reddit: { label: "Reddit", icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
+};
+
+const DEFAULT_PLATFORM_MAP = {
+  1: { ...PLATFORM_CARD_CONFIG.x },
+  3: { ...PLATFORM_CARD_CONFIG.instagram },
+  5: { ...PLATFORM_CARD_CONFIG.tiktok },
+  8: { ...PLATFORM_CARD_CONFIG.youtube },
+  9: { ...PLATFORM_CARD_CONFIG.linkedin },
+  10: { ...PLATFORM_CARD_CONFIG.reddit },
 };
 
 /* ── page ─────────────────────────────────────────────────────────────────── */
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
+  const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
+  const [deleteModal, setDeleteModal] = useState({ open: false, postId: null, type: "post" });
   const [currentUserId, setCurrentUserId] = useState(null);
   const [notice, setNotice] = useState("");
+  const [platformMap, setPlatformMap] = useState(DEFAULT_PLATFORM_MAP);
+  const [collapsedSections, setCollapsedSections] = useState({});
+
+  /* Fetch platform IDs from server to keep in sync with DB */
+  useEffect(() => {
+    fetch(apiUrl("/api/platforms"))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && typeof data === "object") {
+          const newMap = { ...DEFAULT_PLATFORM_MAP };
+          for (const [key, id] of Object.entries(data)) {
+            const cfg = PLATFORM_CARD_CONFIG[key];
+            if (cfg && id) newMap[id] = { ...cfg };
+          }
+          setPlatformMap(newMap);
+        }
+      })
+      .catch(() => { }); // fall back to defaults
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -463,14 +562,20 @@ export default function SavedPosts() {
   useEffect(() => {
     if (!currentUserId) {
       setPosts([]);
+      setComments([]);
       setNotice("Sign in to view your saved posts.");
       setLoading(false);
       return;
     }
     setLoading(true);
-    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
-      .then((r) => r.json())
-      .then((d) => setPosts(d.posts || []))
+    Promise.all([
+      fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`)).then(r => r.json()),
+      fetch(apiUrl(`/api/comments?user_id=${encodeURIComponent(currentUserId)}`)).then(r => r.json()).catch(() => ({ comments: [] })),
+    ])
+      .then(([postsData, commentsData]) => {
+        setPosts(postsData.posts || []);
+        setComments(commentsData.comments || []);
+      })
       .catch(() => setNotice("Failed to load posts."))
       .finally(() => setLoading(false));
 
@@ -480,25 +585,31 @@ export default function SavedPosts() {
   }, [currentUserId]);
 
   async function handleDelete() {
-    const postId = deleteModal.postId;
-    setDeleteModal({ open: false, postId: null });
+    const itemId = deleteModal.postId;
+    const itemType = deleteModal.type || "post";
+    setDeleteModal({ open: false, postId: null, type: "post" });
     if (!currentUserId) {
-      setNotice("Sign in to delete saved posts.");
+      setNotice("Sign in to delete saved items.");
       return;
     }
     try {
+      const endpoint = itemType === "comment" ? "comments" : "posts";
       const resp = await fetch(
-        apiUrl(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUserId)}`),
+        apiUrl(`/api/${endpoint}/${itemId}?user_id=${encodeURIComponent(currentUserId)}`),
         { method: "DELETE" }
       );
       if (!resp.ok) {
         const error = await resp.json();
-        throw new Error(error.error || "Failed to delete post");
+        throw new Error(error.error || `Failed to delete ${itemType}`);
       }
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      if (itemType === "comment") {
+        setComments((prev) => prev.filter((c) => c.id !== itemId));
+      } else {
+        setPosts((prev) => prev.filter((p) => p.id !== itemId));
+      }
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete post: " + err.message);
+      alert(`Failed to delete ${itemType}: ` + err.message);
     }
   }
 
@@ -510,7 +621,7 @@ export default function SavedPosts() {
     grouped[pid].push(p);
   }
   // Sort platform groups: known platforms first in a nice order, then unknowns
-  const platformOrder = [1, 2, 3, 5, 6, 8];
+  const platformOrder = Object.keys(platformMap).map(Number).sort((a, b) => a - b);
   const sortedKeys = Object.keys(grouped)
     .map(Number)
     .sort((a, b) => {
@@ -526,55 +637,131 @@ export default function SavedPosts() {
       {/* page header */}
       <Group justify="space-between" align="center">
         <Title order={2}>Saved Posts</Title>
-        <Badge variant="filled" size="lg" radius="sm" color="blue">
-          {posts.length} TOTAL
-        </Badge>
+        <Group gap="xs">
+          <Badge variant="filled" size="lg" radius="sm" color="blue">
+            {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
+          </Badge>
+          {comments.length > 0 && (
+            <Badge variant="filled" size="lg" radius="sm" color="grape">
+              {comments.length} {comments.length === 1 ? "COMMENT" : "COMMENTS"}
+            </Badge>
+          )}
+        </Group>
       </Group>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
-      {!loading && posts.length === 0 && !notice && (
+      {!loading && posts.length === 0 && comments.length === 0 && !notice && (
         <Alert color="gray" variant="light" radius="md">
-          No saved posts yet. Go to Competitor Lookup to save posts.
+          No saved posts or comments yet. Go to Competitor Lookup to save posts.
         </Alert>
       )}
 
       {sortedKeys.map((platformId) => {
         const platformPosts = grouped[platformId];
-        const cfg = PLATFORM_MAP[platformId];
+        const cfg = platformMap[platformId];
         const PlatformIcon = cfg?.icon;
         const PlatformCard = cfg?.Card || GenericPostCard;
+        const isOpen = !collapsedSections[platformId];
 
         return (
           <Stack key={platformId} gap="sm">
-            <Group gap={8} align="center">
+            <Group
+              gap={8}
+              align="center"
+              onClick={() => setCollapsedSections(prev => ({ ...prev, [platformId]: !prev[platformId] }))}
+              style={{ cursor: "pointer", userSelect: "none" }}
+            >
               {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
               <Text fw={700} size="sm">
                 {cfg?.label || `Platform ${platformId}`} ({platformPosts.length})
               </Text>
+              {isOpen
+                ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
+                : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
+              }
             </Group>
-            {platformPosts.map((p) => (
-              <PlatformCard
-                key={p.id}
-                post={p}
-                onDelete={() => setDeleteModal({ open: true, postId: p.id })}
-              />
-            ))}
+            <Collapse in={isOpen}>
+              <Stack gap="sm">
+                {platformPosts.map((p) => (
+                  <PlatformCard
+                    key={p.id}
+                    post={p}
+                    onDelete={() => setDeleteModal({ open: true, postId: p.id })}
+                  />
+                ))}
+              </Stack>
+            </Collapse>
           </Stack>
         );
       })}
 
+      {/* Comments section */}
+      {comments.length > 0 && (() => {
+        const commentsOpen = !collapsedSections["comments"];
+        // Group comments by platform
+        const groupedComments = {};
+        for (const c of comments) {
+          const pid = c.platform_id ?? 0;
+          if (!groupedComments[pid]) groupedComments[pid] = [];
+          groupedComments[pid].push(c);
+        }
+        return (
+          <Stack gap="sm">
+            <Group
+              gap={8}
+              align="center"
+              onClick={() => setCollapsedSections(prev => ({ ...prev, comments: !prev.comments }))}
+              style={{ cursor: "pointer", userSelect: "none" }}
+            >
+              <IconMessage size={18} color="#868e96" />
+              <Text fw={700} size="sm">
+                Saved Comments ({comments.length})
+              </Text>
+              {commentsOpen
+                ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
+                : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
+              }
+            </Group>
+            <Collapse in={commentsOpen}>
+              <Stack gap="sm">
+                {Object.entries(groupedComments).map(([pid, platformComments]) => {
+                  const cfg = platformMap[Number(pid)];
+                  return (
+                    <Stack key={`comments-${pid}`} gap="xs" ml="md">
+                      {cfg && (
+                        <Text size="xs" c="dimmed" fw={600}>
+                          {cfg.label} ({platformComments.length})
+                        </Text>
+                      )}
+                      {platformComments.map(c => (
+                        <CommentCard
+                          key={c.id}
+                          comment={c}
+                          platformMap={platformMap}
+                          onDelete={() => setDeleteModal({ open: true, postId: c.id, type: "comment" })}
+                        />
+                      ))}
+                    </Stack>
+                  );
+                })}
+              </Stack>
+            </Collapse>
+          </Stack>
+        );
+      })()}
+
       {/* delete modal */}
       <Modal
         opened={deleteModal.open}
-        onClose={() => setDeleteModal({ open: false, postId: null })}
+        onClose={() => setDeleteModal({ open: false, postId: null, type: "post" })}
         title="Confirm Delete"
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Text>Are you sure you want to delete this {deleteModal.type === "comment" ? "comment" : "post"}? This action cannot be undone.</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>Cancel</Button>
+            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null, type: "post" })}>Cancel</Button>
             <Button color="red" onClick={handleDelete}>Delete</Button>
           </Group>
         </Stack>
