@@ -27,6 +27,7 @@ import CompetitorLookup from "./pages/CompetitorLookup.jsx";
 import Profile from "./pages/Profile.jsx";
 import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 import SavedPosts from "./pages/SavedPosts.jsx";
+import Watchlist from "./pages/Watchlist.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
@@ -52,6 +53,7 @@ function AppLayout() {
             <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="/connected-integrations" element={<RequireAuth><ConnectedIntegrations /></RequireAuth>} />
+            <Route path="/watchlist" element={<RequireAuth><Watchlist /></RequireAuth>} />
           </Routes>
         </ScrollArea>
       </main>
