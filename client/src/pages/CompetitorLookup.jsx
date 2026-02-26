@@ -45,7 +45,7 @@ import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
-import { Checkbox, Transition } from "@mantine/core";
+import { Checkbox, NumberInput, Transition } from "@mantine/core";
 
 function LabelWithInfo({ label, info }) {
   return (
@@ -199,22 +199,45 @@ function LinkedinProfileCard({ profile, onSave }) {
           <div>
             <Divider label="Experience" my="xs" />
             <Stack gap="sm">
-              {profile.experience.slice(0, 5).map((exp, i) => (
-                <Card key={i} withBorder radius="sm" p="sm">
-                  <Group gap="xs" wrap="nowrap" align="start">
-                    <div style={{ flex: 1 }}>
-                      <Text size="sm" fw={600}>{exp.name}</Text>
-                      {exp.location && <Text size="xs" c="dimmed">{exp.location}</Text>}
-                      {exp.member?.description && (
-                        <Text size="xs" c="dimmed" mt={4} lineClamp={2}>{exp.member.description}</Text>
+              {profile.experience.slice(0, 5).map((exp, i) => {
+                // Detect encoded/redacted text (mostly non-ASCII characters)
+                const isEncoded = (s) => {
+                  if (!s) return true;
+                  const ascii = s.replace(/[^\x20-\x7E]/g, '');
+                  return ascii.length < s.length * 0.3; // less than 30% readable
+                };
+                const companyName = isEncoded(exp.name) ? null : exp.name;
+                const title = exp.member?.title && !isEncoded(exp.member.title) ? exp.member.title : null;
+                const description = exp.member?.description && !isEncoded(exp.member.description) ? exp.member.description : null;
+                const dateRange = [exp.member?.startDate, exp.member?.endDate || 'Present'].filter(Boolean).join(' – ');
+                const location = exp.location && !isEncoded(exp.location) ? exp.location : null;
+
+                // Skip entries where everything is encoded
+                if (!companyName && !title && !description) return null;
+
+                return (
+                  <Card key={i} withBorder radius="sm" p="sm">
+                    <Group gap="xs" wrap="nowrap" align="start">
+                      <div style={{ flex: 1 }}>
+                        {title && <Text size="sm" fw={600}>{title}</Text>}
+                        {companyName && (
+                          <Text size="xs" c={title ? "dimmed" : undefined} fw={title ? undefined : 600}>
+                            {companyName}
+                          </Text>
+                        )}
+                        {dateRange && <Text size="xs" c="dimmed">{dateRange}</Text>}
+                        {location && <Text size="xs" c="dimmed">{location}</Text>}
+                        {description && (
+                          <Text size="xs" c="dimmed" mt={4} lineClamp={2}>{description}</Text>
+                        )}
+                      </div>
+                      {exp.url && companyName && (
+                        <Text size="xs" c="blue" component="a" href={exp.url} target="_blank">{companyName}</Text>
                       )}
-                    </div>
-                    {exp.url && (
-                      <Text size="xs" c="blue" component="a" href={exp.url} target="_blank">View</Text>
-                    )}
-                  </Group>
-                </Card>
-              ))}
+                    </Group>
+                  </Card>
+                );
+              })}
             </Stack>
           </div>
         )}
@@ -1004,6 +1027,7 @@ export default function CompetitorLookup() {
   const [youtubeInputs, setYoutubeInputs] = useState({});
   const [redditOptions, setRedditOptions] = useState({});
   const [redditInputs, setRedditInputs] = useState({});
+  const [scrapePostCount, setScrapePostCount] = useState(10);
   const [linkedinResult, setLinkedinResult] = useState(null);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
   const [linkedinError, setLinkedinError] = useState(null);
@@ -1320,6 +1344,7 @@ export default function CompetitorLookup() {
       const json = await tryPostJson("/api/x/search", {
         options: xOptions,
         inputs: xInputs,
+        limit: scrapePostCount,
       });
       setXResult(json);
     } catch (e) {
@@ -1377,7 +1402,7 @@ export default function CompetitorLookup() {
 
     const hasInput =
       ((youtubeOptions.channelDetails || youtubeOptions.channelVideos) && youtubeInputs.channelUrl?.trim()) ||
-      ((youtubeOptions.videoDetails || youtubeOptions.transcript || youtubeOptions.videoComments) && youtubeInputs.videoUrl?.trim()) ||
+      ((youtubeOptions.videoDetails || youtubeOptions.transcript) && youtubeInputs.videoUrl?.trim()) ||
       (youtubeOptions.search && youtubeInputs.searchQuery?.trim());
 
     if (!hasInput) {
@@ -1390,6 +1415,7 @@ export default function CompetitorLookup() {
       const json = await tryPostJson("/api/youtube/search", {
         options: youtubeOptions,
         inputs: youtubeInputs,
+        limit: scrapePostCount,
       });
       setYoutubeResult(json);
     } catch (e) {
@@ -1442,7 +1468,7 @@ export default function CompetitorLookup() {
     const hasInput =
       (instagramOptions.profile && instagramInputs.username?.trim()) ||
       (instagramOptions.userPosts && instagramInputs.userPostsUsername?.trim()) ||
-      ((instagramOptions.singlePost || instagramOptions.postComments) && instagramInputs.postUrl?.trim()) ||
+      (instagramOptions.singlePost && instagramInputs.postUrl?.trim()) ||
       (instagramOptions.reelsSearch && instagramInputs.reelsSearchTerm?.trim()) ||
       (instagramOptions.userReels && instagramInputs.userReelsUsername?.trim()) ||
       (instagramOptions.highlightDetail && instagramInputs.highlightUrl?.trim());
@@ -1457,6 +1483,7 @@ export default function CompetitorLookup() {
       const json = await tryPostJson("/api/instagram/search", {
         options: instagramOptions,
         inputs: instagramInputs,
+        limit: scrapePostCount,
       });
       setInstagramResult(json);
       if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
@@ -1525,7 +1552,7 @@ export default function CompetitorLookup() {
     const hasInput =
       ((tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && tiktokInputs.username?.trim()) ||
       (tiktokOptions.profileVideos && tiktokInputs.videosUsername?.trim()) ||
-      ((tiktokOptions.transcript || tiktokOptions.comments) && tiktokInputs.videoUrl?.trim()) ||
+      (tiktokOptions.transcript && tiktokInputs.videoUrl?.trim()) ||
       (tiktokOptions.searchUsers && tiktokInputs.userSearchQuery?.trim()) ||
       (tiktokOptions.searchHashtag && tiktokInputs.hashtag?.trim()) ||
       (tiktokOptions.searchKeyword && tiktokInputs.keyword?.trim());
@@ -1540,6 +1567,7 @@ export default function CompetitorLookup() {
       const json = await tryPostJson("/api/tiktok/search", {
         options: tiktokOptions,
         inputs: tiktokInputs,
+        limit: scrapePostCount,
       });
       setTiktokResult(json);
       if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
@@ -1606,6 +1634,7 @@ export default function CompetitorLookup() {
       const json = await tryPostJson("/api/reddit/search", {
         options: redditOptions,
         inputs: redditInputs,
+        limit: scrapePostCount,
       });
       setRedditResult(json);
       if (json.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
@@ -1708,40 +1737,6 @@ export default function CompetitorLookup() {
     });
   }
 
-  // YouTube comment save — uses /api/comments endpoint
-  async function saveYoutubeComment(comment, videoContext) {
-    if (!currentUserId) throw new Error("Please sign in to save data.");
-    const ctx = videoContext || {};
-    const resp = await fetch(apiUrl("/api/comments"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: currentUserId,
-        platform_id: platformIds.youtube,
-        platform_comment_id: `yt_comment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        parent_post_id: ctx.videoId || null,
-        parent_title: ctx.videoTitle || null,
-        parent_author: ctx.channelTitle || null,
-        author_name: comment.author || "unknown",
-        author_handle: comment.author || "unknown",
-        content: comment.text || "",
-        published_at: comment.publishedAt || null,
-        likes: comment.likes ?? 0,
-        replies: comment.replyCount ?? 0,
-        extra_json: {
-          channelId: ctx.channelId || null,
-          videoTitle: ctx.videoTitle || null,
-          channelTitle: ctx.channelTitle || null,
-        },
-      }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Save failed: ${resp.status} ${text}`);
-    }
-    return resp.json();
-  }
-
   // YouTube channel save
   function saveYoutubeChannel(data) {
     return handleGenericSave("youtube", {
@@ -1782,19 +1777,6 @@ export default function CompetitorLookup() {
     });
   }
 
-  // Instagram comment save
-  function saveInstagramComment(comment) {
-    return handleGenericSave("instagram", {
-      platformUserId: comment.user?.pk || comment.user?.username || "unknown",
-      username: comment.user?.username || comment.username || "User",
-      postId: `comment_${comment.pk || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      content: comment.text || "",
-      likes: comment.comment_like_count ?? comment.likes ?? 0,
-      authorName: comment.user?.full_name || comment.user?.username || "",
-      authorHandle: comment.user?.username || comment.username || "",
-    });
-  }
-
   // TikTok profile save
   function saveTiktokProfile(profile) {
     const u = profile.user || profile.data?.user || profile;
@@ -1808,20 +1790,6 @@ export default function CompetitorLookup() {
       comments: stats.videoCount ?? u.videoCount ?? 0,
       authorName: u.nickname || u.uniqueId,
       authorHandle: u.uniqueId,
-    });
-  }
-
-  // TikTok comment save
-  function saveTiktokComment(comment) {
-    return handleGenericSave("tiktok", {
-      platformUserId: comment.user?.uid || comment.user?.unique_id || "unknown",
-      username: comment.user?.unique_id || comment.user?.nickname || "User",
-      postId: `comment_${comment.cid || Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      content: comment.text || "",
-      likes: comment.digg_count ?? 0,
-      comments: comment.reply_comment_total ?? 0,
-      authorName: comment.user?.nickname || "",
-      authorHandle: comment.user?.unique_id || "",
     });
   }
 
@@ -2290,36 +2258,6 @@ export default function CompetitorLookup() {
     );
   }
 
-  function YTCommentsList({ comments, videoContext }) {
-    if (!comments?.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
-    const ctx = videoContext || {};
-    return (
-      <Stack gap="xs">
-        {ctx.videoTitle && (
-          <Text size="xs" c="dimmed" fs="italic">Comments on: {ctx.videoTitle}{ctx.channelTitle ? ` by ${ctx.channelTitle}` : ""}</Text>
-        )}
-        <Group justify="flex-end">
-          <SaveAllButton items={comments} onSave={(_type, c) => saveYoutubeComment(c, ctx)} type="comment" />
-        </Group>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-          {comments.map((c, i) => (
-            <Card key={i} withBorder radius="sm" p="xs">
-              <Group gap={6} mb={4} wrap="nowrap">
-                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
-                {c.likes > 0 && <Badge size="xs" variant="light">{c.likes} ♥</Badge>}
-              </Group>
-              <Text size="xs" lineClamp={3}>{c.text}</Text>
-              {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{c.replyCount} {c.replyCount === 1 ? "reply" : "replies"}</Text>}
-              <Group justify="flex-end" mt={4}>
-                <SaveButton label="Save" onSave={() => saveYoutubeComment(c, ctx)} />
-              </Group>
-            </Card>
-          ))}
-        </SimpleGrid>
-      </Stack>
-    );
-  }
-
   function YTTranscript({ data }) {
     if (!data) return null;
     if (!data.available) {
@@ -2356,7 +2294,6 @@ export default function CompetitorLookup() {
       (results.channelVideos?.length || 0) +
       (results.videoDetails ? 1 : 0) +
       (results.transcript ? 1 : 0) +
-      (results.videoComments?.length || 0) +
       (results.search?.length || 0);
 
     return (
@@ -2418,21 +2355,6 @@ export default function CompetitorLookup() {
           <>
             <Divider label="Transcript" labelPosition="center" />
             <YTTranscript data={results.transcript} />
-          </>
-        )}
-
-        {results.videoComments?.length > 0 && (
-          <>
-            <Divider label={`Comments (${results.videoComments.length})`} labelPosition="center" />
-            <YTCommentsList
-              comments={results.videoComments}
-              videoContext={{
-                videoTitle: results.videoDetails?.title,
-                channelTitle: results.videoDetails?.channelTitle,
-                channelId: results.videoDetails?.channelId,
-                videoId: results.videoDetails?.id,
-              }}
-            />
           </>
         )}
 
@@ -2540,32 +2462,6 @@ export default function CompetitorLookup() {
     );
   }
 
-  function IgCommentsList({ comments }) {
-    const list = Array.isArray(comments) ? comments : comments?.comments || [];
-    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
-    return (
-      <Stack gap="xs">
-        <Group justify="flex-end">
-          <SaveAllButton items={list} onSave={(_type, c) => saveInstagramComment(c)} type="comment" />
-        </Group>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-          {list.slice(0, 30).map((c, i) => (
-            <Card key={i} withBorder radius="sm" p="xs">
-              <Group gap={6} mb={4} wrap="nowrap">
-                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.user?.username || c.username || "User"}</Text>
-                {(c.comment_like_count > 0 || c.likes > 0) && <Badge size="xs" variant="light">{c.comment_like_count || c.likes} ♥</Badge>}
-              </Group>
-              <Text size="xs" lineClamp={3}>{c.text}</Text>
-              <Group justify="flex-end" mt={4}>
-                <SaveButton label="Save" onSave={() => saveInstagramComment(c)} />
-              </Group>
-            </Card>
-          ))}
-        </SimpleGrid>
-      </Stack>
-    );
-  }
-
   function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
     const caption = reel.caption?.text || reel.caption || "";
@@ -2608,14 +2504,12 @@ export default function CompetitorLookup() {
     const reelsSearchArr = results.reelsSearch?.reels || results.reelsSearch?.data?.items || results.reelsSearch?.items || [];
     const rawUserReels = results.userReels?.items || results.userReels?.data?.items || [];
     const userReelsArr = rawUserReels.map(r => r.media || r);
-    const commentsArr = results.postComments?.comments || results.postComments?.data?.comments || [];
     const highlightItems = results.highlightDetail?.highlights || results.highlightDetail?.data?.items || results.highlightDetail?.items || [];
 
     const count =
       (results.profile ? 1 : 0) +
       (Array.isArray(postsArr) ? postsArr.length : 0) +
       (results.singlePost ? 1 : 0) +
-      (Array.isArray(commentsArr) ? commentsArr.length : 0) +
       (Array.isArray(reelsSearchArr) ? reelsSearchArr.length : 0) +
       (Array.isArray(userReelsArr) ? userReelsArr.length : 0) +
       (Array.isArray(highlightItems) ? highlightItems.length : 0);
@@ -2658,13 +2552,6 @@ export default function CompetitorLookup() {
           <>
             <Divider label="Post Detail" labelPosition="center" />
             <IgPostCard post={results.singlePost?.data?.xdt_shortcode_media || results.singlePost?.data || results.singlePost} onSave={onSave} />
-          </>
-        )}
-
-        {commentsArr.length > 0 && (
-          <>
-            <Divider label={`Comments (${commentsArr.length})`} labelPosition="center" />
-            <IgCommentsList comments={commentsArr} />
           </>
         )}
 
@@ -2790,37 +2677,6 @@ export default function CompetitorLookup() {
     );
   }
 
-  function TkCommentsList({ comments }) {
-    const list = Array.isArray(comments) ? comments : comments?.comments || [];
-    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
-    return (
-      <Stack gap="xs">
-        <Group justify="flex-end">
-          <SaveAllButton items={list} onSave={(_type, c) => saveTiktokComment(c)} type="comment" />
-        </Group>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-          {list.slice(0, 30).map((c, i) => (
-            <Card key={c.cid || i} withBorder radius="sm" p="xs">
-              <Group gap={6} mb={4} wrap="nowrap">
-                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>
-                  {c.user?.nickname || c.user?.unique_id || "User"}
-                </Text>
-                {(c.digg_count > 0) && <Badge size="xs" variant="light">{c.digg_count} ♥</Badge>}
-              </Group>
-              <Text size="xs" lineClamp={3}>{c.text}</Text>
-              {c.reply_comment_total > 0 && (
-                <Text size="xs" c="dimmed" mt={2}>{c.reply_comment_total} replies</Text>
-              )}
-              <Group justify="flex-end" mt={4}>
-                <SaveButton label="Save" onSave={() => saveTiktokComment(c)} />
-              </Group>
-            </Card>
-          ))}
-        </SimpleGrid>
-      </Stack>
-    );
-  }
-
   function TkUserListCard({ users, title }) {
     const list = Array.isArray(users) ? users : [];
     if (!list.length) return <Text size="sm" c="dimmed">No users found.</Text>;
@@ -2866,8 +2722,6 @@ export default function CompetitorLookup() {
     const followersList = results.followers?.followers || [];
     // Transcript
     const transcript = results.transcript?.transcript;
-    // Comments
-    const commentsList = results.comments?.comments || [];
     // Search results
     const searchUsersList = results.searchUsers?.user_list || [];
     const searchHashtagList = results.searchHashtag?.aweme_list || [];
@@ -2879,7 +2733,6 @@ export default function CompetitorLookup() {
       followingList.length +
       followersList.length +
       (transcript ? 1 : 0) +
-      commentsList.length +
       searchUsersList.length +
       searchHashtagList.length +
       searchKeywordList.length;
@@ -2949,13 +2802,6 @@ export default function CompetitorLookup() {
                 <Text size="sm" c="dimmed">No transcript available for this video.</Text>
               )}
             </Card>
-          </>
-        )}
-
-        {commentsList.length > 0 && (
-          <>
-            <Divider label={`Comments (${commentsList.length})`} labelPosition="center" />
-            <TkCommentsList comments={commentsList} />
           </>
         )}
 
@@ -3318,6 +3164,21 @@ export default function CompetitorLookup() {
               )}
             </Tabs.List>
 
+            <Card withBorder radius="md" p="sm" mt="md">
+              <Group gap="sm" align="flex-end">
+                <NumberInput
+                  label="Scrape Post Amount"
+                  description="Max results per endpoint — each page of ~10 results costs 1 credit"
+                  min={5}
+                  max={100}
+                  step={5}
+                  value={scrapePostCount}
+                  onChange={(val) => setScrapePostCount(val || 10)}
+                  style={{ maxWidth: 200 }}
+                />
+              </Group>
+            </Card>
+
             {connectedPlatforms.x && (
               <Tabs.Panel value="x" pt="md">
                 <Stack gap="lg">
@@ -3482,13 +3343,7 @@ export default function CompetitorLookup() {
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, transcript: e.target.checked }))}
                       />
 
-                      <Checkbox
-                        label={<LabelWithInfo label="Video Comments" info="Fetches comments on a specific video including replies, like counts, and timestamps." />}
-                        checked={youtubeOptions.videoComments || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, videoComments: e.target.checked }))}
-                      />
-
-                      {(youtubeOptions.videoDetails || youtubeOptions.transcript || youtubeOptions.videoComments) && (
+                      {(youtubeOptions.videoDetails || youtubeOptions.transcript) && (
                         <TextInput label="Video URL" placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
                           onChange={(e) => setYoutubeInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}
@@ -3660,18 +3515,12 @@ export default function CompetitorLookup() {
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, singlePost: e.target.checked }))}
                       />
 
-                      <Checkbox
-                        label={<LabelWithInfo label="Post Comments" info="Scrapes all comments on a specific post including user details, timestamps, and nested replies." />}
-                        checked={instagramOptions.postComments || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, postComments: e.target.checked }))}
-                      />
-
                       {instagramOptions.userPosts && (
                         <TextInput label="Username" placeholder="@username" value={instagramInputs.userPostsUsername || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, userPostsUsername: e.target.value }))} />
                       )}
 
-                      {(instagramOptions.singlePost || instagramOptions.postComments) && (
+                      {instagramOptions.singlePost && (
                         <TextInput label="Post URL" placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
                       )}
@@ -3805,18 +3654,12 @@ export default function CompetitorLookup() {
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
                       />
 
-                      <Checkbox
-                        label={<LabelWithInfo label="Comments" info="Scrapes all comments on a specific video including user details and timestamps." />}
-                        checked={tiktokOptions.comments || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, comments: e.target.checked }))}
-                      />
-
                       {tiktokOptions.profileVideos && (
                         <TextInput label="Username" placeholder="@username" value={tiktokInputs.videosUsername || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
                       )}
 
-                      {(tiktokOptions.transcript || tiktokOptions.comments) && (
+                      {tiktokOptions.transcript && (
                         <TextInput label="Video URL" placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}

@@ -1,6 +1,6 @@
 import { getUserIdByUsername, fetchPostsByUserId, fetchUserMentions, fetchFollowers, fetchFollowing, fetchTweetById, searchRecentTweets } from "./xApi.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
-import { scrapeCreators } from "./utils/scrapeCreators.js";
+import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -61,16 +61,6 @@ async function getTranscriptFromPython(videoId) {
   } catch (err) {
     console.error('Python transcript extraction error:', err.message);
   };
-}
-
-// Helper: extract user_id from body (POST) or query (GET)
-function requireUserId(req, res) {
-  const userId = req.body?.user_id || req.query?.user_id;
-  if (!userId) {
-    res.status(401).json({ error: 'Missing user_id' });
-    return null;
-  }
-  return userId;
 }
 
 // Ensure Reddit platform row exists
@@ -160,7 +150,8 @@ app.get("/api/x/fetch/:username", async (req, res) => {
  */
 app.post('/api/x/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -185,7 +176,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.followers && profileUsername) {
       labels.push('followers');
       tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, 20))
+        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, limit))
       );
     }
 
@@ -193,7 +184,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.following && profileUsername) {
       labels.push('following');
       tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, 20))
+        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, limit))
       );
     }
 
@@ -201,7 +192,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.userTweets && tweetsUsername) {
       labels.push('userTweets');
       tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, 10))
+        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, limit))
       );
     }
 
@@ -209,7 +200,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.userMentions && tweetsUsername) {
       labels.push('userMentions');
       tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, 10))
+        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, limit))
       );
     }
 
@@ -223,7 +214,7 @@ app.post('/api/x/search', async (req, res) => {
     // Search
     if (options.searchTweets && inputs.searchQuery) {
       labels.push('searchTweets');
-      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), 10));
+      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), limit));
     }
 
     if (!tasks.length) {
@@ -792,130 +783,6 @@ app.post("/api/posts", async (req, res) => {
   }
 });
 
-/* ── Comments CRUD ───────────────────────────────────────────────────────── */
-
-app.post("/api/comments", async (req, res) => {
-  const {
-    user_id,
-    platform_id,
-    platform_comment_id,
-    parent_post_id,
-    parent_title,
-    parent_author,
-    author_name,
-    author_handle,
-    content,
-    published_at,
-    likes,
-    replies,
-    extra_json,
-  } = req.body;
-
-  if (!user_id || !platform_id || !platform_comment_id) {
-    return res.status(400).json({ error: "Missing required fields: user_id, platform_id, platform_comment_id" });
-  }
-
-  try {
-    const { data: existing } = await supabase
-      .from("comments")
-      .select("id")
-      .eq("user_id", user_id)
-      .eq("platform_id", platform_id)
-      .eq("platform_comment_id", platform_comment_id)
-      .maybeSingle();
-
-    if (existing) {
-      const { data: updated, error: updateErr } = await supabase
-        .from("comments")
-        .update({ content, likes, replies, parent_title, parent_author, extra_json })
-        .eq("id", existing.id)
-        .select()
-        .single();
-      if (updateErr) throw updateErr;
-      return res.json({ saved: true, comment_id: updated.id, updated: true });
-    }
-
-    const { data: newComment, error: insertErr } = await supabase
-      .from("comments")
-      .insert({
-        user_id,
-        platform_id,
-        platform_comment_id,
-        parent_post_id: parent_post_id || null,
-        parent_title: parent_title || null,
-        parent_author: parent_author || null,
-        author_name: author_name || "unknown",
-        author_handle: author_handle || "unknown",
-        content: content || "",
-        published_at: published_at || null,
-        likes: likes ?? 0,
-        replies: replies ?? 0,
-        extra_json: extra_json || {},
-      })
-      .select()
-      .single();
-    if (insertErr) throw insertErr;
-    return res.json({ saved: true, comment_id: newComment.id });
-  } catch (err) {
-    if (err?.code === 'PGRST205' || err?.message?.includes('Could not find')) {
-      console.warn('[comments] Table not found – run the migration SQL in Supabase.');
-      return res.status(503).json({ error: 'Comments table not created yet. Run the migration SQL in Supabase.' });
-    }
-    console.error("Save comment failed:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/comments", async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
-
-  try {
-    const { data: comments, error } = await supabase
-      .from("comments")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      // Table doesn't exist yet (PGRST205) → return empty gracefully
-      if (error.code === 'PGRST205' || error.message?.includes('Could not find')) {
-        console.warn('[comments] Table not found – returning empty. Run the migration SQL in Supabase.');
-        return res.json({ comments: [] });
-      }
-      throw error;
-    }
-    return res.json({ comments: comments || [] });
-  } catch (err) {
-    console.error("Fetch comments failed:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete("/api/comments/:id", async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
-  const commentId = req.params.id;
-
-  try {
-    const { data: comment, error: findErr } = await supabase
-      .from("comments")
-      .select("id")
-      .eq("id", commentId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (findErr) throw findErr;
-    if (!comment) return res.status(404).json({ error: "Comment not found." });
-
-    const { error: delErr } = await supabase.from("comments").delete().eq("id", commentId);
-    if (delErr) throw delErr;
-    return res.json({ deleted: true });
-  } catch (err) {
-    console.error("Delete comment failed:", err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 app.get("/api/posts", async (req, res) => {
   const userId = requireUserId(req, res);
   if (!userId) return;
@@ -939,7 +806,14 @@ app.get("/api/posts", async (req, res) => {
 
     const formattedPosts = posts.map((post) => {
       const extra = post.post_details_platform?.[0]?.extra_json || {};
-      const competitorName = post.competitors?.[0]?.display_name;
+      // Supabase returns an object (not array) for many-to-one FK joins
+      const competitorName = post.competitors?.display_name
+        ?? post.competitors?.[0]?.display_name
+        ?? undefined;
+
+      // Build best-effort author name from multiple sources
+      const authorName = extra.author_name || extra.name || competitorName || extra.author?.name;
+      const authorHandle = extra.author_handle || extra.username || competitorName;
 
       return {
         id: post.id,
@@ -949,11 +823,12 @@ app.get("/api/posts", async (req, res) => {
         likes: post.post_metrics?.[0]?.likes || 0,
         shares: post.post_metrics?.[0]?.shares || 0,
         comments: post.post_metrics?.[0]?.comments || 0,
+        username: authorHandle || undefined,
         extra: {
           ...extra,
-          // Fallback to competitor name if author_name not set
-          author_name: extra.author_name || competitorName || undefined,
-          username: extra.username || extra.author_handle || competitorName,
+          author_name: authorName || undefined,
+          author_handle: authorHandle || undefined,
+          username: authorHandle || undefined,
           title: extra.title,
           description: extra.description,
           channelTitle: extra.channelTitle,
@@ -1251,6 +1126,14 @@ app.post('/api/linkedin/save', async (req, res) => {
             .single();
 
           if (!actErr && actPost) {
+            // Insert metrics (even if 0) so post_metrics row exists
+            await supabase.from('post_metrics').insert({
+              post_id: actPost.id,
+              snapshot_at: new Date(),
+              likes: act.likeCount || act.numLikes || 0,
+              shares: act.shareCount || act.numShares || 0,
+              comments: act.commentCount || act.numComments || 0,
+            });
             await supabase.from('post_details_platform').insert({
               post_id: actPost.id,
               extra_json: {
@@ -1258,6 +1141,7 @@ app.post('/api/linkedin/save', async (req, res) => {
                 activityType: act.activityType,
                 image: act.image,
                 link: act.link,
+                author_name: data.name || 'Unknown',
               },
             });
           }
@@ -1377,11 +1261,19 @@ app.post('/api/linkedin/save', async (req, res) => {
             .single();
 
           if (!cpErr && cpPost) {
+            await supabase.from('post_metrics').insert({
+              post_id: cpPost.id,
+              snapshot_at: new Date(),
+              likes: cp.likeCount || cp.numLikes || 0,
+              shares: cp.shareCount || cp.numShares || 0,
+              comments: cp.commentCount || cp.numComments || 0,
+            });
             await supabase.from('post_details_platform').insert({
               post_id: cpPost.id,
               extra_json: {
                 type: 'linkedin_company_post',
                 image: cp.image,
+                author_name: data.name || 'Unknown Company',
               },
             });
           }
@@ -1607,7 +1499,8 @@ function extractIgUsername(input) {
  */
 app.post('/api/instagram/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1623,7 +1516,7 @@ app.post('/api/instagram/search', async (req, res) => {
     const postsHandle = extractIgUsername(inputs.userPostsUsername);
     if (options.userPosts && postsHandle) {
       labels.push('userPosts');
-      tasks.push(scrapeCreators('/v2/instagram/user/posts', { handle: postsHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
     }
 
     // For single post & comments the API expects the full post URL
@@ -1638,21 +1531,17 @@ app.post('/api/instagram/search', async (req, res) => {
       labels.push('singlePost');
       tasks.push(scrapeCreators('/v1/instagram/post', { url: canonicalPostUrl }));
     }
-    if (options.postComments && canonicalPostUrl) {
-      labels.push('postComments');
-      tasks.push(scrapeCreators('/v2/instagram/post/comments', { url: canonicalPostUrl }));
-    }
 
     // ── Reels ────────────────────────────────────────────────────────────
     if (options.reelsSearch && inputs.reelsSearchTerm?.trim()) {
       labels.push('reelsSearch');
-      tasks.push(scrapeCreators('/v2/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v2/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }, limit));
     }
 
     const reelsHandle = extractIgUsername(inputs.userReelsUsername);
     if (options.userReels && reelsHandle) {
       labels.push('userReels');
-      tasks.push(scrapeCreators('/v1/instagram/user/reels', { handle: reelsHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: reelsHandle }, limit));
     }
 
     // ── Highlights ───────────────────────────────────────────────────────
@@ -1730,7 +1619,8 @@ function extractTkUsername(input) {
  */
 app.post('/api/tiktok/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1763,10 +1653,6 @@ app.post('/api/tiktok/search', async (req, res) => {
       labels.push('transcript');
       tasks.push(scrapeCreators('/v1/tiktok/video/transcript', { url: videoUrl }));
     }
-    if (options.comments && videoUrl) {
-      labels.push('comments');
-      tasks.push(scrapeCreators('/v1/tiktok/video/comments', { url: videoUrl }));
-    }
 
     // ── Search & Discovery ─────────────────────────────────────────────
     if (options.searchUsers && inputs.userSearchQuery?.trim()) {
@@ -1776,11 +1662,11 @@ app.post('/api/tiktok/search', async (req, res) => {
     if (options.searchHashtag && inputs.hashtag?.trim()) {
       labels.push('searchHashtag');
       const rawTag = inputs.hashtag.trim().replace(/^#/, '');
-      tasks.push(scrapeCreators('/v1/tiktok/search/hashtag', { hashtag: rawTag }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/hashtag', { hashtag: rawTag }, limit));
     }
     if (options.searchKeyword && inputs.keyword?.trim()) {
       labels.push('searchKeyword');
-      tasks.push(scrapeCreators('/v1/tiktok/search/keyword', { query: inputs.keyword.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: inputs.keyword.trim() }, limit));
     }
 
     if (!tasks.length) {
@@ -1850,7 +1736,8 @@ function extractSubreddit(input) {
  */
 app.post('/api/reddit/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1863,11 +1750,11 @@ app.post('/api/reddit/search', async (req, res) => {
     }
     if (options.subredditPosts && subreddit) {
       labels.push('subredditPosts');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit', { subreddit }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit }, limit));
     }
     if (options.subredditSearch && subreddit && inputs.subredditQuery?.trim()) {
       labels.push('subredditSearch');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }, limit));
     }
 
     // ── Posts & Search ─────────────────────────────────────────────────
@@ -1877,7 +1764,7 @@ app.post('/api/reddit/search', async (req, res) => {
     }
     if (options.search && inputs.searchQuery?.trim()) {
       labels.push('search');
-      tasks.push(scrapeCreators('/v1/reddit/search', { query: inputs.searchQuery.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/search', { query: inputs.searchQuery.trim() }, limit));
     }
 
     // ── Ads ────────────────────────────────────────────────────────────
@@ -2037,7 +1924,7 @@ async function fetchChannelVideos(channelId, maxResults = 10) {
   return (vData.items || []).map(v => ({
     id: v.id,
     title: v.snippet.title,
-    description: v.snippet.description?.slice(0, 300),
+    description: v.snippet.description || "",
     publishedAt: v.snippet.publishedAt,
     channelTitle: v.snippet.channelTitle,
     thumbnails: v.snippet.thumbnails,
@@ -2073,35 +1960,6 @@ async function fetchVideoDetails(videoId) {
   };
 }
 
-async function fetchVideoComments(videoId, maxResults = 20) {
-  const data = await ytFetch(`${YT_BASE}/commentThreads`, {
-    part: 'snippet,replies',
-    videoId: videoId,
-    maxResults: Math.min(maxResults, 100),
-    order: 'relevance',
-    textFormat: 'plainText',
-  });
-  return (data.items || []).map(item => {
-    const top = item.snippet.topLevelComment.snippet;
-    const replies = (item.replies?.comments || []).map(r => ({
-      author: r.snippet.authorDisplayName,
-      authorImage: r.snippet.authorProfileImageUrl,
-      text: r.snippet.textDisplay,
-      likes: r.snippet.likeCount || 0,
-      publishedAt: r.snippet.publishedAt,
-    }));
-    return {
-      author: top.authorDisplayName,
-      authorImage: top.authorProfileImageUrl,
-      text: top.textDisplay,
-      likes: top.likeCount || 0,
-      publishedAt: top.publishedAt,
-      replyCount: item.snippet.totalReplyCount || 0,
-      replies,
-    };
-  });
-}
-
 async function searchYouTube(query, maxResults = 10) {
   const data = await ytFetch(`${YT_BASE}/search`, {
     part: 'snippet',
@@ -2121,7 +1979,7 @@ async function searchYouTube(query, maxResults = 10) {
   return (vData.items || []).map(v => ({
     id: v.id,
     title: v.snippet.title,
-    description: v.snippet.description?.slice(0, 300),
+    description: v.snippet.description || "",
     publishedAt: v.snippet.publishedAt,
     channelTitle: v.snippet.channelTitle,
     channelId: v.snippet.channelId,
@@ -2140,7 +1998,8 @@ async function searchYouTube(query, maxResults = 10) {
  */
 app.post('/api/youtube/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -2154,7 +2013,7 @@ app.post('/api/youtube/search', async (req, res) => {
       }
       if (options.channelVideos) {
         labels.push('channelVideos');
-        tasks.push(channelIdPromise.then(id => fetchChannelVideos(id, 10)));
+        tasks.push(channelIdPromise.then(id => fetchChannelVideos(id, limit)));
       }
     }
 
@@ -2177,15 +2036,11 @@ app.post('/api/youtube/search', async (req, res) => {
         return { available: false, reason: pythonResult?.error || 'No transcript available', videoTitle: details.title };
       })());
     }
-    if (options.videoComments && videoId) {
-      labels.push('videoComments');
-      tasks.push(fetchVideoComments(videoId, 20));
-    }
 
     // Search
     if (options.search && inputs.searchQuery) {
       labels.push('search');
-      tasks.push(searchYouTube(inputs.searchQuery.trim(), 10));
+      tasks.push(searchYouTube(inputs.searchQuery.trim(), limit));
     }
 
     if (!tasks.length) {
@@ -2519,11 +2374,6 @@ async function _executeWatchlistScrape(item) {
           const vid = extractYouTubeVideoId(target);
           if (!vid) throw new Error('Invalid YouTube video URL or ID');
           return fetchVideoDetails(vid);
-        }
-        case 'video_comments': {
-          const vid = extractYouTubeVideoId(target);
-          if (!vid) throw new Error('Invalid YouTube video URL or ID');
-          return fetchVideoComments(vid, config.max_results || 20);
         }
         case 'search':
           return searchYouTube(target, config.max_results || 10);

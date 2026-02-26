@@ -428,76 +428,6 @@ function GenericPostCard({ post, onDelete }) {
   );
 }
 
-/* ── platform config ─────────────────────────────────────────────────────── */
-
-/* ── Comment card ─────────────────────────────────────────────────────── */
-
-function CommentCard({ comment, onDelete, platformMap }) {
-  const [expanded, setExpanded] = useState(false);
-  const isLong = (comment.content || "").length > 280;
-  const preview = isLong && !expanded ? comment.content.slice(0, 280) + "…" : comment.content;
-  const cfg = platformMap?.[comment.platform_id];
-
-  return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: `3px solid ${cfg?.color || "#868e96"}` }}>
-      <Stack gap="sm">
-        <Group justify="space-between" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: "50%",
-              background: "#f0f0f0",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 700, fontSize: 15, color: cfg?.color || "#868e96", flexShrink: 0,
-            }}>
-              {(comment.author_name || "?")[0].toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <Text fw={700} size="sm" lh={1.3} truncate>{comment.author_name || "Unknown"}</Text>
-              <Text size="xs" c="dimmed" lh={1.2}>@{comment.author_handle || "unknown"}</Text>
-            </div>
-          </Group>
-          <Group gap={6} wrap="nowrap">
-            <Badge size="xs" variant="light" color="gray">Comment</Badge>
-            <Tooltip label="Remove saved comment">
-              <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
-                <IconTrash size={15} />
-              </ActionIcon>
-            </Tooltip>
-          </Group>
-        </Group>
-
-        {comment.parent_title && (
-          <Text size="xs" c="dimmed" fs="italic">
-            On: {comment.parent_title}{comment.parent_author ? ` by ${comment.parent_author}` : ""}
-          </Text>
-        )}
-
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
-
-        {isLong && (
-          <Button variant="subtle" size="xs" p={0} h="auto"
-            leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? "Show less" : "Show more"}
-          </Button>
-        )}
-
-        {comment.published_at && (
-          <Text size="xs" c="dimmed" mt={-4}>{formatDate(comment.published_at)}</Text>
-        )}
-
-        <Divider my={0} />
-
-        <Group gap="lg">
-          <Metric icon={<IconHeart size={14} color="#e0245e" />} value={comment.likes} />
-          <Metric icon={<IconMessage size={14} color="#868e96" />} value={comment.replies} />
-        </Group>
-      </Stack>
-    </Card>
-  );
-}
-
 /* ── platform config (default IDs; overridden dynamically from server) ──── */
 
 const PLATFORM_CARD_CONFIG = {
@@ -522,9 +452,8 @@ const DEFAULT_PLATFORM_MAP = {
 
 export default function SavedPosts() {
   const [posts, setPosts] = useState([]);
-  const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [deleteModal, setDeleteModal] = useState({ open: false, postId: null, type: "post" });
+  const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
   const [currentUserId, setCurrentUserId] = useState(null);
   const [notice, setNotice] = useState("");
   const [platformMap, setPlatformMap] = useState(DEFAULT_PLATFORM_MAP);
@@ -562,20 +491,15 @@ export default function SavedPosts() {
   useEffect(() => {
     if (!currentUserId) {
       setPosts([]);
-      setComments([]);
       setNotice("Sign in to view your saved posts.");
       setLoading(false);
       return;
     }
+    setNotice("");
     setLoading(true);
-    Promise.all([
-      fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`)).then(r => r.json()),
-      fetch(apiUrl(`/api/comments?user_id=${encodeURIComponent(currentUserId)}`)).then(r => r.json()).catch(() => ({ comments: [] })),
-    ])
-      .then(([postsData, commentsData]) => {
-        setPosts(postsData.posts || []);
-        setComments(commentsData.comments || []);
-      })
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+      .then(r => r.json())
+      .then(data => setPosts(data.posts || []))
       .catch(() => setNotice("Failed to load posts."))
       .finally(() => setLoading(false));
 
@@ -586,30 +510,24 @@ export default function SavedPosts() {
 
   async function handleDelete() {
     const itemId = deleteModal.postId;
-    const itemType = deleteModal.type || "post";
-    setDeleteModal({ open: false, postId: null, type: "post" });
+    setDeleteModal({ open: false, postId: null });
     if (!currentUserId) {
       setNotice("Sign in to delete saved items.");
       return;
     }
     try {
-      const endpoint = itemType === "comment" ? "comments" : "posts";
       const resp = await fetch(
-        apiUrl(`/api/${endpoint}/${itemId}?user_id=${encodeURIComponent(currentUserId)}`),
+        apiUrl(`/api/posts/${itemId}?user_id=${encodeURIComponent(currentUserId)}`),
         { method: "DELETE" }
       );
       if (!resp.ok) {
         const error = await resp.json();
-        throw new Error(error.error || `Failed to delete ${itemType}`);
+        throw new Error(error.error || "Failed to delete post");
       }
-      if (itemType === "comment") {
-        setComments((prev) => prev.filter((c) => c.id !== itemId));
-      } else {
-        setPosts((prev) => prev.filter((p) => p.id !== itemId));
-      }
+      setPosts((prev) => prev.filter((p) => p.id !== itemId));
     } catch (err) {
       console.error("Delete failed:", err);
-      alert(`Failed to delete ${itemType}: ` + err.message);
+      alert("Failed to delete post: " + err.message);
     }
   }
 
@@ -637,23 +555,16 @@ export default function SavedPosts() {
       {/* page header */}
       <Group justify="space-between" align="center">
         <Title order={2}>Saved Posts</Title>
-        <Group gap="xs">
-          <Badge variant="filled" size="lg" radius="sm" color="blue">
-            {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
-          </Badge>
-          {comments.length > 0 && (
-            <Badge variant="filled" size="lg" radius="sm" color="grape">
-              {comments.length} {comments.length === 1 ? "COMMENT" : "COMMENTS"}
-            </Badge>
-          )}
-        </Group>
+        <Badge variant="filled" size="lg" radius="sm" color="blue">
+          {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
+        </Badge>
       </Group>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
-      {!loading && posts.length === 0 && comments.length === 0 && !notice && (
+      {!loading && posts.length === 0 && !notice && (
         <Alert color="gray" variant="light" radius="md">
-          No saved posts or comments yet. Go to Competitor Lookup to save posts.
+          No saved posts yet. Head to Competitor Lookup to search and save posts.
         </Alert>
       )}
 
@@ -696,72 +607,17 @@ export default function SavedPosts() {
         );
       })}
 
-      {/* Comments section */}
-      {comments.length > 0 && (() => {
-        const commentsOpen = !collapsedSections["comments"];
-        // Group comments by platform
-        const groupedComments = {};
-        for (const c of comments) {
-          const pid = c.platform_id ?? 0;
-          if (!groupedComments[pid]) groupedComments[pid] = [];
-          groupedComments[pid].push(c);
-        }
-        return (
-          <Stack gap="sm">
-            <Group
-              gap={8}
-              align="center"
-              onClick={() => setCollapsedSections(prev => ({ ...prev, comments: !prev.comments }))}
-              style={{ cursor: "pointer", userSelect: "none" }}
-            >
-              <IconMessage size={18} color="#868e96" />
-              <Text fw={700} size="sm">
-                Saved Comments ({comments.length})
-              </Text>
-              {commentsOpen
-                ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
-                : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
-              }
-            </Group>
-            <Collapse in={commentsOpen}>
-              <Stack gap="sm">
-                {Object.entries(groupedComments).map(([pid, platformComments]) => {
-                  const cfg = platformMap[Number(pid)];
-                  return (
-                    <Stack key={`comments-${pid}`} gap="xs" ml="md">
-                      {cfg && (
-                        <Text size="xs" c="dimmed" fw={600}>
-                          {cfg.label} ({platformComments.length})
-                        </Text>
-                      )}
-                      {platformComments.map(c => (
-                        <CommentCard
-                          key={c.id}
-                          comment={c}
-                          platformMap={platformMap}
-                          onDelete={() => setDeleteModal({ open: true, postId: c.id, type: "comment" })}
-                        />
-                      ))}
-                    </Stack>
-                  );
-                })}
-              </Stack>
-            </Collapse>
-          </Stack>
-        );
-      })()}
-
       {/* delete modal */}
       <Modal
         opened={deleteModal.open}
-        onClose={() => setDeleteModal({ open: false, postId: null, type: "post" })}
+        onClose={() => setDeleteModal({ open: false, postId: null })}
         title="Confirm Delete"
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this {deleteModal.type === "comment" ? "comment" : "post"}? This action cannot be undone.</Text>
+          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null, type: "post" })}>Cancel</Button>
+            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>Cancel</Button>
             <Button color="red" onClick={handleDelete}>Delete</Button>
           </Group>
         </Stack>

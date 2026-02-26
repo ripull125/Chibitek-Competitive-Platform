@@ -172,3 +172,132 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
 
   throw lastError || new Error('All Scrape Creators API keys exhausted');
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ *  scrapeCreatorsPaginated
+ *
+ *  ScrapeCreators endpoints do NOT accept a `limit` parameter — they
+ *  return a fixed page of results (~10-12) and expose a pagination cursor.
+ *  This helper fetches successive pages until `limit` items are collected.
+ *
+ *  ⚠ Each page costs 1 credit.
+ * ────────────────────────────────────────────────────────────────────── */
+
+const PAGINATION_CONFIG = {
+  // Instagram
+  '/v2/instagram/user/posts': {
+    resultsKey: 'items',
+    cursorParam: 'next_max_id',
+    getCursor: (resp) => resp.next_max_id,
+    hasMore: (resp) => resp.more_available === true,
+  },
+  '/v2/instagram/reels/search': {
+    resultsKey: 'reels',
+    cursorParam: 'page',
+    // page is a simple counter: 1, 2, 3 …
+    getCursor: (_resp, prevCursor) => (Number(prevCursor) || 1) + 1,
+    hasMore: (resp) => Array.isArray(resp.reels) && resp.reels.length > 0,
+  },
+  '/v1/instagram/user/reels': {
+    resultsKey: 'items',
+    cursorParam: 'max_id',
+    getCursor: (resp) => resp.paging_info?.max_id,
+    hasMore: (resp) => resp.paging_info?.more_available === true,
+  },
+
+  // TikTok
+  '/v1/tiktok/search/keyword': {
+    resultsKey: 'search_item_list',
+    cursorParam: 'cursor',
+    getCursor: (resp) => resp.cursor,
+    hasMore: (resp) =>
+      resp.cursor != null &&
+      Array.isArray(resp.search_item_list) &&
+      resp.search_item_list.length > 0,
+  },
+  '/v1/tiktok/search/hashtag': {
+    resultsKey: 'challenge_aweme_list',
+    cursorParam: 'cursor',
+    getCursor: (resp) => resp.cursor,
+    hasMore: (resp) =>
+      resp.cursor != null &&
+      Array.isArray(resp.challenge_aweme_list) &&
+      resp.challenge_aweme_list.length > 0,
+  },
+
+  // Reddit
+  '/v1/reddit/subreddit': {
+    resultsKey: 'posts',
+    cursorParam: 'after',
+    getCursor: (resp) => resp.after,
+    hasMore: (resp) => !!resp.after,
+  },
+  '/v1/reddit/subreddit/search': {
+    resultsKey: 'posts',
+    cursorParam: 'after',
+    getCursor: (resp) => resp.after,
+    hasMore: (resp) => !!resp.after,
+  },
+  '/v1/reddit/search': {
+    resultsKey: 'posts',
+    cursorParam: 'after',
+    getCursor: (resp) => resp.after,
+    hasMore: (resp) => !!resp.after,
+  },
+};
+
+/**
+ * Fetch up to `limit` results by auto-paginating a ScrapeCreators endpoint.
+ *
+ * @param {string} path   – endpoint path (e.g. "/v2/instagram/reels/search")
+ * @param {Record<string,any>} params – query params **without** limit
+ * @param {number} [limit=10] – desired result count
+ * @returns {Promise<object>} – the response object with combined results
+ */
+export async function scrapeCreatorsPaginated(path, params = {}, limit = 10) {
+  const config = PAGINATION_CONFIG[path];
+
+  // If no pagination config or limit small enough for 1 page → single call
+  if (!config) return scrapeCreators(path, params);
+
+  const maxPages = Math.min(Math.ceil(limit / 8), 10); // cap at 10 pages
+  let allResults = [];
+  let lastResp = null;
+  let cursorValue = null;
+
+  for (let page = 0; page < maxPages; page++) {
+    const pageParams =
+      page === 0
+        ? { ...params }
+        : { ...params, [config.cursorParam]: cursorValue };
+
+    const resp = await scrapeCreators(path, pageParams);
+    lastResp = resp;
+
+    const items = resp[config.resultsKey];
+    if (!Array.isArray(items) || items.length === 0) break;
+
+    allResults.push(...items);
+
+    if (allResults.length >= limit) break;
+    if (!config.hasMore(resp)) break;
+
+    const nextCursor = config.getCursor(resp, cursorValue);
+    if (nextCursor == null) break;
+
+    cursorValue = nextCursor;
+  }
+
+  // Trim to the requested limit
+  allResults = allResults.slice(0, limit);
+
+  const pagesUsed = lastResp ? Math.min(maxPages, Math.ceil(allResults.length / 8) || 1) : 0;
+  console.log(
+    `[ScrapeCreators] Paginated ${path}: ${allResults.length}/${limit} items in ≤${pagesUsed} page(s)`
+  );
+
+  // Return the last response shape but with the combined results array
+  return lastResp
+    ? { ...lastResp, [config.resultsKey]: allResults }
+    : {};
+}
