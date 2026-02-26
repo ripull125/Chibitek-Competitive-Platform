@@ -549,7 +549,8 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 
 app.post("/api/posts", async (req, res) => {
   const {
-    platform_id,
+    platform_id: rawPlatformId,
+    platform_name,
     platform_user_id,
     username,
     platform_post_id,
@@ -568,8 +569,16 @@ app.post("/api/posts", async (req, res) => {
     author_handle,
   } = req.body;
 
-  if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
+  if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id
+  const PLATFORM_NAME_MAP = { x: 'X', youtube: 'YouTube', reddit: 'Reddit', linkedin: 'LinkedIn', instagram: 'Instagram', tiktok: 'TikTok' };
+  let platform_id = rawPlatformId;
+  if (platform_name) {
+    const resolvedName = PLATFORM_NAME_MAP[platform_name.toLowerCase()] || platform_name;
+    platform_id = await ensurePlatform(resolvedName);
   }
 
   try {
@@ -782,21 +791,25 @@ app.delete("/api/posts/:id", async (req, res) => {
 const PLATFORM_LINKEDIN = 5; // platform id for linkedin (will be upserted)
 
 // Ensure the LinkedIn platform row exists
-async function ensureLinkedinPlatform() {
+async function ensurePlatform(name) {
   const { data } = await supabase
     .from('platforms')
     .select('id')
-    .eq('name', 'LinkedIn')
+    .eq('name', name)
     .maybeSingle();
   if (data) return data.id;
 
   const { data: created, error } = await supabase
     .from('platforms')
-    .insert({ name: 'LinkedIn', api_base_url: 'https://api.scrapecreators.com' })
+    .insert({ name })
     .select('id')
     .single();
   if (error) throw error;
   return created.id;
+}
+
+async function ensureLinkedinPlatform() {
+  return ensurePlatform('LinkedIn');
 }
 
 /**
@@ -1941,6 +1954,26 @@ app.get("/api/youtube/transcript", async (req, res) => {
 // ---------- helpers --------------------------------------------------
 // (extractSubreddit already defined above)
 
+// ---------- GET  /api/posts/saved-ids — return platform_post_ids the user already saved --------
+app.get('/api/posts/saved-ids', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('platform_post_id')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    const ids = (data || []).map((r) => r.platform_post_id);
+    return res.json({ ids });
+  } catch (err) {
+    console.error('saved-ids error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- GET  /api/watchlist — list all items for the user --------
 app.get('/api/watchlist', async (req, res) => {
   try {
@@ -2061,10 +2094,19 @@ app.post('/api/watchlist/run', async (req, res) => {
         const data = await executeWatchlistItem(item);
         results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: true, data });
 
-        // stamp last_run_at
-        await supabase.from('watchlist_items').update({ last_run_at: new Date().toISOString() }).eq('id', item.id);
+        // stamp last_run_at + persist last_result (replaces previous result)
+        const { error: updateErr } = await supabase.from('watchlist_items').update({
+          last_run_at: new Date().toISOString(),
+          last_result: { success: true, data, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+        if (updateErr) console.error('Failed to persist watchlist result:', updateErr.message);
       } catch (err) {
         results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: false, error: err.message });
+        // persist error too so user sees it across sessions
+        const { error: updateErr } = await supabase.from('watchlist_items').update({
+          last_result: { success: false, error: err.message, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+        if (updateErr) console.error('Failed to persist watchlist error:', updateErr.message);
       }
     }
 
@@ -2228,3 +2270,73 @@ async function _executeWatchlistScrape(item) {
       throw new Error(`Unknown platform: ${platform}`);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Cron endpoint — runs ALL users' enabled watchlist items.
+   Protected by CRON_SECRET env var, called by Google Cloud Scheduler.
+   ═══════════════════════════════════════════════════════════════════════ */
+app.post('/api/cron/watchlist', async (req, res) => {
+  // Verify secret
+  const secret = process.env.CRON_SECRET;
+  const provided = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || provided !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  console.log('[CRON] Starting watchlist run for all users...');
+  const startTime = Date.now();
+
+  try {
+    // Fetch ALL enabled watchlist items across all users
+    const { data: items, error: fetchErr } = await supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('enabled', true);
+
+    if (fetchErr) throw fetchErr;
+    if (!items?.length) {
+      console.log('[CRON] No enabled watchlist items found.');
+      return res.json({ message: 'Nothing to run.', total: 0 });
+    }
+
+    console.log(`[CRON] Found ${items.length} enabled items across all users.`);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of items) {
+      try {
+        const data = await executeWatchlistItem(item);
+
+        await supabase.from('watchlist_items').update({
+          last_run_at: new Date().toISOString(),
+          last_result: { success: true, data, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+
+        successCount++;
+        console.log(`[CRON] ✓ ${item.platform}/${item.scrape_type} for user ${item.user_id} (${item.label})`);
+      } catch (err) {
+        errorCount++;
+        console.error(`[CRON] ✗ ${item.platform}/${item.scrape_type} for user ${item.user_id} (${item.label}):`, err.message);
+
+        await supabase.from('watchlist_items').update({
+          last_result: { success: false, error: err.message, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+      }
+    }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[CRON] Done in ${elapsed}s — ${successCount} succeeded, ${errorCount} failed.`);
+
+    return res.json({
+      message: 'Cron complete',
+      total: items.length,
+      success: successCount,
+      errors: errorCount,
+      elapsed_seconds: Number(elapsed),
+    });
+  } catch (err) {
+    console.error('[CRON] Fatal error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});

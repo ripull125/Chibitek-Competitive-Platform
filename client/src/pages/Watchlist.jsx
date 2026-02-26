@@ -44,7 +44,6 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconEye,
-  IconBookmark,
 } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
@@ -174,6 +173,9 @@ export default function Watchlist() {
   // which cards have their results expanded
   const [expandedCards, setExpandedCards] = useState(new Set());
 
+  // set of platform_post_ids the user already saved
+  const [savedPostIds, setSavedPostIds] = useState(new Set());
+
   // results viewer modal (full-screen view)
   const [viewData, setViewData] = useState(null);   // { label, platform, scrapeType, data }
   const [viewOpen, setViewOpen] = useState(false);
@@ -197,6 +199,23 @@ export default function Watchlist() {
     try {
       const { items: data } = await apiFetch("/api/watchlist");
       setItems(data || []);
+      // Hydrate cardResults from persisted last_result and auto-expand
+      const restored = {};
+      const toExpand = new Set();
+      for (const item of (data || [])) {
+        if (item.last_result) {
+          restored[item.id] = item.last_result;
+          if (item.last_result.success && item.last_result.data) {
+            toExpand.add(item.id);
+          }
+        }
+      }
+      setCardResults((prev) => ({ ...restored, ...prev }));
+      setExpandedCards((prev) => {
+        const merged = new Set(prev);
+        for (const id of toExpand) merged.add(id);
+        return merged;
+      });
     } catch (err) {
       console.error("failed to load watchlist:", err);
     } finally {
@@ -204,7 +223,17 @@ export default function Watchlist() {
     }
   };
 
-  useEffect(() => { loadItems(); }, []);
+  /* ── load saved post ids ─────────── */
+  const loadSavedIds = async () => {
+    try {
+      const { ids } = await apiFetch("/api/posts/saved-ids");
+      setSavedPostIds(new Set(ids || []));
+    } catch (err) {
+      console.error("failed to load saved ids:", err);
+    }
+  };
+
+  useEffect(() => { loadItems(); loadSavedIds(); }, []);
 
   /* ── add item ────────────────────── */
   const handleAdd = async () => {
@@ -503,6 +532,8 @@ export default function Watchlist() {
                       platform={item.platform}
                       scrapeType={result?.scrape_type || item.scrape_type}
                       data={result?.data}
+                      savedPostIds={savedPostIds}
+                      onSaved={(pid) => setSavedPostIds((prev) => new Set(prev).add(pid))}
                     />
                   </ScrollArea>
                 </Collapse>
@@ -617,7 +648,7 @@ export default function Watchlist() {
       >
         {viewData?.data && (
           <ScrollArea h={480} type="auto" offsetScrollbars>
-            <ResultsRenderer platform={viewData.platform} scrapeType={viewData.scrapeType} data={viewData.data} />
+            <ResultsRenderer platform={viewData.platform} scrapeType={viewData.scrapeType} data={viewData.data} savedPostIds={savedPostIds} onSaved={(pid) => setSavedPostIds((prev) => new Set(prev).add(pid))} />
           </ScrollArea>
         )}
       </Modal>
@@ -652,8 +683,8 @@ function parseDuration(iso) {
   return `${h}${min}:${sec}`;
 }
 
-/* ── Platform IDs for save-post API ─────────────────────────────────── */
-const PLATFORM_IDS = { x: 1, instagram: 2, linkedin: 5, reddit: 6, youtube: 8, tiktok: 5 };
+/* ── Platform names for save-post API ──────────────────────────────── */
+const PLATFORM_NAMES = { x: 'x', instagram: 'instagram', linkedin: 'linkedin', reddit: 'reddit', youtube: 'youtube', tiktok: 'tiktok' };
 
 /* ── Make a card clickable to open source ───────────────────────────── */
 function cardLinkProps(url) {
@@ -667,21 +698,24 @@ function cardLinkProps(url) {
   };
 }
 
-/* ── Save-to-Saved-Posts button ─────────────────────────────────────── */
-function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shares, comments, extra }) {
-  const [status, setStatus] = useState("idle");
+/* ── Save-to-Saved-Posts button (matches CompetitorLookup style) ──── */
+function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shares, comments, extra, savedPostIds, onSaved }) {
+  const alreadySaved = savedPostIds?.has(String(postId));
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  // Derive effective status: if already saved in DB, always show saved
+  const effective = alreadySaved ? "saved" : status;
   if (!postId) return null;
   const handleSave = async (e) => {
     e.stopPropagation();
     e.preventDefault();
-    if (status !== "idle") return;
+    if (effective === "saving" || effective === "saved") return;
     setStatus("saving");
     try {
       const uid = await getUserId();
       await apiFetch("/api/posts", {
         method: "POST",
         body: JSON.stringify({
-          platform_id: PLATFORM_IDS[platform] || 1,
+          platform_name: PLATFORM_NAMES[platform] || platform,
           platform_user_id: String(authorId || "unknown"),
           platform_post_id: String(postId),
           content: (content || "").slice(0, 2000),
@@ -696,31 +730,30 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
         }),
       });
       setStatus("saved");
+      if (onSaved) onSaved(String(postId));
     } catch (err) {
       console.error("Save post failed:", err);
       setStatus("error");
-      setTimeout(() => setStatus("idle"), 3000);
     }
   };
   return (
-    <Tooltip label={status === "saved" ? "Saved!" : status === "error" ? "Failed to save" : "Save to Saved Posts"}>
-      <ActionIcon
-        variant={status === "saved" ? "filled" : "subtle"}
-        size="xs"
-        color={status === "saved" ? "teal" : status === "error" ? "red" : "gray"}
-        onClick={handleSave}
-        loading={status === "saving"}
-      >
-        <IconBookmark size={14} />
-      </ActionIcon>
-    </Tooltip>
+    <Button
+      size="compact-xs"
+      variant="light"
+      loading={effective === "saving"}
+      color={effective === "saved" ? "green" : effective === "error" ? "red" : "blue"}
+      disabled={effective === "saved"}
+      onClick={handleSave}
+    >
+      {effective === "saved" ? "Saved ✓" : effective === "error" ? "Retry" : "Save"}
+    </Button>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
    ResultsRenderer — smart platform-aware display
    ═══════════════════════════════════════════════════════════════════════ */
-function ResultsRenderer({ platform, scrapeType, data }) {
+function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) {
   const [showRaw, setShowRaw] = useState(false);
 
   if (!data) return <Text size="sm" c="dimmed" ta="center" py="sm">No data returned.</Text>;
@@ -728,7 +761,7 @@ function ResultsRenderer({ platform, scrapeType, data }) {
   return (
     <Stack gap="sm">
       {/* Platform-specific rendering — each renderer handles its own data extraction */}
-      <PlatformRenderer platform={platform} scrapeType={scrapeType} data={data} />
+      <PlatformRenderer platform={platform} scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />
 
       {/* Toggle raw JSON */}
       <Button
@@ -750,14 +783,14 @@ function ResultsRenderer({ platform, scrapeType, data }) {
 }
 
 /* ── Platform dispatcher ────────────────────────────────────────────── */
-function PlatformRenderer({ platform, scrapeType, data }) {
+function PlatformRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) {
   switch (platform) {
-    case "x":        return <XRenderer scrapeType={scrapeType} data={data} />;
-    case "youtube":  return <YouTubeRenderer scrapeType={scrapeType} data={data} />;
-    case "reddit":   return <RedditRenderer scrapeType={scrapeType} data={data} />;
-    case "linkedin": return <LinkedInRenderer scrapeType={scrapeType} data={data} />;
-    case "instagram":return <InstagramRenderer scrapeType={scrapeType} data={data} />;
-    case "tiktok":   return <TikTokRenderer scrapeType={scrapeType} data={data} />;
+    case "x":        return <XRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "youtube":  return <YouTubeRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "reddit":   return <RedditRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "linkedin": return <LinkedInRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "instagram":return <InstagramRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "tiktok":   return <TikTokRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
     default:         return <GenericRenderer data={data} />;
   }
 }
@@ -785,7 +818,7 @@ function extractArray(data, ...keys) {
 /* ═══════════════════════════════════════════════════════════════════════
    X / Twitter
    ═══════════════════════════════════════════════════════════════════════ */
-function XRenderer({ scrapeType, data }) {
+function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   if (scrapeType === "followers" || scrapeType === "following") {
     const users = extractArray(data, "data", "users") || [];
     if (!users.length) return <Text size="sm" c="dimmed">No users returned.</Text>;
@@ -850,13 +883,15 @@ function XRenderer({ scrapeType, data }) {
                 <Badge variant="light" size="xs">💬 {fmtNum(m.reply_count)}</Badge>
                 {m.quote_count > 0 && <Badge variant="light" size="xs">💭 {fmtNum(m.quote_count)}</Badge>}
               </Group>
-              <Group gap="xs">
-                {t.created_at && <Text size="xs" c="dimmed">{fmtDate(t.created_at)}</Text>}
-                {t.lang && t.lang !== "und" && <Badge size="xs" variant="light" color="gray">{t.lang}</Badge>}
-                <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${t.id}`} target="_blank" rel="noopener">
-                  View →
-                </Text>
-                <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} />
+              <Group justify="space-between" align="center">
+                <Group gap="xs">
+                  {t.created_at && <Text size="xs" c="dimmed">{fmtDate(t.created_at)}</Text>}
+                  {t.lang && t.lang !== "und" && <Badge size="xs" variant="light" color="gray">{t.lang}</Badge>}
+                  <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${t.id}`} target="_blank" rel="noopener">
+                    View →
+                  </Text>
+                </Group>
+                <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} savedPostIds={savedPostIds} onSaved={onSaved} />
               </Group>
             </Stack>
           </Card>
@@ -869,7 +904,7 @@ function XRenderer({ scrapeType, data }) {
 /* ═══════════════════════════════════════════════════════════════════════
    YouTube
    ═══════════════════════════════════════════════════════════════════════ */
-function YouTubeRenderer({ scrapeType, data }) {
+function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Channel details — single object
   if (scrapeType === "channel_details") {
     const ch = data;
@@ -989,7 +1024,9 @@ function YouTubeRenderer({ scrapeType, data }) {
                   <Badge variant="light" size="xs">👁 {fmtNum(v.views)}</Badge>
                   <Badge variant="light" size="xs">❤️ {fmtNum(v.likes)}</Badge>
                   <Badge variant="light" size="xs">💬 {fmtNum(v.comments)}</Badge>
-                  <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, views: v.views }} />
+                </Group>
+                <Group justify="flex-end">
+                  <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, views: v.views }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
               </Stack>
             </Group>
@@ -1003,7 +1040,7 @@ function YouTubeRenderer({ scrapeType, data }) {
 /* ═══════════════════════════════════════════════════════════════════════
    Reddit
    ═══════════════════════════════════════════════════════════════════════ */
-function RedditRenderer({ scrapeType, data }) {
+function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Subreddit details — single object
   if (scrapeType === "subreddit_details") {
     const sub = data?.data || data;
@@ -1065,12 +1102,14 @@ function RedditRenderer({ scrapeType, data }) {
                   {post.subreddit && <Text size="xs" c="dimmed">r/{post.subreddit}</Text>}
                   {(post.created_utc || post.created) && <Text size="xs" c="dimmed">{fmtDate(post.created_utc || post.created)}</Text>}
                 </Group>
-                <Group gap={6}>
-                  {(post.score != null || post.ups != null) && <Badge variant="light" size="xs">⬆ {fmtNum(post.score ?? post.ups)}</Badge>}
-                  {post.num_comments != null && <Badge variant="light" size="xs">💬 {fmtNum(post.num_comments)}</Badge>}
-                  {post.total_awards_received > 0 && <Badge variant="light" size="xs" color="yellow">🏆 {post.total_awards_received}</Badge>}
-                  {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
-                  <SaveBtn platform="reddit" postId={post.id || post.name} authorId={post.author} content={post.title || post.selftext} publishedAt={post.created_utc || post.created} likes={post.score ?? post.ups} comments={post.num_comments} />
+                <Group justify="space-between" align="center">
+                  <Group gap={6}>
+                    {(post.score != null || post.ups != null) && <Badge variant="light" size="xs">⬆ {fmtNum(post.score ?? post.ups)}</Badge>}
+                    {post.num_comments != null && <Badge variant="light" size="xs">💬 {fmtNum(post.num_comments)}</Badge>}
+                    {post.total_awards_received > 0 && <Badge variant="light" size="xs" color="yellow">🏆 {post.total_awards_received}</Badge>}
+                    {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+                  </Group>
+                  <SaveBtn platform="reddit" postId={post.id || post.name} authorId={post.author} content={post.title || post.selftext} publishedAt={post.created_utc || post.created} likes={post.score ?? post.ups} comments={post.num_comments} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
                 {post.url && !post.url.includes("reddit.com") && (
                   <Text size="xs" c="blue" component="a" href={post.url} target="_blank" rel="noopener" lineClamp={1}>
@@ -1089,7 +1128,7 @@ function RedditRenderer({ scrapeType, data }) {
 /* ═══════════════════════════════════════════════════════════════════════
    LinkedIn
    ═══════════════════════════════════════════════════════════════════════ */
-function LinkedInRenderer({ scrapeType, data }) {
+function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const d = data?.data || data;
 
   if (scrapeType === "profile") {
@@ -1212,7 +1251,7 @@ function LinkedInRenderer({ scrapeType, data }) {
 /* ═══════════════════════════════════════════════════════════════════════
    Instagram
    ═══════════════════════════════════════════════════════════════════════ */
-function InstagramRenderer({ scrapeType, data }) {
+function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Profile
   if (scrapeType === "profile") {
     const p = data?.data || data;
@@ -1286,13 +1325,15 @@ function InstagramRenderer({ scrapeType, data }) {
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 {(post.caption || post.text) && <Text size="xs" lineClamp={3}>{(post.caption || post.text)?.slice(0, 200)}</Text>}
                 {post.username && <Text size="xs" c="dimmed">@{post.username}</Text>}
-                <Group gap={6} wrap="wrap">
-                  {(post.like_count ?? post.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.like_count ?? post.likes)}</Badge>}
-                  {(post.comment_count ?? post.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(post.comment_count ?? post.comments)}</Badge>}
-                  {(post.video_view_count ?? post.views ?? post.play_count) != null && (
-                    <Badge variant="light" size="xs">▶ {fmtNum(post.video_view_count ?? post.views ?? post.play_count)}</Badge>
-                  )}
-                  <SaveBtn platform="instagram" postId={post.id || post.shortcode || post.code} authorId={post.username || post.owner?.username} content={post.caption || post.text} likes={post.like_count ?? post.likes} comments={post.comment_count ?? post.comments} />
+                <Group justify="space-between" align="center">
+                  <Group gap={6} wrap="wrap">
+                    {(post.like_count ?? post.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.like_count ?? post.likes)}</Badge>}
+                    {(post.comment_count ?? post.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(post.comment_count ?? post.comments)}</Badge>}
+                    {(post.video_view_count ?? post.views ?? post.play_count) != null && (
+                      <Badge variant="light" size="xs">▶ {fmtNum(post.video_view_count ?? post.views ?? post.play_count)}</Badge>
+                    )}
+                  </Group>
+                  <SaveBtn platform="instagram" postId={post.id || post.shortcode || post.code} authorId={post.username || post.owner?.username} content={post.caption || post.text} likes={post.like_count ?? post.likes} comments={post.comment_count ?? post.comments} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
                 {(post.timestamp || post.taken_at) && <Text size="xs" c="dimmed">{fmtDate(post.timestamp || post.taken_at)}</Text>}
               </Stack>
@@ -1307,7 +1348,7 @@ function InstagramRenderer({ scrapeType, data }) {
 /* ═══════════════════════════════════════════════════════════════════════
    TikTok
    ═══════════════════════════════════════════════════════════════════════ */
-function TikTokRenderer({ scrapeType, data }) {
+function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Profile
   if (scrapeType === "profile") {
     const p = data?.data || data;
@@ -1364,12 +1405,14 @@ function TikTokRenderer({ scrapeType, data }) {
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="xs" lineClamp={3}>{vid.desc || vid.description || vid.title}</Text>
                 {vid.author && <Text size="xs" c="dimmed">@{typeof vid.author === "string" ? vid.author : vid.author.uniqueId || vid.author.nickname}</Text>}
-                <Group gap={6} wrap="wrap">
-                  {(vid.playCount ?? vid.plays) != null && <Badge variant="light" size="xs">▶ {fmtNum(vid.playCount ?? vid.plays)}</Badge>}
-                  {(vid.diggCount ?? vid.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(vid.diggCount ?? vid.likes)}</Badge>}
-                  {(vid.commentCount ?? vid.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(vid.commentCount ?? vid.comments)}</Badge>}
-                  {(vid.shareCount ?? vid.shares) != null && <Badge variant="light" size="xs">🔗 {fmtNum(vid.shareCount ?? vid.shares)}</Badge>}
-                  <SaveBtn platform="tiktok" postId={vid.id} authorId={ttAuthor} content={vid.desc || vid.description || vid.title} likes={vid.diggCount ?? vid.likes} comments={vid.commentCount ?? vid.comments} shares={vid.shareCount ?? vid.shares} />
+                <Group justify="space-between" align="center">
+                  <Group gap={6} wrap="wrap">
+                    {(vid.playCount ?? vid.plays) != null && <Badge variant="light" size="xs">▶ {fmtNum(vid.playCount ?? vid.plays)}</Badge>}
+                    {(vid.diggCount ?? vid.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(vid.diggCount ?? vid.likes)}</Badge>}
+                    {(vid.commentCount ?? vid.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(vid.commentCount ?? vid.comments)}</Badge>}
+                    {(vid.shareCount ?? vid.shares) != null && <Badge variant="light" size="xs">🔗 {fmtNum(vid.shareCount ?? vid.shares)}</Badge>}
+                  </Group>
+                  <SaveBtn platform="tiktok" postId={vid.id} authorId={ttAuthor} content={vid.desc || vid.description || vid.title} likes={vid.diggCount ?? vid.likes} comments={vid.commentCount ?? vid.comments} shares={vid.shareCount ?? vid.shares} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
                 {vid.createTime && <Text size="xs" c="dimmed">{fmtDate(vid.createTime)}</Text>}
               </Stack>
