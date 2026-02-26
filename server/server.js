@@ -72,6 +72,18 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '10mb' }));
 
+const getUserIdFromRequest = (req) =>
+  req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
+
+const requireUserId = (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  if (!userId) {
+    res.status(401).json({ error: 'Missing user id.' });
+    return null;
+  }
+  return String(userId);
+};
+
 const { OPENAI_API_KEY } = process.env;
 const chatGptModel = 'gpt-4o-mini';
 const systemPrompt =
