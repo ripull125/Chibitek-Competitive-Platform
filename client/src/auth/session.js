@@ -4,7 +4,6 @@ const STORAGE_KEY = "chibitek.auth.session";
 const ALLOWED_DOMAIN = "chibitek.com";
 const ALLOWED_EMAILS = new Set([
   "puhalenthirv@gmail.com",
-  "puhalenthiv@gmail.com",
   "matousposp8@gmail.com",
   "evanchin0322@gmail.com",
   "ethan.j.cha@gmail.com",
