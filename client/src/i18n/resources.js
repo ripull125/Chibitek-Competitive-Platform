@@ -13,6 +13,7 @@ const resources = {
         dashboard: "Dashboard",
         competitorLookup: "Competitor Lookup",
         savedPosts: "Saved Posts",
+        watchlist: "Auto-Scrape",
         keywordTracking: "Keyword Tracking",
         reports: "Reports",
         chat: "Chat (AI)",
@@ -56,6 +57,7 @@ const resources = {
       nav: {
         dashboard: "ダッシュボード",
         competitorLookup: "競合検索",
+        watchlist: "自動スクレイプ",
         keywordTracking: "キーワード追跡",
         reports: "レポート",
         chat: "チャット（AI）",
@@ -99,6 +101,7 @@ const resources = {
       nav: {
         dashboard: "Tableau de bord",
         competitorLookup: "Recherche concurrents",
+        watchlist: "Auto-Scrape",
         keywordTracking: "Suivi des mots-clés",
         reports: "Rapports",
         chat: "Chat (IA)",
@@ -142,6 +145,7 @@ const resources = {
       nav: {
         dashboard: "Dashboard",
         competitorLookup: "Wettbewerber-Suche",
+        watchlist: "Auto-Scrape",
         keywordTracking: "Keyword-Tracking",
         reports: "Berichte",
         chat: "Chat (KI)",
@@ -185,6 +189,7 @@ const resources = {
       nav: {
         dashboard: "Panel",
         competitorLookup: "Búsqueda de competidores",
+        watchlist: "Auto-Scrape",
         keywordTracking: "Seguimiento de palabras clave",
         reports: "Informes",
         chat: "Chat (IA)",

@@ -1,6 +1,6 @@
 import { getUserIdByUsername, fetchPostsByUserId, fetchUserMentions, fetchFollowers, fetchFollowing, fetchTweetById, searchRecentTweets } from "./xApi.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
-import { scrapeCreators } from "./utils/scrapeCreators.js";
+import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -61,6 +61,27 @@ async function getTranscriptFromPython(videoId) {
   } catch (err) {
     console.error('Python transcript extraction error:', err.message);
   };
+}
+
+// Ensure Reddit platform row exists
+let REDDIT_PLATFORM_ID = 6; // default, will be confirmed/created at startup
+async function ensureRedditPlatform() {
+  const { data } = await supabase
+    .from('platforms')
+    .select('id')
+    .ilike('name', 'reddit')
+    .maybeSingle();
+  if (data) { REDDIT_PLATFORM_ID = data.id; return data.id; }
+
+  // Create with id=6 since it's unused in the DB
+  const { data: created, error } = await supabase
+    .from('platforms')
+    .insert({ name: 'Reddit' })
+    .select('id')
+    .single();
+  if (error) throw error;
+  REDDIT_PLATFORM_ID = created.id;
+  return created.id;
 }
 
 const app = express();
@@ -142,7 +163,8 @@ app.get("/api/x/fetch/:username", async (req, res) => {
  */
 app.post('/api/x/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -167,7 +189,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.followers && profileUsername) {
       labels.push('followers');
       tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, 20))
+        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, limit))
       );
     }
 
@@ -175,7 +197,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.following && profileUsername) {
       labels.push('following');
       tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, 20))
+        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, limit))
       );
     }
 
@@ -183,7 +205,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.userTweets && tweetsUsername) {
       labels.push('userTweets');
       tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, 10))
+        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, limit))
       );
     }
 
@@ -191,7 +213,7 @@ app.post('/api/x/search', async (req, res) => {
     if (options.userMentions && tweetsUsername) {
       labels.push('userMentions');
       tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, 10))
+        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, limit))
       );
     }
 
@@ -205,7 +227,7 @@ app.post('/api/x/search', async (req, res) => {
     // Search
     if (options.searchTweets && inputs.searchQuery) {
       labels.push('searchTweets');
-      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), 10));
+      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), limit));
     }
 
     if (!tasks.length) {
@@ -232,8 +254,14 @@ app.post('/api/x/search', async (req, res) => {
 });
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
+  try {
+    const redditId = await ensureRedditPlatform();
+    console.log(`Reddit platform ensured (id=${redditId})`);
+  } catch (e) {
+    console.error('Failed to ensure Reddit platform:', e.message);
+  }
 });
 
 app.post("/write", async (req, res) => {
@@ -639,7 +667,8 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 
 app.post("/api/posts", async (req, res) => {
   const {
-    platform_id,
+    platform_id: rawPlatformId,
+    platform_name,
     platform_user_id,
     username,
     platform_post_id,
@@ -658,17 +687,29 @@ app.post("/api/posts", async (req, res) => {
     author_handle,
   } = req.body;
 
-  if (!platform_id || !platform_user_id || !platform_post_id || !user_id) {
+  if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id
+  const PLATFORM_NAME_MAP = { x: 'X', youtube: 'YouTube', reddit: 'Reddit', linkedin: 'LinkedIn', instagram: 'Instagram', tiktok: 'TikTok' };
+  let platform_id = rawPlatformId;
+  if (platform_name) {
+    const resolvedName = PLATFORM_NAME_MAP[platform_name.toLowerCase()] || platform_name;
+    platform_id = await ensurePlatform(resolvedName);
   }
 
   try {
     // Find or create competitor
-    const profileUrl = platform_id === 1
-      ? `https://x.com/${username}`
-      : platform_id === 8
-        ? `https://www.youtube.com/channel/${platform_user_id}`
-        : null;
+    const profileUrlMap = {
+      1: `https://x.com/${username}`,
+      3: `https://www.instagram.com/${username}`,
+      5: `https://www.tiktok.com/@${username}`,
+      8: `https://www.youtube.com/channel/${platform_user_id}`,
+    };
+    // Reddit platform ID is dynamic (ensured at startup)
+    profileUrlMap[REDDIT_PLATFORM_ID] = `https://www.reddit.com/user/${username}`;
+    const profileUrl = profileUrlMap[platform_id] || `https://unknown/${username}`;
 
     let competitor;
     const { data: existingComp, error: competitorError } = await supabase
@@ -688,8 +729,8 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           platform_user_id,
-          display_name: username,
-          profile_url: profileUrl || `https://x.com/${username}`,
+          display_name: username || platform_user_id,
+          profile_url: profileUrl,
         })
         .select()
         .single();
@@ -773,6 +814,21 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
+    // For Instagram, TikTok, Reddit — save author details
+    if ([3, 5, REDDIT_PLATFORM_ID].includes(platform_id)) {
+      const { error: detailsError } = await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: {
+          author_name: author_name || username,
+          author_handle: author_handle || username,
+          username,
+        },
+      });
+      if (detailsError) {
+        console.error('Error saving post details:', detailsError);
+      }
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error("Save post failed:", err);
@@ -803,7 +859,14 @@ app.get("/api/posts", async (req, res) => {
 
     const formattedPosts = posts.map((post) => {
       const extra = post.post_details_platform?.[0]?.extra_json || {};
-      const competitorName = post.competitors?.[0]?.display_name;
+      // Supabase returns an object (not array) for many-to-one FK joins
+      const competitorName = post.competitors?.display_name
+        ?? post.competitors?.[0]?.display_name
+        ?? undefined;
+
+      // Build best-effort author name from multiple sources
+      const authorName = extra.author_name || extra.name || competitorName || extra.author?.name;
+      const authorHandle = extra.author_handle || extra.username || competitorName;
 
       return {
         id: post.id,
@@ -813,11 +876,12 @@ app.get("/api/posts", async (req, res) => {
         likes: post.post_metrics?.[0]?.likes || 0,
         shares: post.post_metrics?.[0]?.shares || 0,
         comments: post.post_metrics?.[0]?.comments || 0,
+        username: authorHandle || undefined,
         extra: {
           ...extra,
-          // Fallback to competitor name for X posts if author_name not set
-          author_name: extra.author_name || (post.platform_id === 1 ? competitorName : undefined),
-          username: extra.username || competitorName,
+          author_name: authorName || undefined,
+          author_handle: authorHandle || undefined,
+          username: authorHandle || undefined,
           title: extra.title,
           description: extra.description,
           channelTitle: extra.channelTitle,
@@ -869,24 +933,67 @@ app.delete("/api/posts/:id", async (req, res) => {
 
 // ─── LinkedIn ────────────────────────────────────────────────────────────────
 
-const PLATFORM_LINKEDIN = 5; // platform id for linkedin (will be upserted)
+// LinkedIn platform ID is resolved dynamically by ensureLinkedinPlatform()
 
 // Ensure the LinkedIn platform row exists
-async function ensureLinkedinPlatform() {
+async function ensurePlatform(name) {
   const { data } = await supabase
     .from('platforms')
     .select('id')
-    .eq('name', 'LinkedIn')
+    .eq('name', name)
     .maybeSingle();
   if (data) return data.id;
 
   const { data: created, error } = await supabase
     .from('platforms')
-    .insert({ name: 'LinkedIn', api_base_url: 'https://api.scrapecreators.com' })
+    .insert({ name })
     .select('id')
     .single();
   if (error) throw error;
   return created.id;
+}
+
+async function ensureLinkedinPlatform() {
+  return ensurePlatform('LinkedIn');
+}
+
+/**
+ * Normalise LinkedIn inputs so the Scrape Creators API always receives a full URL.
+ *   profile: "parrsam"         → "https://www.linkedin.com/in/parrsam"
+ *   company: "shopify"         → "https://www.linkedin.com/company/shopify"
+ *   post:    "/posts/abc-123"  → "https://www.linkedin.com/posts/abc-123"
+ * Full URLs are passed through unchanged.
+ */
+function normalizeLinkedinUrl(raw, type) {
+  if (!raw) return raw;
+  let v = raw.trim();
+
+  // Already a full URL
+  if (/^https?:\/\//i.test(v)) return v;
+
+  // Remove leading slashes / "linkedin.com" prefix without scheme
+  v = v.replace(/^\/+/, '').replace(/^(www\.)?linkedin\.com\/?/i, '');
+
+  switch (type) {
+    case 'profile': {
+      // Strip "in/" prefix if present, then wrap
+      const slug = v.replace(/^in\//i, '').replace(/\/+$/, '');
+      return `https://www.linkedin.com/in/${slug}`;
+    }
+    case 'company': {
+      const slug = v.replace(/^company\//i, '').replace(/\/+$/, '');
+      return `https://www.linkedin.com/company/${slug}`;
+    }
+    case 'post': {
+      // Could be /posts/... or /pulse/... — just prefix LinkedIn base
+      if (/^(posts|pulse|feed)\//i.test(v)) {
+        return `https://www.linkedin.com/${v}`;
+      }
+      return `https://www.linkedin.com/posts/${v}`;
+    }
+    default:
+      return v;
+  }
 }
 
 /**
@@ -902,16 +1009,22 @@ app.post('/api/linkedin/search', async (req, res) => {
     const labels = [];
 
     if (options.profile && inputs.profile) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.profile, 'profile');
+      console.log('[LinkedIn] Profile search →', normalizedUrl);
       labels.push('profile');
-      tasks.push(scrapeCreators('/v1/linkedin/profile', { url: inputs.profile }));
+      tasks.push(scrapeCreators('/v1/linkedin/profile', { url: normalizedUrl }));
     }
     if (options.company && inputs.company) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.company, 'company');
+      console.log('[LinkedIn] Company search →', normalizedUrl);
       labels.push('company');
-      tasks.push(scrapeCreators('/v1/linkedin/company', { url: inputs.company }));
+      tasks.push(scrapeCreators('/v1/linkedin/company', { url: normalizedUrl }));
     }
     if (options.post && inputs.post) {
+      const normalizedUrl = normalizeLinkedinUrl(inputs.post, 'post');
+      console.log('[LinkedIn] Post search →', normalizedUrl);
       labels.push('post');
-      tasks.push(scrapeCreators('/v1/linkedin/post', { url: inputs.post }));
+      tasks.push(scrapeCreators('/v1/linkedin/post', { url: normalizedUrl }));
     }
 
     if (!tasks.length) {
@@ -1066,6 +1179,14 @@ app.post('/api/linkedin/save', async (req, res) => {
             .single();
 
           if (!actErr && actPost) {
+            // Insert metrics (even if 0) so post_metrics row exists
+            await supabase.from('post_metrics').insert({
+              post_id: actPost.id,
+              snapshot_at: new Date(),
+              likes: act.likeCount || act.numLikes || 0,
+              shares: act.shareCount || act.numShares || 0,
+              comments: act.commentCount || act.numComments || 0,
+            });
             await supabase.from('post_details_platform').insert({
               post_id: actPost.id,
               extra_json: {
@@ -1073,6 +1194,7 @@ app.post('/api/linkedin/save', async (req, res) => {
                 activityType: act.activityType,
                 image: act.image,
                 link: act.link,
+                author_name: data.name || 'Unknown',
               },
             });
           }
@@ -1192,11 +1314,19 @@ app.post('/api/linkedin/save', async (req, res) => {
             .single();
 
           if (!cpErr && cpPost) {
+            await supabase.from('post_metrics').insert({
+              post_id: cpPost.id,
+              snapshot_at: new Date(),
+              likes: cp.likeCount || cp.numLikes || 0,
+              shares: cp.shareCount || cp.numShares || 0,
+              comments: cp.commentCount || cp.numComments || 0,
+            });
             await supabase.from('post_details_platform').insert({
               post_id: cpPost.id,
               extra_json: {
                 type: 'linkedin_company_post',
                 image: cp.image,
+                author_name: data.name || 'Unknown Company',
               },
             });
           }
@@ -1302,6 +1432,74 @@ app.post('/api/linkedin/save', async (req, res) => {
       return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
     }
 
+    // Generic sub-item save for activity, companyPost, comment, article
+    if (['activity', 'companyPost', 'comment', 'article'].includes(type)) {
+      const authorName = data.author || data.profileName || data.companyName || 'LinkedIn';
+      const platformUserId = authorName;
+      const content = data.text || data.headline || data.body || '';
+      const postUrl = data.url || data.link || '';
+
+      let competitor;
+      const { data: existing } = await supabase
+        .from('competitors')
+        .select('*')
+        .eq('platform_id', platformId)
+        .eq('platform_user_id', platformUserId)
+        .maybeSingle();
+
+      if (existing) {
+        competitor = existing;
+      } else {
+        const { data: created, error } = await supabase
+          .from('competitors')
+          .insert({
+            platform_id: platformId,
+            platform_user_id: platformUserId,
+            display_name: authorName,
+            profile_url: postUrl,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        competitor = created;
+      }
+
+      const postPlatformId = postUrl || `${type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { data: post, error: postErr } = await supabase
+        .from('posts')
+        .insert({
+          platform_id: platformId,
+          competitor_id: competitor.id,
+          platform_post_id: postPlatformId,
+          url: postUrl,
+          content,
+          published_at: data.datePublished || new Date(),
+          user_id: userId,
+        })
+        .select()
+        .single();
+      if (postErr) throw postErr;
+
+      await supabase.from('post_metrics').insert({
+        post_id: post.id,
+        snapshot_at: new Date(),
+        likes: data.likeCount || 0,
+        shares: 0,
+        comments: data.commentCount || 0,
+      });
+
+      await supabase.from('post_details_platform').insert({
+        post_id: post.id,
+        extra_json: {
+          type: `linkedin_${type}`,
+          author_name: authorName,
+          ...data,
+        },
+      });
+
+      return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
+    }
+
     return res.status(400).json({ error: `Unknown save type: ${type}` });
   } catch (err) {
     console.error('LinkedIn save error:', err);
@@ -1345,16 +1543,17 @@ function extractIgUsername(input) {
  *
  * Scrape Creators param mapping (discovered via testing):
  *   /v1/instagram/profile        → { handle }
- *   /v1/instagram/user/posts     → { handle }
+ *   /v2/instagram/user/posts     → { handle }
  *   /v1/instagram/post           → { url }   (full IG post URL)
- *   /v1/instagram/post/comments  → { url }   (full IG post URL)
- *   /v1/instagram/reels/search   → { query }
+ *   /v2/instagram/post/comments  → { url }   (full IG post URL)
+ *   /v2/instagram/reels/search   → { query }
  *   /v1/instagram/user/reels     → { handle }
  *   /v1/instagram/user/highlights→ { handle }
  */
 app.post('/api/instagram/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1370,7 +1569,7 @@ app.post('/api/instagram/search', async (req, res) => {
     const postsHandle = extractIgUsername(inputs.userPostsUsername);
     if (options.userPosts && postsHandle) {
       labels.push('userPosts');
-      tasks.push(scrapeCreators('/v1/instagram/user/posts', { handle: postsHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
     }
 
     // For single post & comments the API expects the full post URL
@@ -1385,21 +1584,17 @@ app.post('/api/instagram/search', async (req, res) => {
       labels.push('singlePost');
       tasks.push(scrapeCreators('/v1/instagram/post', { url: canonicalPostUrl }));
     }
-    if (options.postComments && canonicalPostUrl) {
-      labels.push('postComments');
-      tasks.push(scrapeCreators('/v1/instagram/post/comments', { url: canonicalPostUrl }));
-    }
 
     // ── Reels ────────────────────────────────────────────────────────────
     if (options.reelsSearch && inputs.reelsSearchTerm?.trim()) {
       labels.push('reelsSearch');
-      tasks.push(scrapeCreators('/v1/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v2/instagram/reels/search', { query: inputs.reelsSearchTerm.trim() }, limit));
     }
 
     const reelsHandle = extractIgUsername(inputs.userReelsUsername);
     if (options.userReels && reelsHandle) {
       labels.push('userReels');
-      tasks.push(scrapeCreators('/v1/instagram/user/reels', { handle: reelsHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: reelsHandle }, limit));
     }
 
     // ── Highlights ───────────────────────────────────────────────────────
@@ -1477,7 +1672,8 @@ function extractTkUsername(input) {
  */
 app.post('/api/tiktok/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1510,10 +1706,6 @@ app.post('/api/tiktok/search', async (req, res) => {
       labels.push('transcript');
       tasks.push(scrapeCreators('/v1/tiktok/video/transcript', { url: videoUrl }));
     }
-    if (options.comments && videoUrl) {
-      labels.push('comments');
-      tasks.push(scrapeCreators('/v1/tiktok/video/comments', { url: videoUrl }));
-    }
 
     // ── Search & Discovery ─────────────────────────────────────────────
     if (options.searchUsers && inputs.userSearchQuery?.trim()) {
@@ -1523,11 +1715,11 @@ app.post('/api/tiktok/search', async (req, res) => {
     if (options.searchHashtag && inputs.hashtag?.trim()) {
       labels.push('searchHashtag');
       const rawTag = inputs.hashtag.trim().replace(/^#/, '');
-      tasks.push(scrapeCreators('/v1/tiktok/search/hashtag', { hashtag: rawTag }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/hashtag', { hashtag: rawTag }, limit));
     }
     if (options.searchKeyword && inputs.keyword?.trim()) {
       labels.push('searchKeyword');
-      tasks.push(scrapeCreators('/v1/tiktok/search/keyword', { query: inputs.keyword.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: inputs.keyword.trim() }, limit));
     }
 
     if (!tasks.length) {
@@ -1597,7 +1789,8 @@ function extractSubreddit(input) {
  */
 app.post('/api/reddit/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1610,11 +1803,11 @@ app.post('/api/reddit/search', async (req, res) => {
     }
     if (options.subredditPosts && subreddit) {
       labels.push('subredditPosts');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit', { subreddit }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit }, limit));
     }
     if (options.subredditSearch && subreddit && inputs.subredditQuery?.trim()) {
       labels.push('subredditSearch');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }, limit));
     }
 
     // ── Posts & Search ─────────────────────────────────────────────────
@@ -1624,7 +1817,7 @@ app.post('/api/reddit/search', async (req, res) => {
     }
     if (options.search && inputs.searchQuery?.trim()) {
       labels.push('search');
-      tasks.push(scrapeCreators('/v1/reddit/search', { query: inputs.searchQuery.trim() }));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/search', { query: inputs.searchQuery.trim() }, limit));
     }
 
     // ── Ads ────────────────────────────────────────────────────────────
@@ -1784,7 +1977,7 @@ async function fetchChannelVideos(channelId, maxResults = 10) {
   return (vData.items || []).map(v => ({
     id: v.id,
     title: v.snippet.title,
-    description: v.snippet.description?.slice(0, 300),
+    description: v.snippet.description || "",
     publishedAt: v.snippet.publishedAt,
     channelTitle: v.snippet.channelTitle,
     thumbnails: v.snippet.thumbnails,
@@ -1820,35 +2013,6 @@ async function fetchVideoDetails(videoId) {
   };
 }
 
-async function fetchVideoComments(videoId, maxResults = 20) {
-  const data = await ytFetch(`${YT_BASE}/commentThreads`, {
-    part: 'snippet,replies',
-    videoId: videoId,
-    maxResults: Math.min(maxResults, 100),
-    order: 'relevance',
-    textFormat: 'plainText',
-  });
-  return (data.items || []).map(item => {
-    const top = item.snippet.topLevelComment.snippet;
-    const replies = (item.replies?.comments || []).map(r => ({
-      author: r.snippet.authorDisplayName,
-      authorImage: r.snippet.authorProfileImageUrl,
-      text: r.snippet.textDisplay,
-      likes: r.snippet.likeCount || 0,
-      publishedAt: r.snippet.publishedAt,
-    }));
-    return {
-      author: top.authorDisplayName,
-      authorImage: top.authorProfileImageUrl,
-      text: top.textDisplay,
-      likes: top.likeCount || 0,
-      publishedAt: top.publishedAt,
-      replyCount: item.snippet.totalReplyCount || 0,
-      replies,
-    };
-  });
-}
-
 async function searchYouTube(query, maxResults = 10) {
   const data = await ytFetch(`${YT_BASE}/search`, {
     part: 'snippet',
@@ -1868,7 +2032,7 @@ async function searchYouTube(query, maxResults = 10) {
   return (vData.items || []).map(v => ({
     id: v.id,
     title: v.snippet.title,
-    description: v.snippet.description?.slice(0, 300),
+    description: v.snippet.description || "",
     publishedAt: v.snippet.publishedAt,
     channelTitle: v.snippet.channelTitle,
     channelId: v.snippet.channelId,
@@ -1887,7 +2051,8 @@ async function searchYouTube(query, maxResults = 10) {
  */
 app.post('/api/youtube/search', async (req, res) => {
   try {
-    const { options = {}, inputs = {} } = req.body;
+    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
+    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1901,7 +2066,7 @@ app.post('/api/youtube/search', async (req, res) => {
       }
       if (options.channelVideos) {
         labels.push('channelVideos');
-        tasks.push(channelIdPromise.then(id => fetchChannelVideos(id, 10)));
+        tasks.push(channelIdPromise.then(id => fetchChannelVideos(id, limit)));
       }
     }
 
@@ -1924,15 +2089,11 @@ app.post('/api/youtube/search', async (req, res) => {
         return { available: false, reason: pythonResult?.error || 'No transcript available', videoTitle: details.title };
       })());
     }
-    if (options.videoComments && videoId) {
-      labels.push('videoComments');
-      tasks.push(fetchVideoComments(videoId, 20));
-    }
 
     // Search
     if (options.search && inputs.searchQuery) {
       labels.push('search');
-      tasks.push(searchYouTube(inputs.searchQuery.trim(), 10));
+      tasks.push(searchYouTube(inputs.searchQuery.trim(), limit));
     }
 
     if (!tasks.length) {
@@ -2020,6 +2181,395 @@ app.get("/api/youtube/transcript", async (req, res) => {
     });
   } catch (err) {
     console.error("YouTube transcript error:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WATCHLIST — CRUD + Auto-fetch
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// ---------- helpers --------------------------------------------------
+// (extractSubreddit already defined above)
+
+// ---------- GET  /api/posts/saved-ids — return platform_post_ids the user already saved --------
+app.get('/api/posts/saved-ids', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('platform_post_id')
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    const ids = (data || []).map((r) => r.platform_post_id);
+    return res.json({ ids });
+  } catch (err) {
+    console.error('saved-ids error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- GET  /api/watchlist — list all items for the user --------
+app.get('/api/watchlist', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return res.json({ items: data });
+  } catch (err) {
+    console.error('watchlist list error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- POST /api/watchlist — create a new item ------------------
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { platform, scrape_type, target, label, config } = req.body;
+    if (!platform || !scrape_type || !target) {
+      return res.status(400).json({ error: 'platform, scrape_type and target are required.' });
+    }
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .insert({ user_id: userId, platform, scrape_type, target, label: label || target, config: config || {} })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ item: data });
+  } catch (err) {
+    console.error('watchlist create error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- PATCH /api/watchlist/:id — toggle enabled / update -------
+app.patch('/api/watchlist/:id', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const updates = {};
+    if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
+    if (req.body.label !== undefined) updates.label = req.body.label;
+    if (req.body.target !== undefined) updates.target = req.body.target;
+    if (req.body.scrape_type !== undefined) updates.scrape_type = req.body.scrape_type;
+    if (req.body.config !== undefined) updates.config = req.body.config;
+
+    const { data, error } = await supabase
+      .from('watchlist_items')
+      .update(updates)
+      .eq('id', req.params.id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return res.json({ item: data });
+  } catch (err) {
+    console.error('watchlist update error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- DELETE /api/watchlist/:id --------------------------------
+app.delete('/api/watchlist/:id', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const { error } = await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('id', req.params.id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('watchlist delete error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- POST /api/watchlist/run — execute all enabled items ------
+// Can also accept ?item_id=<uuid> to run a single item.
+app.post('/api/watchlist/run', async (req, res) => {
+  try {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const singleId = req.query.item_id || req.body.item_id;
+    let query = supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('enabled', true);
+    if (singleId) query = query.eq('id', singleId);
+
+    const { data: items, error: fetchErr } = await query;
+    if (fetchErr) throw fetchErr;
+    if (!items?.length) return res.json({ results: [], message: 'Nothing to run.' });
+
+    const results = [];
+
+    for (const item of items) {
+      try {
+        const data = await executeWatchlistItem(item);
+        results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: true, data });
+
+        // stamp last_run_at + persist last_result (replaces previous result)
+        const { error: updateErr } = await supabase.from('watchlist_items').update({
+          last_run_at: new Date().toISOString(),
+          last_result: { success: true, data, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+        if (updateErr) console.error('Failed to persist watchlist result:', updateErr.message);
+      } catch (err) {
+        results.push({ id: item.id, platform: item.platform, scrape_type: item.scrape_type, label: item.label, success: false, error: err.message });
+        // persist error too so user sees it across sessions
+        const { error: updateErr } = await supabase.from('watchlist_items').update({
+          last_result: { success: false, error: err.message, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+        if (updateErr) console.error('Failed to persist watchlist error:', updateErr.message);
+      }
+    }
+
+    return res.json({ results });
+  } catch (err) {
+    console.error('watchlist run error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Trim result arrays to respect the user's max_results setting (saves API credits).
+ */
+function trimToLimit(data, limit) {
+  if (!data || !limit) return data;
+  if (Array.isArray(data)) return data.slice(0, limit);
+  if (typeof data !== 'object') return data;
+  const arrayKeys = ['posts', 'tweets', 'items', 'itemList', 'search_item_list', 'children', 'comments', 'reels', 'videos', 'users'];
+  for (const key of arrayKeys) {
+    if (Array.isArray(data[key]) && data[key].length > limit) {
+      return { ...data, [key]: data[key].slice(0, limit) };
+    }
+  }
+  if (data.data && typeof data.data === 'object' && !Array.isArray(data.data)) {
+    for (const key of arrayKeys) {
+      if (Array.isArray(data.data[key]) && data.data[key].length > limit) {
+        return { ...data, data: { ...data.data, [key]: data.data[key].slice(0, limit) } };
+      }
+    }
+  }
+  return data;
+}
+
+/**
+ * Core dispatcher — given a watchlist item, call the right API and return raw data.
+ * Post-processes results to trim to the configured max_results.
+ */
+async function executeWatchlistItem(item) {
+  const raw = await _executeWatchlistScrape(item);
+  const limit = item.config?.max_results;
+  return limit ? trimToLimit(raw, limit) : raw;
+}
+
+async function _executeWatchlistScrape(item) {
+  const { platform, scrape_type, target, config = {} } = item;
+
+  switch (platform) {
+    /* ── X / Twitter ─────────────────────────────────────── */
+    case 'x': {
+      const username = target.replace(/^@/, '').trim();
+      const user = await getUserIdByUsername(username);
+      switch (scrape_type) {
+        case 'user_posts':
+          return fetchPostsByUserId(user.id, config.max_results || 10);
+        case 'user_mentions':
+          return fetchUserMentions(user.id, config.max_results || 10);
+        case 'followers':
+          return fetchFollowers(user.id, config.max_results || 20);
+        case 'following':
+          return fetchFollowing(user.id, config.max_results || 20);
+        case 'search':
+          return searchRecentTweets(target, config.max_results || 10);
+        default:
+          throw new Error(`Unknown X scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── YouTube ─────────────────────────────────────────── */
+    case 'youtube': {
+      switch (scrape_type) {
+        case 'channel_videos': {
+          const channelId = await resolveChannelId(target);
+          return fetchChannelVideos(channelId, config.max_results || 10);
+        }
+        case 'channel_details': {
+          const channelId = await resolveChannelId(target);
+          return fetchChannelDetails(channelId);
+        }
+        case 'video_details': {
+          const vid = extractYouTubeVideoId(target);
+          if (!vid) throw new Error('Invalid YouTube video URL or ID');
+          return fetchVideoDetails(vid);
+        }
+        case 'search':
+          return searchYouTube(target, config.max_results || 10);
+        default:
+          throw new Error(`Unknown YouTube scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── Reddit ──────────────────────────────────────────── */
+    case 'reddit': {
+      const limit = config.max_results || 25;
+      switch (scrape_type) {
+        case 'subreddit_posts': {
+          const sub = target.replace(/^r\//, '').trim();
+          return scrapeCreators('/v1/reddit/subreddit', { subreddit: sub, limit });
+        }
+        case 'subreddit_details': {
+          const sub = target.replace(/^r\//, '').trim();
+          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub });
+        }
+        case 'search':
+          return scrapeCreators('/v1/reddit/search', { query: target, limit });
+        default:
+          throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── LinkedIn ────────────────────────────────────────── */
+    case 'linkedin': {
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/linkedin/profile', { url: target });
+        case 'company':
+          return scrapeCreators('/v1/linkedin/company', { url: target });
+        case 'post':
+          return scrapeCreators('/v1/linkedin/post', { url: target });
+        default:
+          throw new Error(`Unknown LinkedIn scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── Instagram ───────────────────────────────────────── */
+    case 'instagram': {
+      const username = target.replace(/^@/, '').trim();
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/instagram/profile', { username });
+        case 'user_posts':
+          return scrapeCreators('/v1/instagram/user/posts', { username, limit: config.max_results });
+        case 'user_reels':
+          return scrapeCreators('/v1/instagram/user/reels', { username, limit: config.max_results });
+        default:
+          throw new Error(`Unknown Instagram scrape_type: ${scrape_type}`);
+      }
+    }
+
+    /* ── TikTok ──────────────────────────────────────────── */
+    case 'tiktok': {
+      const username = target.replace(/^@/, '').trim();
+      const limit = config.max_results || 20;
+      switch (scrape_type) {
+        case 'profile':
+          return scrapeCreators('/v1/tiktok/profile', { username });
+        case 'profile_videos':
+          return scrapeCreators('/v1/tiktok/user/videos', { username, limit });
+        case 'search':
+          return scrapeCreators('/v1/tiktok/search/keyword', { keyword: target, limit });
+        default:
+          throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
+      }
+    }
+
+    default:
+      throw new Error(`Unknown platform: ${platform}`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Cron endpoint — runs ALL users' enabled watchlist items.
+   Protected by CRON_SECRET env var, called by Google Cloud Scheduler.
+   ═══════════════════════════════════════════════════════════════════════ */
+app.post('/api/cron/watchlist', async (req, res) => {
+  // Verify secret
+  const secret = process.env.CRON_SECRET;
+  const provided = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || provided !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  console.log('[CRON] Starting watchlist run for all users...');
+  const startTime = Date.now();
+
+  try {
+    // Fetch ALL enabled watchlist items across all users
+    const { data: items, error: fetchErr } = await supabase
+      .from('watchlist_items')
+      .select('*')
+      .eq('enabled', true);
+
+    if (fetchErr) throw fetchErr;
+    if (!items?.length) {
+      console.log('[CRON] No enabled watchlist items found.');
+      return res.json({ message: 'Nothing to run.', total: 0 });
+    }
+
+    console.log(`[CRON] Found ${items.length} enabled items across all users.`);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const item of items) {
+      try {
+        const data = await executeWatchlistItem(item);
+
+        await supabase.from('watchlist_items').update({
+          last_run_at: new Date().toISOString(),
+          last_result: { success: true, data, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+
+        successCount++;
+        console.log(`[CRON] ✓ ${item.platform}/${item.scrape_type} for user ${item.user_id} (${item.label})`);
+      } catch (err) {
+        errorCount++;
+        console.error(`[CRON] ✗ ${item.platform}/${item.scrape_type} for user ${item.user_id} (${item.label}):`, err.message);
+
+        await supabase.from('watchlist_items').update({
+          last_result: { success: false, error: err.message, scrape_type: item.scrape_type },
+        }).eq('id', item.id);
+      }
+    }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[CRON] Done in ${elapsed}s — ${successCount} succeeded, ${errorCount} failed.`);
+
+    return res.json({
+      message: 'Cron complete',
+      total: items.length,
+      success: successCount,
+      errors: errorCount,
+      elapsed_seconds: Number(elapsed),
+    });
+  } catch (err) {
+    console.error('[CRON] Fatal error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });
