@@ -2196,6 +2196,321 @@ app.get("/api/youtube/transcript", async (req, res) => {
 // ---------- helpers --------------------------------------------------
 // (extractSubreddit already defined above)
 
+// ─── GET /api/platforms ───────────────────────────────────────────────────────
+// Returns { platforms: { x: id, youtube: id, ... } } so the client can map
+// platform keys → numeric IDs without hardcoding them.
+app.get('/api/platforms', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('platforms').select('id, name');
+    if (error) throw error;
+
+    const NAME_TO_KEY = {
+      'x': 'x', 'twitter': 'x',
+      'youtube': 'youtube',
+      'reddit': 'reddit',
+      'linkedin': 'linkedin',
+      'instagram': 'instagram',
+      'tiktok': 'tiktok',
+    };
+
+    const platforms = {};
+    for (const row of data || []) {
+      const key = NAME_TO_KEY[row.name.toLowerCase()] || row.name.toLowerCase();
+      platforms[key] = row.id;
+    }
+
+    res.json({ platforms });
+  } catch (err) {
+    console.error('[GET /api/platforms] error:', err.message);
+    // Fall back to reasonable defaults so the client keeps working
+    res.json({ platforms: { x: 1, youtube: 8, linkedin: 2, instagram: 3, tiktok: 5, reddit: 6 } });
+  }
+});
+
+// ─── GET /api/keywords ────────────────────────────────────────────────────────
+//
+// Bayesian Keyword Performance Index across ALL saved posts.
+//
+// Engagement formula (platform-aware, shares dropped as universal signal):
+//   weightedScore = comments × 5 + likes × 2 + log10(views + 1) × 1
+//
+// Views are log-scaled to prevent YouTube/TikTok from drowning out text-heavy
+// platforms (Reddit, LinkedIn) where views don't exist.
+//
+// Per-account normalisation is applied so a small creator that outperforms their
+// own baseline by 3× ranks equally to a large creator doing the same.
+//
+// Bayesian shrinkage, consistency (CV), and trend boost are then combined into
+// a final KPI score (0–100). Each keyword also carries a `platforms` array so
+// the UI can show which social networks it appears on.
+// ─────────────────────────────────────────────────────────────────────────────
+const KW_STOPWORDS = new Set([
+  'about','after','again','also','another','back','been','before','being',
+  'between','both','came','come','could','each','even','every','from','give',
+  'going','good','great','have','here','into','just','keep','know','like',
+  'look','make','more','most','much','need','never','next','once','only',
+  'open','other','over','same','should','since','some','such','than','that',
+  'them','then','there','these','think','those','through','time','very','want',
+  'well','were','what','when','where','which','while','will','with','your',
+  'people','way','day','how','our','use','now','may','new','you','all','can',
+  'get','got','its','let','him','her','his','she','they','was','are','has',
+  'had','does','did','the','and','for','not','but','this','from','they',
+  'been','out','too','any','one','via','just','also','really','like','still',
+]);
+
+function extractPostKeywords(content, extraJson, platformName) {
+  // Build the text to mine: always include the main content.
+  // Add extra signal text based on platform so titles/hashtags surface.
+  const parts = [content || ''];
+
+  if (platformName === 'youtube') {
+    // YouTube stores title + description in extra_json
+    if (extraJson?.title)       parts.push(extraJson.title);
+    if (extraJson?.description) parts.push(extraJson.description.slice(0, 400));
+  }
+  if (platformName === 'reddit') {
+    // Reddit posts have title as content and optionally subreddit in extra_json
+    if (extraJson?.subreddit)   parts.push(`r/${extraJson.subreddit}`);
+  }
+  if (platformName === 'linkedin') {
+    if (extraJson?.name)        parts.push(extraJson.name);
+  }
+
+  const combined = parts.join(' ');
+  if (!combined.trim()) return [];
+
+  const keywords = new Set();
+
+  // Hashtags → strip # and keep as keywords
+  (combined.match(/#([a-zA-Z][a-zA-Z0-9_]*)/g) || [])
+    .forEach(tag => keywords.add(tag.slice(1).toLowerCase()));
+
+  // Regular words: clean URL/mentions/punctuation, filter short + stopwords
+  combined
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/#\w+/g, '')
+    .replace(/@\w+/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(w => w.length > 3 && !KW_STOPWORDS.has(w))
+    .forEach(w => keywords.add(w));
+
+  // Long-form content (YouTube/Reddit) gets a higher keyword cap
+  const cap = combined.length > 500 ? 80 : 30;
+  return Array.from(keywords).slice(0, cap);
+}
+
+// Platform name lookup keyed by numeric ID (populated once from DB at query time)
+const PLATFORM_DISPLAY = {
+  x:         { label: 'X',         color: 'dark'   },
+  twitter:   { label: 'X',         color: 'dark'   },
+  youtube:   { label: 'YouTube',   color: 'red'    },
+  linkedin:  { label: 'LinkedIn',  color: 'blue'   },
+  instagram: { label: 'Instagram', color: 'pink'   },
+  tiktok:    { label: 'TikTok',    color: 'violet' },
+  reddit:    { label: 'Reddit',    color: 'orange' },
+};
+
+app.get('/api/keywords', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  try {
+    // 1. Fetch all saved posts with metrics + platform name
+    const { data: posts, error: postsError } = await supabase
+      .from('posts')
+      .select(`
+        id,
+        content,
+        published_at,
+        platform_id,
+        competitor_id,
+        post_metrics ( likes, shares, comments, other_json, snapshot_at ),
+        post_details_platform ( extra_json ),
+        platforms ( name )
+      `)
+      .eq('user_id', userId)
+      .order('published_at', { ascending: true })
+      .limit(500);
+
+    if (postsError) throw postsError;
+    if (!posts?.length) {
+      return res.json({ keywords: [], totalPosts: 0, debug: 'No saved posts found.' });
+    }
+
+    // 2. Compute per-post weighted engagement score
+    //    Formula: comments×5 + likes×2 + log10(views+1)×1
+    //    (shares are skipped — not universally available across platforms)
+    const scoredPosts = posts.map((p, idx) => {
+      // Use the most-recent snapshot if multiple metrics rows exist
+      const snapshots = Array.isArray(p.post_metrics) ? p.post_metrics : [];
+      const m = snapshots.sort(
+        (a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0)
+      )[0] || {};
+
+      const likes    = Number(m.likes    || 0);
+      const comments = Number(m.comments || 0);
+      const views    = Number(m.other_json?.views || 0);
+
+      const weightedScore =
+        comments * 5 +
+        likes    * 2 +
+        Math.log10(views + 1) * 1;  // log-scaled views avoid YouTube dominating
+
+      const platformName = (p.platforms?.name || '').toLowerCase();
+      const extraJson    = p.post_details_platform?.[0]?.extra_json || {};
+
+      return {
+        id:            p.id,
+        weightedScore,
+        likes,
+        comments,
+        views,
+        platform_id:   p.platform_id,
+        platform_name: platformName,
+        competitor_id: p.competitor_id,
+        keywords:      extractPostKeywords(p.content, extraJson, platformName),
+        chronoIdx:     idx,
+      };
+    });
+
+    const totalPosts = scoredPosts.length;
+
+    // 3. Per-account normalisation — prevents one mega-account flooding rankings.
+    //    Each post score becomes: post_score / that_account's_mean_score.
+    //    Measures relative outperformance within each account.
+    const accountScores = {};
+    scoredPosts.forEach(p => {
+      if (!accountScores[p.competitor_id]) accountScores[p.competitor_id] = [];
+      accountScores[p.competitor_id].push(p.weightedScore);
+    });
+    const accountMeans = {};
+    Object.entries(accountScores).forEach(([id, scores]) => {
+      accountMeans[id] = scores.reduce((s, v) => s + v, 0) / scores.length;
+    });
+    scoredPosts.forEach(p => {
+      const mean = accountMeans[p.competitor_id] || 1;
+      p.normalizedScore = mean > 0 ? p.weightedScore / mean : 1.0;
+    });
+
+    // 4. Trend split: newest 33% = recent, older 67% = baseline
+    const recentCutoff = Math.floor(totalPosts * 0.67);
+    const K = 10; // Bayesian confidence constant (shrinks toward globalMean=1.0)
+
+    // 5. Aggregate per-keyword stats
+    const kwData = {};
+    scoredPosts.forEach(post => {
+      const isRecent = post.chronoIdx >= recentCutoff;
+      post.keywords.forEach(kw => {
+        if (!kwData[kw]) {
+          kwData[kw] = {
+            scores: [], recentScores: [], olderScores: [],
+            rawScores: [],
+            totalLikes: 0, totalComments: 0, totalViews: 0,
+            platforms: new Set(),
+          };
+        }
+        const d = kwData[kw];
+        d.scores.push(post.normalizedScore);
+        d.rawScores.push(post.weightedScore);
+        d.totalLikes    += post.likes;
+        d.totalComments += post.comments;
+        d.totalViews    += post.views;
+        if (post.platform_name) d.platforms.add(post.platform_name);
+        if (isRecent) d.recentScores.push(post.normalizedScore);
+        else          d.olderScores.push(post.normalizedScore);
+      });
+    });
+
+    // 6. Score every keyword with the Bayesian KPI formula (in normalised space)
+    const globalMean = 1.0; // always 1.0 after per-account normalisation
+    const results = [];
+
+    Object.entries(kwData).forEach(([kw, d]) => {
+      const n      = d.scores.length;
+      const avg    = d.scores.reduce((s, v) => s + v, 0) / n;
+      const rawAvg = d.rawScores.reduce((s, v) => s + v, 0) / n;
+
+      // Bayesian shrinkage toward globalMean (1.0)
+      const bayesianAvg = (n * avg + K * globalMean) / (n + K);
+
+      // Consistency: penalise high variance (CV = coefficient of variation)
+      const variance    = d.scores.reduce((s, v) => s + (v - avg) ** 2, 0) / n;
+      const stdDev      = Math.sqrt(variance);
+      const cv          = avg > 0 ? stdDev / avg : 0;
+      const consistency = 1 / (1 + Math.min(cv, 1.0));
+
+      // Trend: compare recent vs older normalised performance
+      const recentAvg = d.recentScores.length
+        ? d.recentScores.reduce((s, v) => s + v, 0) / d.recentScores.length : avg;
+      const olderAvg  = d.olderScores.length
+        ? d.olderScores.reduce((s, v) => s + v, 0) / d.olderScores.length  : avg;
+      const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
+      const trendBoost = trendRatio > 1 ? Math.min(Math.sqrt(trendRatio), 1.5) : 1.0;
+      const trendDir   = trendRatio >= 1.4 ? 'rising' : trendRatio <= 0.7 ? 'falling' : 'stable';
+
+      const rawScore = bayesianAvg * consistency * trendBoost;
+
+      // Resolve platform set → display labels for the UI
+      const platforms = Array.from(d.platforms)
+        .map(p => PLATFORM_DISPLAY[p] || { label: p, color: 'gray' })
+        .filter((v, i, a) => a.findIndex(x => x.label === v.label) === i); // dedupe by label
+
+      results.push({
+        term:          kw,
+        rawScore,
+        kpi:           0,          // filled in after normalisation below
+        avgEngagement: Math.round(rawAvg),
+        normalizedAvg: Math.round(avg * 100) / 100,
+        sampleSize:    n,
+        consistency:   Math.round(consistency * 100),
+        trend:         Math.round(trendRatio * 100) / 100,
+        trendDir,
+        totalLikes:    d.totalLikes,
+        totalComments: d.totalComments,
+        totalViews:    d.totalViews,
+        platforms,
+      });
+    });
+
+    // 7. Normalise rawScore → KPI 0–100
+    results.sort((a, b) => b.rawScore - a.rawScore);
+    const maxRaw = results[0]?.rawScore || 1;
+    results.forEach(r => {
+      r.kpi = Math.round((r.rawScore / maxRaw) * 100);
+      delete r.rawScore;
+    });
+
+    // Filter single-occurrence words when there's enough data to be meaningful
+    const minPosts = totalPosts >= 10 ? 2 : 1;
+    const keywords = results.filter(r => r.sampleSize >= minPosts).slice(0, 50);
+
+    // Build debug summary
+    const platformCounts = {};
+    scoredPosts.forEach(p => {
+      const k = p.platform_name || 'unknown';
+      platformCounts[k] = (platformCounts[k] || 0) + 1;
+    });
+    const platformSummary = Object.entries(platformCounts)
+      .map(([k, v]) => `${k}:${v}`).join(' | ');
+
+    console.log(`[keywords] user=${userId} posts=${totalPosts} (${platformSummary}) → ${keywords.length} keywords`);
+
+    return res.json({
+      keywords,
+      totalPosts,
+      debug: `${totalPosts} posts · ${platformSummary} · ${keywords.length} keywords`,
+    });
+
+  } catch (err) {
+    console.error('[keywords] failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- GET  /api/posts/saved-ids — return platform_post_ids the user already saved --------
 app.get('/api/posts/saved-ids', async (req, res) => {
   try {
