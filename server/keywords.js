@@ -9,10 +9,16 @@ import OpenAI from 'openai';
 
 dotenv.config();
 
-const { GITHUB_TOKEN } = process.env;
+const { GITHUB_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL, CHAT_MODEL, LLM_PROVIDER } = process.env;
 const githubAiEndpoint = 'https://models.github.ai/inference';
-const chatModel = 'openai/gpt-5-nano';
-const openai = new OpenAI({ baseURL: githubAiEndpoint, apiKey: GITHUB_TOKEN });
+const chatModel = CHAT_MODEL || 'openai/gpt-5-nano';
+const provider = String(LLM_PROVIDER || 'auto').toLowerCase();
+const usingGithub = provider === 'github' || (provider === 'auto' && !!GITHUB_TOKEN);
+const chatApiKey = usingGithub ? GITHUB_TOKEN : OPENAI_API_KEY;
+const chatBaseUrl = usingGithub
+  ? githubAiEndpoint
+  : (OPENAI_BASE_URL || 'https://api.openai.com/v1');
+const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
 const systemPrompt =
   'You generate 3-5 concise search keywords for each book. Return only JSON in the shape {"books": [{"keywords": ["keyword1", ...]}]} matching the input order. Keep keywords simple.';
 
@@ -35,8 +41,8 @@ const parseKeywordsResponse = (content, books) => {
 
 export async function suggestKeywordsForBooks(books = []) {
   if (!Array.isArray(books) || books.length === 0) return [];
-  if (!GITHUB_TOKEN) {
-    console.warn('GITHUB_TOKEN not set; skipping keyword suggestions.');
+  if (!chatApiKey) {
+    console.warn('Chat API key not set; skipping keyword suggestions.');
     return books.map((book) => ({ ...book, keywords: [] }));
   }
 

@@ -87,11 +87,21 @@ async function ensureRedditPlatform() {
 const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
-  /* credentials: true, */
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-scraper-auth', 'x-http-method-override']
-}))
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json({ limit: '10mb' }));
+
+const { GITHUB_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL, CHAT_MODEL, LLM_PROVIDER, CHAT_DEBUG } = process.env;
+const githubAiEndpoint = 'https://models.github.ai/inference';
+const chatModel = CHAT_MODEL || 'openai/gpt-5-nano';
+const provider = String(LLM_PROVIDER || 'auto').toLowerCase();
+const usingGithub = provider === 'github' || (provider === 'auto' && !!GITHUB_TOKEN);
+const chatApiKey = usingGithub ? GITHUB_TOKEN : OPENAI_API_KEY;
+const chatBaseUrl = usingGithub
+  ? githubAiEndpoint
+  : (OPENAI_BASE_URL || 'https://api.openai.com/v1');
+const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
@@ -105,24 +115,27 @@ const requireUserId = (req, res) => {
   return String(userId);
 };
 
-// Return platform name → id mapping so clients use correct IDs
-app.get('/api/platforms', async (_req, res) => {
+async function fetchLatestPostsContext(userId) {
   try {
-    const { data, error } = await supabase.from('platforms').select('id, name');
-    if (error) throw error;
-    // Build a lowercase-name keyed map: { x: 1, instagram: 3, tiktok: 5, ... }
-    const map = {};
-    for (const p of data) map[p.name.toLowerCase()] = p.id;
-    res.json({ platforms: map });
+    let query = supabase
+      .from('posts')
+      .select('platform_id, competitor_id, platform_post_id, url, content, created_at, published_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+    const { data, error } = await query;
+    if (error) {
+      console.error('Failed to load posts for LLM context:', error);
+      return [];
+    }
+    return Array.isArray(data) ? data : [];
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Failed to load posts for LLM context:', err);
+    return [];
   }
-});
-
-const { OPENAI_API_KEY } = process.env;
-const chatGptModel = 'gpt-4o-mini';
-const systemPrompt =
-  'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.';
+}
 
 app.get("/api/x/fetch/:username", async (req, res) => {
   try {
@@ -302,13 +315,18 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  if (!GITHUB_TOKEN) {
-    console.error('Missing GITHUB_TOKEN on server');
-    return res.status(500).json({ error: 'GITHUB_TOKEN is not configured on the server.' });
+  if (!chatApiKey) {
+    const missing = usingGithub ? 'GITHUB_TOKEN' : 'OPENAI_API_KEY';
+    console.error(`Missing chat API key on server (${missing}).`);
+    return res.status(500).json({
+      error: `Chat API key is not configured on the server (${missing}).`,
+    });
   }
 
   try {
     const { messages = [], attachments = [] } = req.body || {};
+    const userId = getUserIdFromRequest(req);
+    const latestPosts = await fetchLatestPostsContext(userId);
 
     const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
 
@@ -324,48 +342,83 @@ app.post('/api/chat', async (req, res) => {
       ? [...sanitizedMessages, { role: 'user', content: `Attachment context:\n${attachmentContext}` }]
       : sanitizedMessages;
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+    const postsContext = latestPosts.length
+      ? [
+          'Latest posts from Supabase (most recent first):',
+          JSON.stringify(
+            latestPosts.slice(0, 20).map((post) => ({
+              platform_id: post.platform_id,
+              competitor_id: post.competitor_id,
+              platform_post_id: post.platform_post_id,
+              url: post.url,
+              content: String(post.content || '').slice(0, 400),
+              created_at: post.created_at,
+              published_at: post.published_at,
+            })),
+            null,
+            2
+          ),
+        ].join('\n')
+      : null;
+
+    const systemMessages = [
+      {
+        role: 'system',
+        content:
+          'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
       },
-      body: JSON.stringify({
-        model: chatGptModel, // 'gpt-4o-mini'
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          ...userMessages,
-        ],
-      }),
+    ];
+    if (postsContext) {
+      systemMessages.push({
+        role: 'system',
+        content: postsContext,
+      });
+    }
+
+    const response = await openai.chat.completions.create({
+      model: chatModel,
+      messages: [...systemMessages, ...userMessages],
     });
 
     const reply = response.choices?.[0]?.message?.content || 'No response from model.';
     return res.json({ reply });
   } catch (error) {
-    console.error('Chat completion error:', error);
-    return res.status(500).json({ error: 'Chat request failed.' });
+    const providerLabel = usingGithub ? 'github' : 'openai';
+    const details = {
+      message: error?.message,
+      status: error?.status,
+      name: error?.name,
+      type: error?.type,
+      code: error?.code,
+      provider: providerLabel,
+      baseUrl: chatBaseUrl,
+      model: chatModel,
+    };
+    console.error('Chat completion error:', details);
+    if (CHAT_DEBUG === 'true') {
+      return res.status(500).json({
+        error: 'Chat request failed.',
+        details,
+      });
+    }
+    const message = error?.message || 'Chat request failed.';
+    const status = error?.status ? ` status=${error.status}` : '';
+    return res.status(500).json({
+      error: `${message} (provider=${providerLabel}${status})`,
+    });
   }
 });
 
-// Tone classification endpoint: expects { message: string }
-app.post('/api/tone', async (req, res) => {
-  const { message } = req.body || {};
-  if (!message) return res.status(400).json({ error: 'Missing message in body' });
-
-  if (!process.env.CEREBRAS_API_KEY) {
-    return res.status(503).json({ error: 'Tone classification unavailable (CEREBRAS_API_KEY not configured)' });
-  }
-
-  try {
-    const result = await categorizeTone(message);
-    return res.json({ success: true, result });
-  } catch (err) {
-    console.error('Tone classification error:', err);
-    return res.status(500).json({ error: 'Tone classification failed' });
-  }
+app.get('/api/chat/health', (req, res) => {
+  const providerLabel = usingGithub ? 'github' : 'openai';
+  const keyPresent = Boolean(chatApiKey);
+  res.json({
+    ok: true,
+    provider: providerLabel,
+    baseUrl: chatBaseUrl,
+    model: chatModel,
+    keyPresent,
+  });
 });
 
 app.post('/api/chat/conversations', async (req, res) => {
