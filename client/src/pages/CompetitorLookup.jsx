@@ -1375,6 +1375,7 @@ export default function CompetitorLookup() {
           likes: metrics.like_count ?? 0,
           shares: metrics.retweet_count ?? 0,
           comments: metrics.reply_count ?? 0,
+          views: metrics.impression_count ?? 0,
           user_id: currentUserId,
           author_name: data._authorUsername || "",
           author_handle: data._authorUsername || "",
@@ -1530,6 +1531,7 @@ export default function CompetitorLookup() {
           likes: Math.max(0, data.like_count ?? data.likes ?? 0),
           shares: 0,
           comments: Math.max(0, data.comment_count ?? data.comments ?? 0),
+          views: Math.max(0, data.play_count ?? data.video_view_count ?? 0),
           user_id: currentUserId,
           author_name: ownerFullName || ownerUsername,
           author_handle: ownerUsername,
@@ -1599,6 +1601,7 @@ export default function CompetitorLookup() {
           likes: Math.max(0, data.stats?.diggCount ?? data.statsV2?.diggCount ?? data.statistics?.digg_count ?? data.statistics?.diggCount ?? data.diggCount ?? data.digg_count ?? 0),
           shares: Math.max(0, data.stats?.shareCount ?? data.statsV2?.shareCount ?? data.statistics?.share_count ?? data.statistics?.shareCount ?? data.shareCount ?? data.share_count ?? 0),
           comments: Math.max(0, data.stats?.commentCount ?? data.statsV2?.commentCount ?? data.statistics?.comment_count ?? data.statistics?.commentCount ?? data.commentCount ?? data.comment_count ?? 0),
+          views: Math.max(0, data.stats?.playCount ?? data.statsV2?.playCount ?? data.statistics?.play_count ?? data.statistics?.playCount ?? data.playCount ?? data.play_count ?? 0),
           user_id: currentUserId,
         }),
       });
@@ -1679,7 +1682,7 @@ export default function CompetitorLookup() {
 
   /* ─── Generic save helper (for profiles, comments, transcripts, users, ads) ─── */
 
-  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, authorName, authorHandle }) {
+  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, views, authorName, authorHandle }) {
     if (!currentUserId) throw new Error("Please sign in to save data.");
     const pid = platformIds[platformKey];
     if (!pid) throw new Error(`Unknown platform: ${platformKey}`);
@@ -1696,6 +1699,7 @@ export default function CompetitorLookup() {
         likes: likes ?? 0,
         shares: shares ?? 0,
         comments: comments ?? 0,
+        views: views ?? 0,
         user_id: currentUserId,
         author_name: authorName || username || "",
         author_handle: authorHandle || username || "",
@@ -1942,6 +1946,7 @@ export default function CompetitorLookup() {
             likes: metrics.like_count ?? 0,
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
+            views: metrics.impression_count ?? 0,
             user_id: currentUserId,
           }),
         });

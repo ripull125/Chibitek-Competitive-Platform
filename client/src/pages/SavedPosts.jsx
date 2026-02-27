@@ -85,6 +85,7 @@ function XPostCard({ post, onDelete }) {
         <Divider my={0} />
 
         <Group gap="lg">
+          <Metric icon={<IconEye size={14} color="#1d9bf0" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#17bf63" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#1d9bf0" />} value={post.comments} />
@@ -169,7 +170,7 @@ function YouTubePostCard({ post, onDelete }) {
         <Divider my={0} />
 
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#606060" />} value={post.extra?.views} />
+          <Metric icon={<IconEye size={14} color="#606060" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#606060" />} value={post.comments} />
         </Group>
@@ -282,6 +283,7 @@ function InstagramPostCard({ post, onDelete }) {
 
         <Divider my={0} />
         <Group gap="lg">
+          <Metric icon={<IconEye size={14} color="#E1306C" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#E1306C" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#E1306C" />} value={post.comments} />
         </Group>
@@ -338,6 +340,7 @@ function TikTokPostCard({ post, onDelete }) {
 
         <Divider my={0} />
         <Group gap="lg">
+          <Metric icon={<IconEye size={14} color="#161823" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#fe2c55" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#25f4ee" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#161823" />} value={post.comments} />

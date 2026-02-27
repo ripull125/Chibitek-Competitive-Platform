@@ -721,12 +721,14 @@ app.post("/api/posts", async (req, res) => {
       post = newPost;
     }
 
+    console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments, 'views:', views);
     await supabase.from("post_metrics").insert({
       post_id: post.id,
       snapshot_at: new Date(),
       likes,
       shares,
       comments,
+      other_json: { views: views ?? 0 },
     });
 
     // For YouTube, save additional details
@@ -761,7 +763,7 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For Instagram, TikTok, Reddit — save author details
+    // For Instagram, TikTok, Reddit — save author details + views
     if ([3, 5, REDDIT_PLATFORM_ID].includes(platform_id)) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
@@ -769,6 +771,7 @@ app.post("/api/posts", async (req, res) => {
           author_name: author_name || username,
           author_handle: author_handle || username,
           username,
+          views: views ?? 0,
         },
       });
       if (detailsError) {
@@ -796,7 +799,7 @@ app.get("/api/posts", async (req, res) => {
   content,
   published_at,
   competitors(display_name),
-  post_metrics(likes, shares, comments),
+  post_metrics(likes, shares, comments, other_json),
   post_details_platform(extra_json)
 `)
       .eq("user_id", userId)
@@ -823,6 +826,7 @@ app.get("/api/posts", async (req, res) => {
         likes: post.post_metrics?.[0]?.likes || 0,
         shares: post.post_metrics?.[0]?.shares || 0,
         comments: post.post_metrics?.[0]?.comments || 0,
+        views: post.post_metrics?.[0]?.other_json?.views || extra.views || 0,
         username: authorHandle || undefined,
         extra: {
           ...extra,
@@ -833,7 +837,7 @@ app.get("/api/posts", async (req, res) => {
           description: extra.description,
           channelTitle: extra.channelTitle,
           videoId: extra.videoId,
-          views: extra.views,
+          views: post.post_metrics?.[0]?.other_json?.views || extra.views || 0,
         },
       };
     });
