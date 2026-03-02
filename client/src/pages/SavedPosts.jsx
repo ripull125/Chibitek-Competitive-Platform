@@ -565,6 +565,12 @@ export default function SavedPosts() {
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
+      {!loading && posts.length > 0 && (
+        <Text size="sm" fw={700} c="dimmed">
+          Note: If a post shows 0 metrics, it may mean the creator has hidden their like count on that post.
+        </Text>
+      )}
+
       {!loading && posts.length === 0 && !notice && (
         <Alert color="gray" variant="light" radius="md">
           No saved posts yet. Head to Competitor Lookup to search and save posts.
