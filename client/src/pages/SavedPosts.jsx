@@ -38,6 +38,7 @@ function XPostCard({ post, onDelete }) {
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const handle = post.extra?.author_handle || post.extra?.username || post.username || "unknown";
   const name = post.extra?.author_name || handle;
+  const tone = post.tone;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
@@ -68,6 +69,10 @@ function XPostCard({ post, onDelete }) {
         </Group>
 
         <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
 
         {isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
@@ -105,6 +110,7 @@ function YouTubePostCard({ post, onDelete }) {
   const description = post.extra?.description || "";
   const transcript = post.content || "";
   const descLong = description.length > 200;
+  const tone = post.tone;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
@@ -133,6 +139,10 @@ function YouTubePostCard({ post, onDelete }) {
         </Group>
 
         <Text fw={600} size="md" lh={1.3}>{title}</Text>
+
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
 
         {description && (
           <div>
@@ -186,6 +196,7 @@ function LinkedInPostCard({ post, onDelete }) {
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.extra?.author_name || post.username || "Unknown";
+  const tone = post.tone;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #0A66C2" }}>
@@ -225,6 +236,10 @@ function LinkedInPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
+
         <Divider my={0} />
         <Group gap="lg">
           <Metric icon={<IconHeart size={14} color="#0A66C2" />} value={post.likes} />
@@ -242,6 +257,7 @@ function InstagramPostCard({ post, onDelete }) {
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || "Unknown";
+  const tone = post.tone;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
@@ -281,6 +297,10 @@ function InstagramPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
+
         <Divider my={0} />
         <Group gap="lg">
           <Metric icon={<IconEye size={14} color="#E1306C" />} value={post.views} />
@@ -298,6 +318,7 @@ function TikTokPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
+  const tone = post.tone;
   const name = post.username || post.extra?.username || "Unknown";
 
   return (
@@ -338,6 +359,10 @@ function TikTokPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
+
         <Divider my={0} />
         <Group gap="lg">
           <Metric icon={<IconEye size={14} color="#161823" />} value={post.views} />
@@ -357,6 +382,7 @@ function RedditPostCard({ post, onDelete }) {
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || "Unknown";
+  const tone = post.tone;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
@@ -396,6 +422,10 @@ function RedditPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
+
         <Divider my={0} />
         <Group gap="lg">
           <Metric icon={<IconHeart size={14} color="#FF4500" />} value={post.likes} />
@@ -409,6 +439,7 @@ function RedditPostCard({ post, onDelete }) {
 /* ── Generic fallback card ───────────────────────────────────────────────── */
 
 function GenericPostCard({ post, onDelete }) {
+  const tone = post.tone;
   return (
     <Card withBorder radius="md" p="lg">
       <Stack gap="sm">
@@ -421,6 +452,9 @@ function GenericPostCard({ post, onDelete }) {
           </Tooltip>
         </Group>
         {post.published_at && <Text size="xs" c="dimmed">{formatDate(post.published_at)}</Text>}
+        {tone && (
+          <Badge size="sm" variant="light">{tone}</Badge>
+        )}
         <Divider my={0} />
         <Group gap="lg">
           {post.likes > 0 && <Metric icon={<IconHeart size={14} color="#868e96" />} value={post.likes} />}

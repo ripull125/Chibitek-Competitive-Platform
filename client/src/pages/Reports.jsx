@@ -73,7 +73,7 @@ export default function Reports() {
           engagement: post.Engagement,
           source: post['Name/Source'],
           message: post.Message,
-          tone: post.Tone,
+          tone: post.tone,
         }));
 
         setToneEngagementData(chartData);
@@ -104,6 +104,7 @@ export default function Reports() {
         unit: "pt",
         format: "a4",
       });
+      
 
       const pageWidth = pdf.internal.pageSize.getWidth();
       const imgWidth = pageWidth - 48;
@@ -157,22 +158,55 @@ export default function Reports() {
           setLoading(true);
           setAnalysisStarted(true);
           try {
-            let toAnalyze = convertedData.slice();
-            if (postLimit > 0 && toAnalyze.length > postLimit) {
-              toAnalyze = toAnalyze.slice(-postLimit);
+            // slice according to limit for display purposes
+            let displayPosts = convertedData.slice();
+            if (postLimit > 0 && displayPosts.length > postLimit) {
+              displayPosts = displayPosts.slice(-postLimit);
             }
+
+            // only send items without a tone for analysis
+            const missing = displayPosts.filter((p) => !p.tone);
             let analyzed = [];
-            try {
-              analyzed = await analyzeUniversalPosts(toAnalyze);
-            } catch (err) {
-              console.error('Tone analysis failed:', err);
+            if (missing.length) {
+              try {
+                analyzed = await analyzeUniversalPosts(missing, currentUserId);
+              } catch (err) {
+                console.error('Tone analysis failed:', err);
+              }
             }
-            const chartData = (analyzed.length ? analyzed : toAnalyze).map((post, index) => ({
+
+            // merge results back into displayPosts, keeping existing tones
+            let aiIndex = 0;
+            const merged = displayPosts.map((post) => {
+              if (post.tone) return post;
+              const result = analyzed[aiIndex++] || {};
+              return { ...post, tone: result.tone || null };
+            });
+
+            // update convertedData cache with any new tone values
+            if (analyzed.length) {
+              const updateMap = new Map();
+              merged.forEach((p) => {
+                if (p.tone) {
+                  updateMap.set(`${p.Message}###${p.Engagement}`, p.tone);
+                }
+              });
+              const updatedAll = convertedData.map((p) => {
+                const key = `${p.Message}###${p.Engagement}`;
+                if (!p.tone && updateMap.has(key)) {
+                  return { ...p, tone: updateMap.get(key) };
+                }
+                return p;
+              });
+              setConvertedData(updatedAll);
+            }
+
+            const chartData = merged.map((post, index) => ({
               index: index + 1,
               engagement: post.Engagement,
               source: post['Name/Source'],
               message: post.Message,
-              tone: post.Tone || null,
+              tone: post.tone || null,
             }));
             setToneEngagementData(chartData);
           } finally {
