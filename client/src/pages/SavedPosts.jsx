@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import EmbedPost from "../../components/EmbedPost";
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -34,10 +35,12 @@ function Metric({ icon, value }) {
 
 function XPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const [showEmbed, setShowEmbed] = useState(true);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const handle = post.extra?.author_handle || post.extra?.username || post.username || "unknown";
   const name = post.extra?.author_name || handle;
+  const tweetId = post.platform_post_id || null;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
@@ -67,14 +70,32 @@ function XPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        {/* Embedded tweet */}
+        {showEmbed && tweetId && (
+          <EmbedPost
+            platform="x"
+            meta={{ platformPostId: tweetId, username: handle, url: post.post_url }}
+          />
+        )}
 
-        {isLong && (
+        {!showEmbed && (
+          <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        )}
+
+        {!showEmbed && isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? "Show less" : "Show more"}
+          </Button>
+        )}
+
+        {tweetId && (
+          <Button variant="subtle" size="xs" p={0} h="auto"
+            onClick={() => setShowEmbed(!showEmbed)}
+          >
+            {showEmbed ? "Show text only" : "Show embed"}
           </Button>
         )}
 
@@ -105,6 +126,7 @@ function YouTubePostCard({ post, onDelete }) {
   const description = post.extra?.description || "";
   const transcript = post.content || "";
   const descLong = description.length > 200;
+  const videoId = post.extra?.videoId || post.platform_post_id || null;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
@@ -131,6 +153,14 @@ function YouTubePostCard({ post, onDelete }) {
             </ActionIcon>
           </Tooltip>
         </Group>
+
+        {/* Embedded YouTube video player */}
+        {videoId && (
+          <EmbedPost
+            platform="youtube"
+            meta={{ videoId, url: post.post_url }}
+          />
+        )}
 
         <Text fw={600} size="md" lh={1.3}>{title}</Text>
 
@@ -239,9 +269,11 @@ function LinkedInPostCard({ post, onDelete }) {
 
 function InstagramPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const [showEmbed, setShowEmbed] = useState(true);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || "Unknown";
+  const shortcode = post.platform_post_id || null;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
@@ -271,13 +303,31 @@ function InstagramPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
-        {isLong && (
+        {/* Embedded Instagram post */}
+        {showEmbed && shortcode && (
+          <EmbedPost
+            platform="instagram"
+            meta={{ shortcode, url: post.post_url }}
+          />
+        )}
+
+        {!showEmbed && (
+          <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        )}
+        {!showEmbed && isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? "Show less" : "Show more"}
+          </Button>
+        )}
+
+        {shortcode && (
+          <Button variant="subtle" size="xs" p={0} h="auto"
+            onClick={() => setShowEmbed(!showEmbed)}
+          >
+            {showEmbed ? "Show text only" : "Show embed"}
           </Button>
         )}
 
@@ -354,9 +404,11 @@ function TikTokPostCard({ post, onDelete }) {
 
 function RedditPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const [showEmbed, setShowEmbed] = useState(true);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || "Unknown";
+  const redditPostId = post.platform_post_id || null;
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
@@ -386,13 +438,31 @@ function RedditPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
-        {isLong && (
+        {/* Embedded Reddit post */}
+        {showEmbed && (redditPostId || post.post_url) && (
+          <EmbedPost
+            platform="reddit"
+            meta={{ platformPostId: redditPostId, url: post.post_url }}
+          />
+        )}
+
+        {!showEmbed && (
+          <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        )}
+        {!showEmbed && isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? "Show less" : "Show more"}
+          </Button>
+        )}
+
+        {(redditPostId || post.post_url) && (
+          <Button variant="subtle" size="xs" p={0} h="auto"
+            onClick={() => setShowEmbed(!showEmbed)}
+          >
+            {showEmbed ? "Show text only" : "Show embed"}
           </Button>
         )}
 

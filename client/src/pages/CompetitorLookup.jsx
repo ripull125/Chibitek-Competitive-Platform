@@ -46,6 +46,7 @@ import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
 import { Checkbox, NumberInput, Transition } from "@mantine/core";
+import EmbedPost from "../../components/EmbedPost";
 
 function LabelWithInfo({ label, info }) {
   return (
@@ -756,6 +757,14 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
   return (
     <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
       <Stack gap="sm">
+        {/* Embedded tweet */}
+        {tweet.id && (
+          <EmbedPost
+            platform="x"
+            meta={{ platformPostId: String(tweet.id), username: authorUsername || "i" }}
+          />
+        )}
+
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
             {authorUsername && (
@@ -1379,6 +1388,7 @@ export default function CompetitorLookup() {
           user_id: currentUserId,
           author_name: data._authorUsername || "",
           author_handle: data._authorUsername || "",
+          post_url: `https://x.com/${data._authorUsername || "i"}/status/${data.id}`,
         }),
       });
       if (!resp.ok) {
@@ -1452,6 +1462,7 @@ export default function CompetitorLookup() {
           channelTitle: data.channelTitle || "",
           videoId: data.id || data.videoId || "",
           views: data.views ?? 0,
+          post_url: `https://www.youtube.com/watch?v=${data.id || data.videoId || ""}`,
         }),
       });
       if (!resp.ok) {
@@ -1535,6 +1546,7 @@ export default function CompetitorLookup() {
           user_id: currentUserId,
           author_name: ownerFullName || ownerUsername,
           author_handle: ownerUsername,
+          post_url: `https://www.instagram.com/p/${data.code || data.shortcode || platformPostId}/`,
         }),
       });
       if (!resp.ok) {
@@ -1670,6 +1682,7 @@ export default function CompetitorLookup() {
           user_id: currentUserId,
           author_name: data.author || "",
           author_handle: data.author || "",
+          post_url: data.permalink ? `https://www.reddit.com${data.permalink}` : (data.url && !data.url.includes('reddit.com/r/') ? null : data.url) || `https://www.reddit.com/comments/${data.id || data.name || ''}/`,
         }),
       });
       if (!resp.ok) {
@@ -1948,6 +1961,7 @@ export default function CompetitorLookup() {
             comments: metrics.reply_count ?? 0,
             views: metrics.impression_count ?? 0,
             user_id: currentUserId,
+            post_url: `https://x.com/${result.username || "i"}/status/${post.id}`,
           }),
         });
 
@@ -1969,6 +1983,14 @@ export default function CompetitorLookup() {
     return (
       <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
         <Stack gap="sm">
+          {/* Embedded tweet */}
+          {post.id && (
+            <EmbedPost
+              platform="x"
+              meta={{ platformPostId: String(post.id), username: result?.username || "i" }}
+            />
+          )}
+
           <Group justify="space-between" wrap="nowrap">
             <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
               <div style={{
@@ -2056,6 +2078,7 @@ export default function CompetitorLookup() {
             videoId: data.videoId,
             views: data.video.stats.views,
             user_id: currentUserId,
+            post_url: `https://www.youtube.com/watch?v=${data.videoId}`,
           }),
         });
 
@@ -2096,6 +2119,14 @@ export default function CompetitorLookup() {
 
           {/* title */}
           <Text fw={600} size="md" lh={1.3}>{data.video?.title || "Untitled Video"}</Text>
+
+          {/* Embedded YouTube video player */}
+          {data.videoId && (
+            <EmbedPost
+              platform="youtube"
+              meta={{ videoId: data.videoId }}
+            />
+          )}
 
           {/* description */}
           {data.video?.description && (
@@ -2239,6 +2270,13 @@ export default function CompetitorLookup() {
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          {/* Embedded YouTube video */}
+          {(video.id || video.videoId) && (
+            <EmbedPost
+              platform="youtube"
+              meta={{ videoId: video.id || video.videoId }}
+            />
+          )}
           <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
           <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}{video.duration ? ` · ${parseDuration(video.duration)}` : ""}</Text>
           <Group gap="xs">
@@ -2435,10 +2473,18 @@ export default function CompetitorLookup() {
     if (!post) return null;
     const caption = post.caption?.text || post.caption || "";
     const isVideo = post.media_type === 2 || post.video_url || post.is_video;
+    const shortcode = post.code || post.shortcode || null;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          {/* Embedded Instagram post */}
+          {shortcode && (
+            <EmbedPost
+              platform="instagram"
+              meta={{ shortcode }}
+            />
+          )}
           <Group gap="xs">
             {isVideo && <Badge size="xs" variant="light">Video</Badge>}
             {post.carousel_media_count > 1 && <Badge size="xs" variant="light">Carousel ({post.carousel_media_count})</Badge>}
@@ -2470,9 +2516,17 @@ export default function CompetitorLookup() {
   function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
     const caption = reel.caption?.text || reel.caption || "";
+    const reelCode = reel.code || reel.shortcode || null;
     return (
       <Card withBorder radius="md" shadow="sm" p="xs">
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          {/* Embedded Instagram reel */}
+          {reelCode && (
+            <EmbedPost
+              platform="instagram"
+              meta={{ shortcode: reelCode }}
+            />
+          )}
           <Text size="xs" lineClamp={2} fw={500}>{caption || <i>No caption</i>}</Text>
           <Text size="xs" c="dimmed">{reel.user?.username || ""}</Text>
           <Group gap="xs">
@@ -2908,10 +2962,20 @@ export default function CompetitorLookup() {
     const title = post.title || "";
     const body = post.selftext || post.body || "";
     const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
+    const redditUrl = post.permalink
+      ? `https://www.reddit.com${post.permalink}`
+      : (post.id ? `https://www.reddit.com/comments/${post.id}/` : null);
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          {/* Embedded Reddit post */}
+          {redditUrl && (
+            <EmbedPost
+              platform="reddit"
+              meta={{ platformPostId: String(post.id || post.name || ""), url: redditUrl, subreddit: post.subreddit }}
+            />
+          )}
           <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>No title</i>}</Text>
           {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
           <Text size="xs" c="dimmed">
