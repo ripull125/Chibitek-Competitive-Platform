@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import { useTranslation } from "react-i18next";
 
 /* ── tiny helpers ─────────────────────────────────────────────────────────── */
 
@@ -83,45 +84,34 @@ function PlatformBadges({ platforms }) {
 const COLS = [
   {
     key: "kpi",
-    label: "KPI",
     w: 104,
-    tip: "Keyword Performance Index (0–100). Combines normalised engagement, sample size, consistency, and trend. Higher = more reliably drives engagement across your saved posts.",
   },
   {
     key: "engagement",
-    label: "AVG SCORE",
     w: 88,
-    tip: "Average raw engagement score for posts containing this keyword. Formula: Comments×5 + Likes×2 + log₁₀(Views+1)×1. Comments weighted highest as they signal the strongest intent.",
   },
   {
     key: "posts",
-    label: "POSTS",
     w: 50,
-    tip: "How many of your saved posts contain this keyword. Needs ≥2 posts for a reliable signal (when you have 10+ posts total).",
   },
   {
     key: "consistency",
-    label: "CONSIST.",
     w: 76,
-    tip: "How consistently this keyword drives high engagement (0–100%). Derived from coefficient of variation across post scores. 100% = all posts with this word perform equally. Low = one-hit wonder.",
   },
   {
     key: "trend",
-    label: "TREND",
     w: 70,
-    tip: "Compares average engagement in your newest 33% of saved posts vs the older 67%. ↑ = gaining traction, ↓ = fading, — = stable.",
   },
   {
     key: "platforms",
-    label: "PLATFORMS",
     w: 130,
-    tip: "Which connected social media platforms this keyword appears in across your saved posts.",
   },
 ];
 
 /* ── main component ───────────────────────────────────────────────────────── */
 
 const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
+  const { t } = useTranslation();
   const [keywords, setKeywords]           = useState([]);
   const [meta, setMeta]                   = useState(null);
   const [loading, setLoading]             = useState(true);
@@ -153,9 +143,9 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
 
   useEffect(() => {
     if (currentUserId === undefined) return;
-    if (!currentUserId) { setLoading(false); setError("Sign in to see keyword data."); return; }
+    if (!currentUserId) { setLoading(false); setError(t("keywordTracking.signInToSeeData")); return; }
     fetchKeywords();
-  }, [currentUserId]);
+  }, [currentUserId, t]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "keyword-tracking" } }));
@@ -182,15 +172,13 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
         <Card withBorder radius="lg" p="md">
           <Group justify="space-between" align="flex-start" wrap="nowrap">
             <div style={{ flex: 1 }}>
-              <Title order={3}>Keyword Intelligence</Title>
+              <Title order={3}>{t("keywordTracking.intelligenceTitle")}</Title>
               <Text size="sm" c="dimmed" mt={6} style={{ lineHeight: 1.65, maxWidth: 680 }}>
-                Posts are scored by <strong>weighted engagement</strong> (Comments×5 + Likes×2 + log Views×1 —
-                comments count most because replying takes real intent). Scores are{" "}
-                <strong>normalised per account</strong> so a small creator going 3× their baseline
-                ranks equally to MrBeast doing the same. The <strong>KPI (0–100)</strong> adds
-                consistency and a trend boost on top. Keywords are tagged with every{" "}
-                <strong>platform</strong> they appear on.{" "}
-                <strong>Click any column header to re-sort.</strong>
+                {t("keywordTracking.intelligenceIntro1")} <strong>{t("keywordTracking.intelligenceWeightedEngagement")}</strong>{" "}
+                {t("keywordTracking.intelligenceIntro2")} <strong>{t("keywordTracking.intelligenceNormalizedPerAccount")}</strong>{" "}
+                {t("keywordTracking.intelligenceIntro3")} <strong>{t("keywordTracking.intelligenceKpiRange")}</strong>{" "}
+                {t("keywordTracking.intelligenceIntro4")} <strong>{t("keywordTracking.intelligencePlatform")}</strong>{" "}
+                <strong>{t("keywordTracking.intelligenceClickToSort")}</strong>
               </Text>
               {meta?.debug && (
                 <Text size="xs" c="dimmed" mt={4}>{meta.debug}</Text>
@@ -206,7 +194,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
               ml="md"
               style={{ flexShrink: 0 }}
             >
-              Refresh
+              {t("common.refresh")}
             </Button>
           </Group>
 
@@ -236,9 +224,9 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
             marginBottom: 4,
           }}>
             <Text size="xs" c="dimmed" fw={600}>#</Text>
-            <Text size="xs" c="dimmed" fw={600}>KEYWORD</Text>
+            <Text size="xs" c="dimmed" fw={600}>{t("keywordTracking.keywordHeader")}</Text>
             {COLS.map(col => (
-              <Tooltip key={col.key} label={col.tip} withArrow multiline w={240} position="top">
+              <Tooltip key={col.key} label={t(`keywordTracking.colTips.${col.key}`)} withArrow multiline w={240} position="top">
                 <Group
                   gap={3}
                   justify="center"
@@ -251,7 +239,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                     c={sortBy === col.key ? "blue" : "dimmed"}
                     style={{ textDecoration: sortBy === col.key ? "underline dotted" : "none" }}
                   >
-                    {col.label}
+                    {t(`keywordTracking.colLabels.${col.key}`)}
                   </Text>
                   <IconInfoCircle
                     size={10}
@@ -285,7 +273,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
             </Stack>
           ) : sorted.length === 0 ? (
             <Text c="dimmed" ta="center" py="xl" size="sm">
-              No keywords yet — save posts from Competitor Lookup first.
+              {t("keywordTracking.noKeywords")}
             </Text>
           ) : (
             <Stack gap={1} mt={2}>
@@ -293,8 +281,8 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                 const medals  = ["🥇", "🥈", "🥉"];
                 const isTop   = i < 3;
                 const tooltipLabel = [
-                  `Outperformance: ${kw.normalizedAvg}× account avg`,
-                  `Raw avg score: ${fmt(kw.avgEngagement)}`,
+                  `${t("keywordTracking.outperformance")}: ${kw.normalizedAvg}× ${t("keywordTracking.accountAvg")}`,
+                  `${t("keywordTracking.rawAvgScore")}: ${fmt(kw.avgEngagement)}`,
                   `❤️ ${fmt(kw.totalLikes)}  💬 ${fmt(kw.totalComments)}  👁 ${fmt(kw.totalViews)}`,
                 ].join("  ·  ");
 

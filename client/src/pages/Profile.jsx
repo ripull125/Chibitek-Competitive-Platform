@@ -21,6 +21,7 @@ import {
 import { IconCamera, IconCheck, IconUser } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import "../utils/ui.css"; // shared title styles
+import { useTranslation } from "react-i18next";
 
 function useObjectUrl(file) {
   const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
@@ -87,19 +88,19 @@ function deriveProfileFromSupabaseUser(user) {
   };
 }
 
-function validateField(name, value) {
+function validateField(name, value, t) {
   const v = String(value ?? "").trim();
   switch (name) {
     case "email":
-      return /^\S+@\S+\.\S+$/.test(v) ? null : "Invalid email";
+      return /^\S+@\S+\.\S+$/.test(v) ? null : t("profile.invalidEmail");
     case "firstName":
-      return v ? null : "First name is required";
+      return v ? null : t("profile.firstNameRequired");
     case "lastName":
-      return v ? null : "Last name is required";
+      return v ? null : t("profile.lastNameRequired");
     case "username":
       return /^[a-zA-Z0-9_.]{2,30}$/.test(v)
         ? null
-        : "2–30 chars; letters, numbers, _ and .";
+        : t("profile.usernameRules");
     default:
       return null;
   }
@@ -109,7 +110,7 @@ async function fileToDataUrl(file) {
   if (!file) return "";
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onerror = () => reject(new Error("profile.fileReadFailed"));
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsDataURL(file);
   });
@@ -143,6 +144,7 @@ export default function Profile() {
   const [avatarFile, setAvatarFile] = useState(null);
   const avatarPreview = useObjectUrl(avatarFile);
   const [remoteAvatarUrl, setRemoteAvatarUrl] = useState("");
+  const { t } = useTranslation();
 
   const [initialValues, setInitialValues] = useState({
     email: "",
@@ -173,10 +175,10 @@ export default function Profile() {
     values.username !== initialValues.username;
 
   const isValidNow =
-    validateField("email", values.email) == null &&
-    validateField("firstName", values.firstName) == null &&
-    validateField("lastName", values.lastName) == null &&
-    validateField("username", values.username) == null;
+    validateField("email", values.email, t) == null &&
+    validateField("firstName", values.firstName, t) == null &&
+    validateField("lastName", values.lastName, t) == null &&
+    validateField("username", values.username, t) == null;
 
   useEffect(() => {
     let mounted = true;
@@ -187,7 +189,7 @@ export default function Profile() {
           if (!mounted) return;
           setBanner({
             color: "red",
-            message: "Supabase is not configured. Check VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.",
+            message: t("profile.supabaseNotConfigured"),
           });
           setLoading(false);
           return;
@@ -197,7 +199,7 @@ export default function Profile() {
         if (!mounted) return;
 
         if (error || !data?.user) {
-          setBanner({ color: "red", message: "You are not signed in." });
+          setBanner({ color: "red", message: t("profile.notSignedIn") });
           setLoading(false);
           return;
         }
@@ -222,7 +224,10 @@ export default function Profile() {
         setInitialValues(next);
         setValues(next);
       } catch (e) {
-        setBanner({ color: "red", message: e?.message || "Failed to load profile." });
+        const msg = e?.message === "profile.fileReadFailed"
+          ? t("profile.fileReadFailed")
+          : (e?.message || t("profile.failedLoad"));
+        setBanner({ color: "red", message: msg });
       } finally {
         if (mounted) setLoading(false);
       }
@@ -231,7 +236,7 @@ export default function Profile() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [t]);
 
   function handleChange(name, value) {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -239,12 +244,12 @@ export default function Profile() {
   }
 
   function handleBlur(name) {
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, values[name]) }));
+    setErrors((prev) => ({ ...prev, [name]: validateField(name, values[name], t) }));
   }
 
   function validateAll() {
     const next = Object.keys(values).reduce((acc, k) => {
-      acc[k] = validateField(k, values[k]);
+      acc[k] = validateField(k, values[k], t);
       return acc;
     }, {});
     setErrors(next);
@@ -258,7 +263,7 @@ export default function Profile() {
     if (!supabase) {
       setBanner({
         color: "red",
-        message: "Supabase is not configured. Check VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.",
+        message: t("profile.supabaseNotConfigured"),
       });
       return;
     }
@@ -269,7 +274,7 @@ export default function Profile() {
     try {
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userRes?.user) {
-        setBanner({ color: "red", message: "You are not signed in." });
+        setBanner({ color: "red", message: t("profile.notSignedIn") });
         return;
       }
 
@@ -305,7 +310,7 @@ export default function Profile() {
 
       const { error: metaErr } = await supabase.auth.updateUser({ data: metaUpdate });
       if (metaErr) {
-        setBanner({ color: "red", message: metaErr.message || "Failed to save profile." });
+        setBanner({ color: "red", message: metaErr.message || t("profile.failedSave") });
         return;
       }
 
@@ -318,8 +323,8 @@ export default function Profile() {
           setBanner({
             color: "yellow",
             message:
-              "Profile saved, but email update needs confirmation or failed: " +
-              (emailErr.message || "Unknown error"),
+              t("profile.emailUpdateNeedsConfirmation") +
+              (emailErr.message || t("profile.unknownError")),
           });
         }
       }
@@ -336,9 +341,12 @@ export default function Profile() {
       setValues(committed);
       setInitialValues(committed);
 
-      setBanner({ color: "green", message: "Saved successfully." });
+      setBanner({ color: "green", message: t("profile.savedSuccessfully") });
     } catch (err) {
-      setBanner({ color: "red", message: err?.message || "Failed to save profile." });
+      const msg = err?.message === "profile.fileReadFailed"
+        ? t("profile.fileReadFailed")
+        : (err?.message || t("profile.failedSave"));
+      setBanner({ color: "red", message: msg });
     } finally {
       setSaving(false);
     }
@@ -349,9 +357,9 @@ export default function Profile() {
       <Card withBorder shadow="xs" radius="lg" p="xl">
         <Stack gap="xs" mb="md">
           <Title order={2} className="pageTitle">
-            Profile
+            {t("profile.title")}
           </Title>
-          <Text c="dimmed">Manage your personal details.</Text>
+          <Text c="dimmed">{t("profile.subtitle")}</Text>
         </Stack>
 
         {banner && (
@@ -377,7 +385,7 @@ export default function Profile() {
                 <Box pos="relative">
                   <Avatar
                     src={avatarPreview || remoteAvatarUrl || undefined}
-                    alt="Profile picture"
+                    alt={t("profile.profilePictureAlt")}
                     size={108}
                     radius={108}
                   />
@@ -397,8 +405,8 @@ export default function Profile() {
                         pos="absolute"
                         bottom={-6}
                         right={-6}
-                        aria-label="Upload new avatar"
-                        title="Upload new avatar"
+                        aria-label={t("profile.uploadNewAvatar")}
+                        title={t("profile.uploadNewAvatar")}
                       >
                         <IconCamera size={18} />
                       </ActionIcon>
@@ -412,11 +420,11 @@ export default function Profile() {
                     <Text fw={600}>
                       {values.firstName || values.lastName
                         ? `${values.firstName} ${values.lastName}`.trim()
-                        : "Your profile"}
+                        : t("profile.yourProfile")}
                     </Text>
                   </Group>
                   <Text c="dimmed" size="sm">
-                    Update your details and save changes.
+                    {t("profile.updateDetailsPrompt")}
                   </Text>
                 </Stack>
               </Group>
@@ -424,8 +432,8 @@ export default function Profile() {
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">
                   <TextInput
-                    label="Email address"
-                    placeholder="you@company.com"
+                    label={t("profile.emailAddress")}
+                    placeholder={t("profile.emailPlaceholder")}
                     withAsterisk
                     value={values.email}
                     error={errors.email}
@@ -436,8 +444,8 @@ export default function Profile() {
                   <Grid gutter="md">
                     <Grid.Col span={{ base: 12, sm: 6 }}>
                       <TextInput
-                        label="First name"
-                        placeholder="John"
+                        label={t("profile.firstName")}
+                        placeholder={t("profile.firstNamePlaceholder")}
                         withAsterisk
                         value={values.firstName}
                         error={errors.firstName}
@@ -448,8 +456,8 @@ export default function Profile() {
 
                     <Grid.Col span={{ base: 12, sm: 6 }}>
                       <TextInput
-                        label="Last name"
-                        placeholder="Doe"
+                        label={t("profile.lastName")}
+                        placeholder={t("profile.lastNamePlaceholder")}
                         withAsterisk
                         value={values.lastName}
                         error={errors.lastName}
@@ -460,8 +468,8 @@ export default function Profile() {
                   </Grid>
 
                   <TextInput
-                    label="Username"
-                    placeholder="john.doe"
+                    label={t("profile.username")}
+                    placeholder={t("profile.usernamePlaceholder")}
                     withAsterisk
                     value={values.username}
                     error={errors.username}
@@ -476,7 +484,7 @@ export default function Profile() {
                       disabled={!dirty || !isValidNow || saving}
                       loading={saving}
                     >
-                      Save changes
+                      {t("profile.saveChanges")}
                     </Button>
                   </Group>
                 </Stack>

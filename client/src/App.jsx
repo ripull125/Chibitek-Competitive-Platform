@@ -7,6 +7,7 @@ import {
   Burger,
   ScrollArea,
 } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { Outlet } from "react-router-dom";
 import { useDisclosure } from "@mantine/hooks";
 import NavbarSimple from "../components/NavbarSimple.jsx";
@@ -14,6 +15,7 @@ import NavbarSimple from "../components/NavbarSimple.jsx";
 const HEADER_HEIGHT = 56; // keep in sync with header.height
 
 export default function App() {
+  const { t } = useTranslation();
   const [opened, { toggle }] = useDisclosure();
 
   return (
@@ -26,7 +28,7 @@ export default function App() {
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Title order={4}>Chibitek Dashboard</Title>
+            <Title order={4}>Chibitek {t("nav.dashboard")}</Title>
           </Group>
         </Group>
       </AppShell.Header>

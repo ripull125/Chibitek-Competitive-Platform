@@ -5,6 +5,7 @@ import DownloadJSON from "../../components/DownloadJSON";
 import DownloadTXT from "../../components/DownloadTXT";
 import DownloadCSV from "../../components/DownloadCSV";
 import { apiUrl } from "../utils/api";
+import { useTranslation } from "react-i18next";
 
 // Import the RechartsTest chart
 // import RechartsTest from "../../../recharts/src/RechartsTest.jsx";
@@ -13,6 +14,7 @@ const Placeholder = () => {
   const [message, setMessage] = useState("");
   const [records, setRecords] = useState([]);
   const [data, setData] = useState({ heading: "", paragraphs: [], books: [] });
+  const { t } = useTranslation();
 
   
 
@@ -57,19 +59,19 @@ const Placeholder = () => {
       const json = await res.json();
       if (!res.ok) {
         console.error("Save keywords failed:", json);
-        alert("Failed to save keywords");
+        alert(t("placeholder.failedSaveKeywords"));
         return;
       }
 
       await fetchRecords();
     } catch (err) {
       console.error("Save keywords error:", err);
-      alert("Failed to save keywords");
+      alert(t("placeholder.failedSaveKeywords"));
     }
   };
 
   const deleteMessage = async (id) => {
-    const ok = window.confirm("Delete this message? This cannot be undone.");
+    const ok = window.confirm(t("placeholder.deleteConfirm"));
     if (!ok) return;
 
     try {
@@ -84,13 +86,13 @@ const Placeholder = () => {
       const json = await res.json();
       if (!res.ok) {
         console.error("Delete error:", json);
-        alert("Failed to delete: " + (json.error || res.statusText));
+        alert(t("placeholder.failedDeleteWithReason") + (json.error || res.statusText));
         return;
       }
       setRecords((prev) => prev.filter((r) => r.id !== id));
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete");
+      alert(t("placeholder.failedDelete"));
     }
   };
 
@@ -108,7 +110,7 @@ const Placeholder = () => {
   return (
     <Container p="md">
       <Box style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-        <Button color="blue">Test Button</Button>
+        <Button color="blue">{t("placeholder.testButton")}</Button>
 
         <DownloadJSON
           data={records.map((r) => {
@@ -143,22 +145,22 @@ const Placeholder = () => {
       </Box>
 
       <Title order={2} mb="md">
-        Write & Read to Database
+        {t("placeholder.writeReadTitle")}
       </Title>
 
       <Box mb="lg">
         <Input
-          placeholder="Enter your message"
+          placeholder={t("placeholder.enterMessage")}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           mb="sm"
         />
         <Button onClick={submitMessage} color="teal" mb="md">
-          Submit Message
+          {t("placeholder.submitMessage")}
         </Button>
 
         <Title order={3} mb="sm">
-          Saved Data:
+          {t("placeholder.savedData")}
         </Title>
 
         {records.map((r) => (
@@ -169,21 +171,21 @@ const Placeholder = () => {
           >
             <Text>{r.message}</Text>
             <Button color="red" size="xs" onClick={() => deleteMessage(r.id)}>
-              Delete
+              {t("placeholder.delete")}
             </Button>
           </Box>
         ))}
       </Box>
 
       <Title order={3} mb="sm">
-        Scraped Content:
+        {t("placeholder.scrapedContent")}
       </Title>
       <Text fontSize="lg" mb="sm">
-        Heading: {data.heading}
+        {t("placeholder.heading")}: {data.heading}
       </Text>
 
       <Box mb="lg">
-        <Title order={4}>Paragraphs:</Title>
+        <Title order={4}>{t("placeholder.paragraphs")}</Title>
         {data.paragraphs?.length ? (
           data.paragraphs.map((p, i) => (
             <Text key={i} mb="xs">
@@ -191,22 +193,22 @@ const Placeholder = () => {
             </Text>
           ))
         ) : (
-          <Text mb="xs">No paragraphs detected.</Text>
+          <Text mb="xs">{t("placeholder.noParagraphs")}</Text>
         )}
       </Box>
 
       <Box mb="lg">
         <Title order={4} mb="sm">
-          Books:
+          {t("placeholder.books")}
         </Title>
 
-        {!data.books?.length && <Text>No books detected.</Text>}
+        {!data.books?.length && <Text>{t("placeholder.noBooks")}</Text>}
 
         {data.books?.map((book, idx) => (
           <Box key={idx} mb="sm" style={{ border: "1px solid #eee", padding: 8 }}>
             <Text weight={700}>{book.title}</Text>
-            <Text>Price: {book.price || "Unknown"}</Text>
-            {book.availability && <Text>Availability: {book.availability}</Text>}
+            <Text>{t("placeholder.price")}: {book.price || t("placeholder.unknown")}</Text>
+            {book.availability && <Text>{t("placeholder.availability")}: {book.availability}</Text>}
 
             <Box
               style={{
@@ -217,13 +219,13 @@ const Placeholder = () => {
               }}
             >
               <Text style={{ marginBottom: 0 }}>
-                Suggested keywords:{" "}
+                {t("placeholder.suggestedKeywords")}: {" "}
                 {book.keywords?.length
                   ? book.keywords.join(", ")
-                  : "Not available"}
+                  : t("placeholder.notAvailable")}
               </Text>
               <Button size="xs" onClick={() => saveKeywords(book)}>
-                Save
+                {t("placeholder.save")}
               </Button>
             </Box>
           </Box>

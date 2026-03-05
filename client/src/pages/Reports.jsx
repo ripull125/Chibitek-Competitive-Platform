@@ -21,6 +21,7 @@ import {
 import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // holds posts already converted to universal format
 // previous version used a global var; switched to component state instead
@@ -35,6 +36,7 @@ export default function Reports() {
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     let mounted = true;
@@ -111,7 +113,7 @@ export default function Reports() {
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
       pdf.setFontSize(14);
-      pdf.text("Keyword Tracking Report", 24, 28);
+      pdf.text(t("reports.pdfTitle"), 24, 28);
       pdf.addImage(imgData, "PNG", 24, 44, imgWidth, imgHeight);
 
       pdf.save("keyword-tracking-report.pdf");
@@ -138,15 +140,15 @@ export default function Reports() {
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
       <LoadingOverlay visible={loading} />
       <Title order={1} mb="lg">
-        Analysis Reports
+        {t("reports.title")}
       </Title>
       
       <Button onClick={generatePDF} mb="lg">
-        Download PDF
+        {t("reports.downloadPdf")}
       </Button>
 
       <Checkbox
-        label="Include Keyword Tracking"
+        label={t("reports.includeKeywordTracking")}
         checked={includeKeywordTracking}
         onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
         mb="lg"
@@ -216,17 +218,17 @@ export default function Reports() {
         mb="sm"
         disabled={loading}
       >
-        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
+        {analysisStarted ? t("reports.rerunAnalysis") : t("reports.startAnalysis")}
       </Button>
 
       <Select
-        label="Analyze last"
+        label={t("reports.analyzeLast")}
         data={[
-          { value: '5', label: '5 posts' },
-          { value: '10', label: '10 posts' },
-          { value: '15', label: '15 posts' },
-          { value: '20', label: '20 posts' },
-          { value: '50', label: '50 posts' },
+          { value: '5', label: t("reports.postsCount", { count: 5 }) },
+          { value: '10', label: t("reports.postsCount", { count: 10 }) },
+          { value: '15', label: t("reports.postsCount", { count: 15 }) },
+          { value: '20', label: t("reports.postsCount", { count: 20 }) },
+          { value: '50', label: t("reports.postsCount", { count: 50 }) },
         ]}
         value={String(postLimit)}
         onChange={(val) => setPostLimit(Number(val) || 0)}
@@ -239,14 +241,14 @@ export default function Reports() {
       {/* Saved Posts Source-Based Engagement Chart */}
       <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
         <Title order={2} size="h3" mb="md">
-          Saved Posts - Engagement by Post Index
+          {t("reports.engagementChartTitle")}
         </Title>
         {toneEngagementData.length > 0 ? (
           <ResponsiveContainer width="100%" height={400}>
             <ScatterChart>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" name="Post Index" />
-              <YAxis dataKey="engagement" name="Engagement" />
+              <XAxis dataKey="index" name={t("reports.postIndex")} />
+              <YAxis dataKey="engagement" name={t("reports.engagement")} />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} />
               <Legend />
               {TONES.map((tone) => {
@@ -265,7 +267,7 @@ export default function Reports() {
               {/* Fallback for unlabelled posts */}
               {toneEngagementData.some((d) => !d.tone) && (
                 <Scatter
-                  name="Unlabeled"
+                  name={t("reports.unlabeled")}
                   data={toneEngagementData.filter((d) => !d.tone)}
                   dataKey="engagement"
                   fill="#adb5bd"
@@ -274,25 +276,25 @@ export default function Reports() {
             </ScatterChart>
           </ResponsiveContainer>
         ) : (
-          <Title order={4} c="dimmed">No saved posts to display</Title>
+          <Title order={4} c="dimmed">{t("reports.noPostsToDisplay")}</Title>
         )}
       </Paper>
 
       {/* Source Distribution Pie Chart */}
       <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
         <Title order={2} size="h3" mb="md">
-          Post Statistics
+          {t("reports.statisticsTitle")}
         </Title>
         {toneEngagementData.length > 0 ? (
           <div style={{ display: "flex", gap: "1rem" }}>
             <div style={{ flex: 1 }}>
-              <Text><strong>Total Posts:</strong> {toneEngagementData.length}</Text>
-              <Text><strong>Average Engagement:</strong> {(toneEngagementData.reduce((sum, p) => sum + p.engagement, 0) / toneEngagementData.length).toFixed(2)}</Text>
-              <Text><strong>Total Engagement:</strong> {toneEngagementData.reduce((sum, p) => sum + p.engagement, 0)}</Text>
+              <Text><strong>{t("reports.totalPosts")}:</strong> {toneEngagementData.length}</Text>
+              <Text><strong>{t("reports.averageEngagement")}:</strong> {(toneEngagementData.reduce((sum, p) => sum + p.engagement, 0) / toneEngagementData.length).toFixed(2)}</Text>
+              <Text><strong>{t("reports.totalEngagement")}:</strong> {toneEngagementData.reduce((sum, p) => sum + p.engagement, 0)}</Text>
             </div>
           </div>
         ) : (
-          <Title order={4} c="dimmed">No saved posts to display</Title>
+          <Title order={4} c="dimmed">{t("reports.noPostsToDisplay")}</Title>
         )}
       </Paper>
     </Container>
