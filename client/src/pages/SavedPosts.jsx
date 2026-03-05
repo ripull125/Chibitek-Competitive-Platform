@@ -479,6 +479,7 @@ const PLATFORM_CARD_CONFIG = {
 const DEFAULT_PLATFORM_MAP = {
   1: { ...PLATFORM_CARD_CONFIG.x },
   3: { ...PLATFORM_CARD_CONFIG.instagram },
+  4: { ...PLATFORM_CARD_CONFIG.x },
   5: { ...PLATFORM_CARD_CONFIG.tiktok },
   8: { ...PLATFORM_CARD_CONFIG.youtube },
   9: { ...PLATFORM_CARD_CONFIG.linkedin },
