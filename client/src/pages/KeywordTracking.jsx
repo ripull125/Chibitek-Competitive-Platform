@@ -17,14 +17,14 @@ import { useTranslation } from "react-i18next";
 function fmt(n) {
   if (!n) return "0";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
 /* ── sub-components ───────────────────────────────────────────────────────── */
 
 function TrendIcon({ dir }) {
-  if (dir === "rising")  return <IconArrowUp  size={12} color="var(--mantine-color-green-6)" />;
+  if (dir === "rising") return <IconArrowUp size={12} color="var(--mantine-color-green-6)" />;
   if (dir === "falling") return <IconArrowDown size={12} color="var(--mantine-color-red-6)" />;
   return <IconMinus size={12} color="var(--mantine-color-gray-4)" />;
 }
@@ -32,8 +32,8 @@ function TrendIcon({ dir }) {
 function KpiBar({ value }) {
   const color =
     value >= 75 ? "green" :
-    value >= 45 ? "blue"  :
-    value >= 20 ? "yellow": "gray";
+      value >= 45 ? "blue" :
+        value >= 20 ? "yellow" : "gray";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <div style={{
@@ -110,14 +110,14 @@ const COLS = [
 
 /* ── main component ───────────────────────────────────────────────────────── */
 
-const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
+const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded }, ref) {
   const { t } = useTranslation();
-  const [keywords, setKeywords]           = useState([]);
-  const [meta, setMeta]                   = useState(null);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState(null);
+  const [keywords, setKeywords] = useState([]);
+  const [meta, setMeta] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(undefined);
-  const [sortBy, setSortBy]               = useState("kpi");
+  const [sortBy, setSortBy] = useState("kpi");
 
   /* Auth */
   useEffect(() => {
@@ -136,7 +136,7 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
     setError(null);
     fetch(apiUrl(`/api/keywords?user_id=${encodeURIComponent(currentUserId)}`))
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(d => { if (d.error) throw new Error(d.error); setKeywords(d.keywords || []); setMeta(d); })
+      .then(d => { if (d.error) throw new Error(d.error); setKeywords(d.keywords || []); setMeta(d); onKeywordsLoaded?.(d.keywords || []); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   };
@@ -153,11 +153,11 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
 
   /* Sort */
   const sorted = [...keywords].sort((a, b) => {
-    if (sortBy === "engagement")  return b.avgEngagement - a.avgEngagement;
-    if (sortBy === "posts")       return b.sampleSize    - a.sampleSize;
-    if (sortBy === "consistency") return b.consistency   - a.consistency;
-    if (sortBy === "trend")       return b.trend         - a.trend;
-    if (sortBy === "platforms")   return (b.platforms?.length || 0) - (a.platforms?.length || 0);
+    if (sortBy === "engagement") return b.avgEngagement - a.avgEngagement;
+    if (sortBy === "posts") return b.sampleSize - a.sampleSize;
+    if (sortBy === "consistency") return b.consistency - a.consistency;
+    if (sortBy === "trend") return b.trend - a.trend;
+    if (sortBy === "platforms") return (b.platforms?.length || 0) - (a.platforms?.length || 0);
     return b.kpi - a.kpi;
   });
 
@@ -278,8 +278,8 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
           ) : (
             <Stack gap={1} mt={2}>
               {sorted.map((kw, i) => {
-                const medals  = ["🥇", "🥈", "🥉"];
-                const isTop   = i < 3;
+                const medals = ["🥇", "🥈", "🥉"];
+                const isTop = i < 3;
                 const tooltipLabel = [
                   `${t("keywordTracking.outperformance")}: ${kw.normalizedAvg}× ${t("keywordTracking.accountAvg")}`,
                   `${t("keywordTracking.rawAvgScore")}: ${fmt(kw.avgEngagement)}`,
@@ -290,9 +290,10 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                   <Tooltip
                     key={kw.term}
                     multiline
-                    w={280}
+                    maw={280}
                     withArrow
-                    position="right"
+                    position="top-start"
+                    withinPortal
                     label={tooltipLabel}
                   >
                     <div
@@ -345,8 +346,8 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                           variant="light"
                           color={
                             kw.consistency >= 80 ? "green" :
-                            kw.consistency >= 60 ? "blue"  :
-                            kw.consistency >= 40 ? "yellow": "gray"
+                              kw.consistency >= 60 ? "blue" :
+                                kw.consistency >= 40 ? "yellow" : "gray"
                           }
                         >
                           {kw.consistency}%
@@ -360,11 +361,11 @@ const KeywordTracking = forwardRef(function KeywordTracking(_, ref) {
                           size="xs"
                           c={kw.trendDir === "rising" ? "green"
                             : kw.trendDir === "falling" ? "red"
-                            : "dimmed"}
+                              : "dimmed"}
                         >
-                          {kw.trendDir === "rising"  ? `↑${kw.trend}×`
-                           : kw.trendDir === "falling" ? `↓${kw.trend}×`
-                           : "—"}
+                          {kw.trendDir === "rising" ? `↑${kw.trend}×`
+                            : kw.trendDir === "falling" ? `↓${kw.trend}×`
+                              : "—"}
                         </Text>
                       </Group>
 

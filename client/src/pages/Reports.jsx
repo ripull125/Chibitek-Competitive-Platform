@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
-import { IconDownload } from "@tabler/icons-react";
+import { Alert, Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
+import { IconDownload, IconSparkles, IconRefresh } from "@tabler/icons-react";
 import {
   ScatterChart,
   Scatter,
@@ -23,12 +23,16 @@ import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { useTranslation } from "react-i18next";
 
+const KW_SUMMARY_KEY = "chibitek-keyword-summary";
+
 // holds posts already converted to universal format
 // previous version used a global var; switched to component state instead
 
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
+  const [includeTone, setIncludeTone] = useState(true);
+  const [includeSummary, setIncludeSummary] = useState(true);
   const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
   const [convertedData, setConvertedData] = useState([]);
   const [analysisStarted, setAnalysisStarted] = useState(false);
@@ -36,7 +40,25 @@ export default function Reports() {
   const [toneEngagementData, setToneEngagementData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [topKeywords, setTopKeywords] = useState([]);
+  const [keywordSummary, setKeywordSummary] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const { t } = useTranslation();
+
+  // Persist & restore keyword summary from localStorage
+  const loadSavedSummary = (uid) => {
+    try {
+      const raw = localStorage.getItem(KW_SUMMARY_KEY);
+      if (!raw) return "";
+      const obj = JSON.parse(raw);
+      return obj?.userId === uid ? (obj.summary || "") : "";
+    } catch { return ""; }
+  };
+  const saveSummary = (uid, summary) => {
+    try { localStorage.setItem(KW_SUMMARY_KEY, JSON.stringify({ userId: uid, summary })); } catch { }
+  };
+
+  const handleKeywordsLoaded = useCallback((kws) => { setTopKeywords(kws || []); }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +67,7 @@ export default function Reports() {
       const { data, error } = await supabase.auth.getUser();
       if (error) return;
       if (mounted) setCurrentUserId(data?.user?.id || null);
+      if (mounted && data?.user?.id) setKeywordSummary(loadSavedSummary(data.user.id));
     };
     loadUser();
     return () => {
@@ -90,31 +113,143 @@ export default function Reports() {
     );
   }, []);
 
-  const generatePDF = async () => {
-    if (!includeKeywordTracking) return;
+  const generateKeywordSummary = async () => {
+    if (!topKeywords.length || summaryLoading) return;
+    setSummaryLoading(true);
+    try {
+      const kwList = topKeywords.slice(0, 5).map(kw => kw.term).join(", ");
 
+      const prompt = `My top keywords are: ${kwList}. In 2-3 sentences, summarize what these keywords say about the content that performs best and any common theme. Be concise.`;
+
+      const response = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: prompt }],
+          user_id: currentUserId || undefined,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Chat request failed");
+      const data = await response.json();
+      const summary = data.reply || "No response.";
+      setKeywordSummary(summary);
+      if (currentUserId) saveSummary(currentUserId, summary);
+    } catch (err) {
+      console.error("Keyword summary error:", err);
+      setKeywordSummary("Failed to generate summary. Please try again.");
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const generatePDF = async () => {
     const input = chartRef.current;
-    if (!input) return;
 
     setGenerating(true);
     try {
-      const canvas = await html2canvas(input, { scale: 2 });
-      const imgData = canvas.toDataURL("image/png");
-
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "pt",
         format: "a4",
       });
-      
 
       const pageWidth = pdf.internal.pageSize.getWidth();
-      const imgWidth = pageWidth - 48;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 24;
+      const contentWidth = pageWidth - margin * 2;
+      let cursorY = 28;
 
-      pdf.setFontSize(14);
-      pdf.text(t("reports.pdfTitle"), 24, 28);
-      pdf.addImage(imgData, "PNG", 24, 44, imgWidth, imgHeight);
+      // Helper: add a new page if we're running out of room
+      const checkPage = (needed = 40) => {
+        if (cursorY + needed > pageHeight - margin) {
+          pdf.addPage();
+          cursorY = margin;
+        }
+      };
+
+      // ── Title
+      pdf.setFontSize(16);
+      pdf.setFont(undefined, "bold");
+      pdf.text(t("reports.pdfTitle"), margin, cursorY);
+      cursorY += 24;
+
+      // ── Keyword Tracking screenshot
+      if (includeKeywordTracking && input) {
+        const canvas = await html2canvas(input, { scale: 2 });
+        const imgData = canvas.toDataURL("image/png");
+        const imgWidth = contentWidth;
+        let imgHeight = (canvas.height * imgWidth) / canvas.width;
+        // Cap image to remaining space on current page so it doesn't overflow
+        const maxImgH = pageHeight - cursorY - margin - 10;
+        if (imgHeight > maxImgH) {
+          const scale = maxImgH / imgHeight;
+          imgHeight = maxImgH;
+          const scaledW = imgWidth * scale;
+          const xOffset = margin + (contentWidth - scaledW) / 2;
+          pdf.addImage(imgData, "PNG", xOffset, cursorY, scaledW, imgHeight);
+        } else {
+          pdf.addImage(imgData, "PNG", margin, cursorY, imgWidth, imgHeight);
+        }
+        cursorY += imgHeight + 16;
+      }
+
+      // ── Keyword Summary
+      if (includeSummary && keywordSummary) {
+        checkPage(60);
+        pdf.setFontSize(13);
+        pdf.setFont(undefined, "bold");
+        pdf.text(t("reports.keywordSummaryTitle"), margin, cursorY);
+        cursorY += 16;
+        pdf.setFontSize(10);
+        pdf.setFont(undefined, "normal");
+        const summaryLines = pdf.splitTextToSize(keywordSummary, contentWidth);
+        summaryLines.forEach((line) => {
+          checkPage(14);
+          pdf.text(line, margin, cursorY);
+          cursorY += 13;
+        });
+        cursorY += 10;
+      }
+
+      // ── Tone Analysis
+      if (includeTone && toneEngagementData.length > 0) {
+        checkPage(60);
+        pdf.setFontSize(13);
+        pdf.setFont(undefined, "bold");
+        pdf.text(t("reports.engagementChartTitle"), margin, cursorY);
+        cursorY += 16;
+        pdf.setFontSize(10);
+        pdf.setFont(undefined, "normal");
+
+        // Stats
+        const totalEng = toneEngagementData.reduce((s, p) => s + p.engagement, 0);
+        const avgEng = (totalEng / toneEngagementData.length).toFixed(2);
+        pdf.text(`${t("reports.totalPosts")}: ${toneEngagementData.length}`, margin, cursorY);
+        cursorY += 13;
+        pdf.text(`${t("reports.averageEngagement")}: ${avgEng}`, margin, cursorY);
+        cursorY += 13;
+        pdf.text(`${t("reports.totalEngagement")}: ${totalEng}`, margin, cursorY);
+        cursorY += 16;
+
+        // Tone breakdown
+        const toneCounts = {};
+        toneEngagementData.forEach((d) => { if (d.tone) toneCounts[d.tone] = (toneCounts[d.tone] || 0) + 1; });
+        const toneEntries = Object.entries(toneCounts).sort((a, b) => b[1] - a[1]);
+        if (toneEntries.length > 0) {
+          checkPage(20);
+          pdf.setFont(undefined, "bold");
+          pdf.text("Tone Distribution:", margin, cursorY);
+          cursorY += 14;
+          pdf.setFont(undefined, "normal");
+          toneEntries.forEach(([tone, count]) => {
+            checkPage(14);
+            pdf.text(`  ${tone}: ${count} post${count !== 1 ? "s" : ""}`, margin, cursorY);
+            cursorY += 13;
+          });
+          cursorY += 10;
+        }
+      }
 
       pdf.save("keyword-tracking-report.pdf");
     } finally {
@@ -129,9 +264,9 @@ export default function Reports() {
   ];
 
   const PALETTE = [
-    '#2f6fdb','#ff7a59','#51cf66','#ffd43b','#845ef7',
-    '#20c997','#0ca678','#f783ac','#15aabf','#d9480f',
-    '#868e96','#364fc7','#fa5252','#12b886','#495057'
+    '#2f6fdb', '#ff7a59', '#51cf66', '#ffd43b', '#845ef7',
+    '#20c997', '#0ca678', '#f783ac', '#15aabf', '#d9480f',
+    '#868e96', '#364fc7', '#fa5252', '#12b886', '#495057'
   ];
 
   const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
@@ -142,17 +277,28 @@ export default function Reports() {
       <Title order={1} mb="lg">
         {t("reports.title")}
       </Title>
-      
+
       <Button onClick={generatePDF} mb="lg">
         {t("reports.downloadPdf")}
       </Button>
 
-      <Checkbox
-        label={t("reports.includeKeywordTracking")}
-        checked={includeKeywordTracking}
-        onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
-        mb="lg"
-      />
+      <Group gap="lg" mb="lg">
+        <Checkbox
+          label={t("reports.includeKeywordTracking")}
+          checked={includeKeywordTracking}
+          onChange={(event) => setIncludeKeywordTracking(event.currentTarget.checked)}
+        />
+        <Checkbox
+          label={t("reports.includeTone")}
+          checked={includeTone}
+          onChange={(event) => setIncludeTone(event.currentTarget.checked)}
+        />
+        <Checkbox
+          label={t("reports.includeSummary")}
+          checked={includeSummary}
+          onChange={(event) => setIncludeSummary(event.currentTarget.checked)}
+        />
+      </Group>
 
       <Button
         onClick={async () => {
@@ -236,10 +382,54 @@ export default function Reports() {
         disabled={analysisStarted}
       />
 
-      {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
+      {includeKeywordTracking && <KeywordTracking ref={chartRef} onKeywordsLoaded={handleKeywordsLoaded} />}
+
+      {/* ── Keyword Summary ── */}
+      {includeKeywordTracking && includeSummary && (
+        <Paper p="lg" radius="md" style={{ marginTop: "1rem" }} withBorder>
+          <Group justify="space-between" mb="sm">
+            <Title order={2} size="h3">{t("reports.keywordSummaryTitle")}</Title>
+            <Group gap="xs">
+              {keywordSummary && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconRefresh size={14} />}
+                  onClick={generateKeywordSummary}
+                  loading={summaryLoading}
+                  disabled={!topKeywords.length}
+                >
+                  {t("reports.regenerateSummary")}
+                </Button>
+              )}
+              {!keywordSummary && (
+                <Button
+                  leftSection={<IconSparkles size={16} />}
+                  onClick={generateKeywordSummary}
+                  loading={summaryLoading}
+                  disabled={!topKeywords.length}
+                >
+                  {t("reports.generateKeywordSummary")}
+                </Button>
+              )}
+            </Group>
+          </Group>
+          {keywordSummary ? (
+            <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+              {keywordSummary}
+            </Text>
+          ) : (
+            <Text size="sm" c="dimmed">
+              {topKeywords.length
+                ? t("reports.keywordSummaryHint")
+                : t("reports.noKeywordsYet")}
+            </Text>
+          )}
+        </Paper>
+      )}
 
       {/* Saved Posts Source-Based Engagement Chart */}
-      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
+      {includeTone && <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
         <Title order={2} size="h3" mb="md">
           {t("reports.engagementChartTitle")}
         </Title>
@@ -278,10 +468,10 @@ export default function Reports() {
         ) : (
           <Title order={4} c="dimmed">{t("reports.noPostsToDisplay")}</Title>
         )}
-      </Paper>
+      </Paper>}
 
       {/* Source Distribution Pie Chart */}
-      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
+      {includeTone && <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
         <Title order={2} size="h3" mb="md">
           {t("reports.statisticsTitle")}
         </Title>
@@ -296,7 +486,7 @@ export default function Reports() {
         ) : (
           <Title order={4} c="dimmed">{t("reports.noPostsToDisplay")}</Title>
         )}
-      </Paper>
+      </Paper>}
     </Container>
   );
 }

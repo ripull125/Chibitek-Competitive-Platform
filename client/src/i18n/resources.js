@@ -474,6 +474,8 @@ const resources = {
         title: "Analysis Reports",
         downloadPdf: "Download PDF",
         includeKeywordTracking: "Include Keyword Tracking",
+        includeTone: "Include Tone Analysis",
+        includeSummary: "Include AI Summary",
         startAnalysis: "Start Analysis",
         rerunAnalysis: "Re-run Analysis",
         analyzeLast: "Analyze last",
@@ -487,7 +489,12 @@ const resources = {
         totalPosts: "Total Posts",
         averageEngagement: "Average Engagement",
         totalEngagement: "Total Engagement",
-        pdfTitle: "Keyword Tracking Report"
+        pdfTitle: "Keyword Tracking Report",
+        keywordSummaryTitle: "Keyword Summary",
+        generateKeywordSummary: "Keyword Summary",
+        regenerateSummary: "Regenerate",
+        keywordSummaryHint: "Click \"Keyword Summary\" to generate an AI-powered analysis of your top keywords.",
+        noKeywordsYet: "No keywords yet. Save some posts first."
       },
       placeholder: {
         testButton: "Test Button",
@@ -1162,6 +1169,8 @@ const resources = {
         title: "分析レポート",
         downloadPdf: "PDFをダウンロード",
         includeKeywordTracking: "キーワード追跡を含める",
+        includeTone: "トーン分析を含める",
+        includeSummary: "AIサマリーを含める",
         startAnalysis: "分析を開始",
         rerunAnalysis: "分析を再実行",
         analyzeLast: "直近の投稿を分析",
@@ -1175,7 +1184,12 @@ const resources = {
         totalPosts: "合計投稿数",
         averageEngagement: "平均エンゲージメント",
         totalEngagement: "総エンゲージメント",
-        pdfTitle: "キーワード追跡レポート"
+        pdfTitle: "キーワード追跡レポート",
+        keywordSummaryTitle: "キーワードサマリー",
+        generateKeywordSummary: "キーワードサマリー",
+        regenerateSummary: "再生成",
+        keywordSummaryHint: "「キーワードサマリー」をクリックして、AI分析を生成します。",
+        noKeywordsYet: "キーワードがまだありません。まず投稿を保存してください。"
       },
       placeholder: {
         testButton: "テストボタン",
@@ -1850,6 +1864,8 @@ const resources = {
         title: "Rapports d'analyse",
         downloadPdf: "Télécharger le PDF",
         includeKeywordTracking: "Inclure le suivi des mots-clés",
+        includeTone: "Inclure l'analyse de ton",
+        includeSummary: "Inclure le résumé IA",
         startAnalysis: "Démarrer l'analyse",
         rerunAnalysis: "Relancer l'analyse",
         analyzeLast: "Analyser les derniers",
@@ -1863,7 +1879,12 @@ const resources = {
         totalPosts: "Total des publications",
         averageEngagement: "Engagement moyen",
         totalEngagement: "Engagement total",
-        pdfTitle: "Rapport de suivi des mots-clés"
+        pdfTitle: "Rapport de suivi des mots-clés",
+        keywordSummaryTitle: "Résumé des mots-clés",
+        generateKeywordSummary: "Résumé des mots-clés",
+        regenerateSummary: "Régénérer",
+        keywordSummaryHint: "Cliquez sur \"Résumé des mots-clés\" pour générer une analyse IA.",
+        noKeywordsYet: "Pas encore de mots-clés. Enregistrez d'abord des publications."
       },
       placeholder: {
         testButton: "Bouton de test",
@@ -2539,6 +2560,8 @@ const resources = {
         title: "Analyseberichte",
         downloadPdf: "PDF herunterladen",
         includeKeywordTracking: "Keyword-Tracking einbeziehen",
+        includeTone: "Tonanalyse einbeziehen",
+        includeSummary: "KI-Zusammenfassung einbeziehen",
         startAnalysis: "Analyse starten",
         rerunAnalysis: "Analyse erneut ausführen",
         analyzeLast: "Letzte analysieren",
@@ -2552,7 +2575,12 @@ const resources = {
         totalPosts: "Gesamt Beiträge",
         averageEngagement: "Durchschnittliches Engagement",
         totalEngagement: "Gesamtes Engagement",
-        pdfTitle: "Keyword-Tracking-Bericht"
+        pdfTitle: "Keyword-Tracking-Bericht",
+        keywordSummaryTitle: "Keyword-Zusammenfassung",
+        generateKeywordSummary: "Keyword-Zusammenfassung",
+        regenerateSummary: "Neu generieren",
+        keywordSummaryHint: "Klicken Sie auf \"Keyword-Zusammenfassung\", um eine KI-Analyse zu erstellen.",
+        noKeywordsYet: "Noch keine Keywords. Speichern Sie zuerst einige Beiträge."
       },
       placeholder: {
         testButton: "Test-Button",
@@ -3228,6 +3256,8 @@ const resources = {
         title: "Informes de análisis",
         downloadPdf: "Descargar PDF",
         includeKeywordTracking: "Incluir seguimiento de palabras clave",
+        includeTone: "Incluir análisis de tono",
+        includeSummary: "Incluir resumen IA",
         startAnalysis: "Iniciar análisis",
         rerunAnalysis: "Volver a ejecutar análisis",
         analyzeLast: "Analizar los últimos",
@@ -3241,7 +3271,12 @@ const resources = {
         totalPosts: "Total de publicaciones",
         averageEngagement: "Participación promedio",
         totalEngagement: "Participación total",
-        pdfTitle: "Informe de seguimiento de palabras clave"
+        pdfTitle: "Informe de seguimiento de palabras clave",
+        keywordSummaryTitle: "Resumen de palabras clave",
+        generateKeywordSummary: "Resumen de palabras clave",
+        regenerateSummary: "Regenerar",
+        keywordSummaryHint: "Haz clic en \"Resumen de palabras clave\" para generar un análisis con IA.",
+        noKeywordsYet: "Aún no hay palabras clave. Guarda algunas publicaciones primero."
       },
       placeholder: {
         testButton: "Botón de prueba",
