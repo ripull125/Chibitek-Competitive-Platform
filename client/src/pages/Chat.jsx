@@ -23,12 +23,18 @@ import {
   IconPlus,
   IconRefresh,
   IconSend,
+  IconFileText,
 } from '@tabler/icons-react';
 import { apiUrl } from '../utils/api';
 import { supabase } from '../supabaseClient';
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
 const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
+const SUMMARY_PROMPT = [
+  "Summarize the most recent posts provided in system context.",
+  "Rules: use only the provided posts, do not invent details.",
+  "Output: 1) one-sentence summary, 2) 3-5 top themes, 3) up to 3 notable posts with URLs if present, 4) gaps/uncertainties."
+].join(" ");
 
 const resolveBackendUrl = () => {
   const envUrl = import.meta.env.e_BACKEND_URL;
@@ -197,6 +203,45 @@ export default function ChatInput() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: payloadMessages, attachments }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+        throw new Error(`Chat request failed${reason}`);
+      }
+
+      const data = await response.json();
+      setConversation((prev) => [
+        ...prev,
+        { role: "assistant", content: data.reply || "No response." },
+      ]);
+    } catch (error) {
+      setConversation((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: error?.message?.includes("GITHUB_TOKEN")
+            ? "Server is missing the GitHub token. Please add it and try again."
+            : "Sorry, I could not reach the language model right now.",
+        },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleSummarizeRecentPosts = async () => {
+    if (isSending) return;
+    setIsSending(true);
+    try {
+      const response = await fetch(apiUrl('/api/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: SUMMARY_PROMPT }],
+          user_id: currentUserId || undefined,
+        }),
       });
 
       if (!response.ok) {
@@ -539,6 +584,17 @@ export default function ChatInput() {
                 {attachmentBadges}
               </Group>
             ) : null}
+
+            <Group justify="flex-end" mt="md">
+              <Button
+                variant="light"
+                leftSection={<IconFileText size={16} />}
+                onClick={handleSummarizeRecentPosts}
+                disabled={isSending}
+              >
+                Summarize recent posts
+              </Button>
+            </Group>
 
             <Box
               mt="md"
