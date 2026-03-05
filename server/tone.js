@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY2;
 const MODEL = 'llama3.1-8b';
 
 const ALLOWED_TONES = [
@@ -42,9 +42,26 @@ function normalizeToneLabel(label) {
   return null;
 }
 
-export async function categorizeTone(text) {
+export async function categorizeTone(text, post_id, user_id) {
   if (!CEREBRAS_API_KEY) {
     throw new Error('CEREBRAS_API_KEY not configured');
+  }
+
+  // DEBUG: detect if input text already includes an allowed tone label. This can
+  // help trace cases where the client inadvertently resubmits a post that
+  // already carried a tone property.
+  if (typeof text === 'string' && text) {
+    const scan = text.toLowerCase();
+    for (const allowed of ALLOWED_TONES) {
+      if (scan.includes(allowed.toLowerCase())) {
+        console.debug('[tone.js] categorizeTone received text containing', allowed);
+        break;
+      }
+    }
+  }
+
+  if (post_id || user_id) {
+    console.debug('[tone.js] categorizeTone called for post_id:', post_id, 'user_id:', user_id);
   }
 
   const systemPrompt = `You are a strict tone classification assistant. Given a piece of text, return ONLY a single JSON object (no surrounding explanation) with keys: \n- "tone": one of ${ALLOWED_TONES.join(', ')} (choose the single best label),\n- "confidence": a number between 0.0 and 1.0,\n- "notes": a short (1-2 sentence) justification.\nRespond with valid JSON only.`;

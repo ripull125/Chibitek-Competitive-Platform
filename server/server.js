@@ -253,6 +253,76 @@ app.post('/api/x/search', async (req, res) => {
   }
 });
 
+// ─── Helper: Update tone in posts table ───────────────────────────────────
+/**
+ * Updates the tone field for a specific post in the database.
+ * @param {string} post_id - The ID of the post to update
+ * @param {string} user_id - The user ID (for ownership verification)
+ * @param {string} tone - The tone label to set (e.g., "Professional")
+ * @returns {Promise<Object>} - { success: boolean, error?: string }
+ */
+async function updatePostTone(post_id, user_id, tone) {
+  if (!post_id || !user_id || !tone) {
+    return { success: false, error: 'Missing post_id, user_id, or tone' };
+  }
+
+  try {
+    const { error: updateErr } = await supabase
+      .from('posts')
+      .update({ tone })
+      .eq('id', post_id)
+      .eq('user_id', user_id);
+
+    if (updateErr) {
+      console.error('[updatePostTone] Failed to update tone in database:', updateErr);
+      return { success: false, error: updateErr.message };
+    }
+
+    console.log('[updatePostTone] Tone updated in database for post', post_id, ':', tone);
+    return { success: true };
+  } catch (err) {
+    console.error('[updatePostTone] Exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// ─── Tone Analysis Endpoint ───────────────────────────────────────────────
+/**
+ * POST /api/tone
+ * Body: { message: string, post_id?: string, user_id?: string }
+ * Analyzes tone of the message and optionally persists it to the database.
+ */
+app.post('/api/tone', async (req, res) => {
+  try {
+    const { message, post_id, user_id } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Missing message field' });
+    }
+
+    console.log(post_id + " " + user_id);
+
+    const result = await categorizeTone(message, post_id, user_id);
+
+    // If post_id and user_id are provided, persist the tone to the database
+
+    if (post_id && user_id && result.normalized?.tone) {
+      const updateResult = await updatePostTone(post_id, user_id, result.normalized.tone);
+      console.warn('starting update');
+      if (!updateResult.success) {
+        console.warn('[/api/tone] Tone analysis succeeded but database update failed:', updateResult.error);
+        // Don't fail the response; still return the tone value to the client
+      } else {
+        console.warn('[/api/tone] Tone analysis succeeded and database update succeeded:');
+      }
+    }
+
+    return res.json({ success: true, result });
+  } catch (err) {
+    console.error('Tone API error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 const port = process.env.PORT || 8080;
 app.listen(port, async () => {
   console.log(`Server running on port ${port}`);
@@ -851,6 +921,7 @@ app.get("/api/posts", async (req, res) => {
   platform_id,
   content,
   published_at,
+  tone,
   competitors(display_name),
   post_metrics(likes, shares, comments, other_json),
   post_details_platform(extra_json)
@@ -876,6 +947,7 @@ app.get("/api/posts", async (req, res) => {
         platform_id: post.platform_id || 0,
         content: post.content,
         published_at: post.published_at,
+        tone: post.tone || null,
         likes: post.post_metrics?.[0]?.likes || 0,
         shares: post.post_metrics?.[0]?.shares || 0,
         comments: post.post_metrics?.[0]?.comments || 0,

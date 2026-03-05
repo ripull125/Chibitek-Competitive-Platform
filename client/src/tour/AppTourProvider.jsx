@@ -84,9 +84,20 @@ const TOUR_FLOW = [
         title: "Trending keywords",
         body: "This table shows what is trending right now, including volume and rank movement.",
       },
+      
+    ],
+  },
+  {
+    key: "autoscraper",
+    path: "/watchlist",
+    tips: [
       {
-        title: "Category momentum",
-        body: "Charts show category movement over time so you can spot shifts early.",
+        title: "Autoscraper",
+        body: "Automatically pull posts from your watchlist so you can focus on analysis.",
+      },
+      {
+        title: "Configure and run",
+        body: "Add targets, set schedules, and execute scrapes with a click to keep data fresh.",
       },
     ],
   },
@@ -213,14 +224,17 @@ function TourBox({
                   borderRadius: 999,
                   width: 34,
                   height: 34,
-                  display: "grid",
-                  placeItems: "center",
+                  padding: 0,
+                  lineHeight: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   cursor: "pointer",
                   color: "rgba(255,255,255,0.96)",
                   boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
                 }}
               >
-                <IconX size={16} />
+                <IconX size={16} style={{ display: "block" }} />
               </button>
             </div>
 
@@ -261,15 +275,22 @@ function TourBox({
                   borderRadius: 999,
                   width: 44,
                   height: 44,
-                  display: "grid",
-                  placeItems: "center",
+                  padding: 0,
+                  lineHeight: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   cursor: "pointer",
                   color: "#1d4ed8",
                   boxShadow: "0 18px 44px rgba(0,0,0,0.22)",
                   userSelect: "none",
                 }}
               >
-                {isLastScreen ? <IconCheck size={20} /> : <IconArrowRight size={20} />}
+                {isLastScreen ? (
+                  <IconCheck size={20} style={{ display: "block" }} />
+                ) : (
+                  <IconArrowRight size={20} style={{ display: "block" }} />
+                )}
               </button>
 
               <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
