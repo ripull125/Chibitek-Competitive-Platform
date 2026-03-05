@@ -64,6 +64,7 @@ function LabelWithInfo({ label, info }) {
 /* ─── LinkedIn Results Display ───────────────────────────────────────────── */
 
 function SaveButton({ label, onSave }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   return (
     <Button
@@ -83,12 +84,13 @@ function SaveButton({ label, onSave }) {
         }
       }}
     >
-      {status === "saved" ? "Saved ✓" : status === "error" ? "Retry" : label || "Save"}
+      {status === "saved" ? t("competitorLookup.saved") : status === "error" ? t("competitorLookup.retry") : label || t("competitorLookup.save")}
     </Button>
   );
 }
 
 function SaveAllButton({ items, onSave, type = "post" }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
 
@@ -118,17 +120,18 @@ function SaveAllButton({ items, onSave, type = "post" }) {
       }}
     >
       {status === "saving"
-        ? `Saving ${progress.done}/${progress.total}…`
+        ? t("competitorLookup.savingProgress", { done: progress.done, total: progress.total })
         : status === "saved"
-          ? `Saved All ✓${progress.failed ? ` (${progress.failed} failed)` : ""}`
+          ? t("competitorLookup.savedAll", { failed: progress.failed })
           : status === "error"
-            ? "All Failed – Retry"
-            : `Save All (${items.length})`}
+            ? t("competitorLookup.allFailedRetry")
+            : t("competitorLookup.saveAllCount", { count: items.length })}
     </Button>
   );
 }
 
 function LinkedinProfileCard({ profile, onSave }) {
+  const { t } = useTranslation();
   if (!profile) return null;
   const posts = profile.activity || profile.recentPosts || [];
   const articles = profile.articles || [];
@@ -149,9 +152,9 @@ function LinkedinProfileCard({ profile, onSave }) {
           </Group>
           <Group gap="xs">
             <Badge color="blue" variant="light" size="lg">
-              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> Profile
+              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
             </Badge>
-            <SaveButton label="Save Profile" onSave={() => onSave("profile", profile)} />
+            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => onSave("profile", profile)} />
           </Group>
         </Group>
 
@@ -161,25 +164,25 @@ function LinkedinProfileCard({ profile, onSave }) {
             {profile.followers != null && (
               <div style={{ textAlign: "center" }}>
                 <Text fw={700} size="xl" c="blue">{Number(profile.followers).toLocaleString()}</Text>
-                <Text size="xs" c="dimmed">Followers</Text>
+                <Text size="xs" c="dimmed">{t("competitorLookup.followers")}</Text>
               </div>
             )}
             {profile.connections && (
               <div style={{ textAlign: "center" }}>
                 <Text fw={700} size="xl" c="blue">{profile.connections}</Text>
-                <Text size="xs" c="dimmed">Connections</Text>
+                <Text size="xs" c="dimmed">{t("competitorLookup.connections")}</Text>
               </div>
             )}
             {posts.length > 0 && (
               <div style={{ textAlign: "center" }}>
                 <Text fw={700} size="xl" c="blue">{posts.length}</Text>
-                <Text size="xs" c="dimmed">Recent Posts</Text>
+                <Text size="xs" c="dimmed">{t("competitorLookup.recentPosts")}</Text>
               </div>
             )}
             {articles.length > 0 && (
               <div style={{ textAlign: "center" }}>
                 <Text fw={700} size="xl" c="blue">{articles.length}</Text>
-                <Text size="xs" c="dimmed">Articles</Text>
+                <Text size="xs" c="dimmed">{t("competitorLookup.articles")}</Text>
               </div>
             )}
           </Group>
@@ -188,7 +191,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* About */}
         {profile.about && (
           <div>
-            <Text fw={600} size="sm" mb={4}>About</Text>
+            <Text fw={600} size="sm" mb={4}>{t("competitorLookup.about")}</Text>
             <ScrollArea h={profile.about.length > 300 ? 150 : undefined}>
               <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{profile.about}</Text>
             </ScrollArea>
@@ -198,7 +201,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Experience */}
         {profile.experience?.length > 0 && (
           <div>
-            <Divider label="Experience" my="xs" />
+            <Divider label={t("competitorLookup.experience")} my="xs" />
             <Stack gap="sm">
               {profile.experience.slice(0, 5).map((exp, i) => {
                 // Detect encoded/redacted text (mostly non-ASCII characters)
@@ -210,7 +213,7 @@ function LinkedinProfileCard({ profile, onSave }) {
                 const companyName = isEncoded(exp.name) ? null : exp.name;
                 const title = exp.member?.title && !isEncoded(exp.member.title) ? exp.member.title : null;
                 const description = exp.member?.description && !isEncoded(exp.member.description) ? exp.member.description : null;
-                const dateRange = [exp.member?.startDate, exp.member?.endDate || 'Present'].filter(Boolean).join(' – ');
+                const dateRange = [exp.member?.startDate, exp.member?.endDate || t("competitorLookup.present")].filter(Boolean).join(' – ');
                 const location = exp.location && !isEncoded(exp.location) ? exp.location : null;
 
                 // Skip entries where everything is encoded
@@ -246,19 +249,19 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Education */}
         {profile.education?.length > 0 && (
           <div>
-            <Divider label="Education" my="xs" />
+            <Divider label={t("competitorLookup.education")} my="xs" />
             <Stack gap="sm">
               {profile.education.map((ed, i) => (
                 <Group key={i} gap="xs" justify="space-between">
                   <Group gap="xs">
                     <Text size="sm" fw={500}>{ed.name}</Text>
                     {ed.url && (
-                      <Text size="xs" c="blue" component="a" href={ed.url} target="_blank">View</Text>
+                      <Text size="xs" c="blue" component="a" href={ed.url} target="_blank">{t("competitorLookup.view")}</Text>
                     )}
                   </Group>
                   {ed.member?.startDate && (
                     <Badge size="sm" variant="light" color="gray">
-                      {ed.member.startDate}–{ed.member.endDate || "Present"}
+                      {ed.member.startDate}–{ed.member.endDate || t("competitorLookup.present")}
                     </Badge>
                   )}
                 </Group>
@@ -270,7 +273,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Articles */}
         {articles.length > 0 && (
           <div>
-            <Divider label="Articles" my="xs" />
+            <Divider label={t("competitorLookup.articles")} my="xs" />
             <Stack gap="sm">
               {articles.slice(0, 5).map((a, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
@@ -293,13 +296,13 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Publications */}
         {publications.length > 0 && (
           <div>
-            <Divider label="Publications" my="xs" />
+            <Divider label={t("competitorLookup.publications")} my="xs" />
             <Stack gap="xs">
               {publications.slice(0, 5).map((pub, i) => (
                 <Group key={i} gap="xs">
                   <Text size="sm">{pub.name}</Text>
                   {pub.url && (
-                    <Text size="xs" c="blue" component="a" href={pub.url} target="_blank">Link</Text>
+                    <Text size="xs" c="blue" component="a" href={pub.url} target="_blank">{t("competitorLookup.link")}</Text>
                   )}
                 </Group>
               ))}
@@ -310,7 +313,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Projects */}
         {projects.length > 0 && (
           <div>
-            <Divider label="Projects" my="xs" />
+            <Divider label={t("competitorLookup.projects")} my="xs" />
             <Stack gap="sm">
               {projects.slice(0, 5).map((proj, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
@@ -337,7 +340,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {/* Recommendations */}
         {recommendations.length > 0 && (
           <div>
-            <Divider label="Recommendations" my="xs" />
+            <Divider label={t("competitorLookup.recommendations")} my="xs" />
             <Stack gap="sm">
               {recommendations.slice(0, 3).map((rec, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
@@ -355,7 +358,7 @@ function LinkedinProfileCard({ profile, onSave }) {
         {posts.length > 0 && (
           <div>
             <Group justify="space-between" align="center" my="xs">
-              <Divider label="Recent Activity" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.recentActivity")} style={{ flex: 1 }} />
               {posts.length > 1 && (
                 <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} type="activity" />
               )}
@@ -369,11 +372,11 @@ function LinkedinProfileCard({ profile, onSave }) {
                       <Group gap="xs" mt={4}>
                         {p.activityType && <Badge size="xs" variant="light" color="gray">{p.activityType}</Badge>}
                         {p.link && (
-                          <Text size="xs" c="blue" component="a" href={p.link} target="_blank">View →</Text>
+                          <Text size="xs" c="blue" component="a" href={p.link} target="_blank">{t("competitorLookup.viewArrow")}</Text>
                         )}
                       </Group>
                     </div>
-                    <SaveButton label="Save" onSave={() => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} />
+                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} />
                   </Group>
                 </Card>
               ))}
@@ -386,6 +389,7 @@ function LinkedinProfileCard({ profile, onSave }) {
 }
 
 function LinkedinCompanyCard({ company, onSave }) {
+  const { t } = useTranslation();
   if (!company) return null;
   const posts = company.posts || [];
 
@@ -401,9 +405,9 @@ function LinkedinCompanyCard({ company, onSave }) {
           </Group>
           <Group gap="xs">
             <Badge color="blue" variant="light">
-              <IconBrandLinkedin size={12} style={{ marginRight: 4 }} /> Company
+              <IconBrandLinkedin size={12} style={{ marginRight: 4 }} /> {t("competitorLookup.company")}
             </Badge>
-            <SaveButton label="Save Company" onSave={() => onSave("company", company)} />
+            <SaveButton label={t("competitorLookup.saveCompany")} onSave={() => onSave("company", company)} />
           </Group>
         </Group>
 
@@ -411,19 +415,19 @@ function LinkedinCompanyCard({ company, onSave }) {
           {company.employeeCount != null && (
             <div>
               <Text fw={600} size="lg">{Number(company.employeeCount).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Employees</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.employees")}</Text>
             </div>
           )}
           {company.size && (
             <div>
               <Text fw={600} size="lg">{company.size}</Text>
-              <Text size="xs" c="dimmed">Company Size</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.companySize")}</Text>
             </div>
           )}
           {company.founded && (
             <div>
               <Text fw={600} size="lg">{company.founded}</Text>
-              <Text size="xs" c="dimmed">Founded</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.founded")}</Text>
             </div>
           )}
         </Group>
@@ -436,14 +440,14 @@ function LinkedinCompanyCard({ company, onSave }) {
 
         {company.description && (
           <div>
-            <Text fw={500} size="sm" mb={4}>About</Text>
+            <Text fw={500} size="sm" mb={4}>{t("competitorLookup.about")}</Text>
             <Text size="sm" lineClamp={6} style={{ whiteSpace: "pre-wrap" }}>{company.description}</Text>
           </div>
         )}
 
         {company.website && (
           <Text size="sm">
-            <Text fw={500} span>Website: </Text>
+            <Text fw={500} span>{t("competitorLookup.websiteLabel")} </Text>
             <Text c="blue" component="a" href={company.website} target="_blank" span>
               {company.website}
             </Text>
@@ -452,7 +456,7 @@ function LinkedinCompanyCard({ company, onSave }) {
 
         {company.specialties?.length > 0 && (
           <div>
-            <Text fw={500} size="sm" mb={4}>Specialties</Text>
+            <Text fw={500} size="sm" mb={4}>{t("competitorLookup.specialties")}</Text>
             <Group gap={6} wrap="wrap">
               {company.specialties.map((s, i) => (
                 <Badge key={i} size="sm" variant="outline" color="gray">{s}</Badge>
@@ -463,9 +467,9 @@ function LinkedinCompanyCard({ company, onSave }) {
 
         {company.funding && (
           <div>
-            <Text fw={500} size="sm" mb={4}>Funding</Text>
+            <Text fw={500} size="sm" mb={4}>{t("competitorLookup.funding")}</Text>
             <Group gap="xs">
-              <Text size="sm">Rounds: {company.funding.numberOfRounds}</Text>
+              <Text size="sm">{t("competitorLookup.roundsLabel")} {company.funding.numberOfRounds}</Text>
               {company.funding.lastRound && (
                 <Badge variant="light" color="green">
                   {company.funding.lastRound.type} – {company.funding.lastRound.amount}
@@ -478,7 +482,7 @@ function LinkedinCompanyCard({ company, onSave }) {
         {posts.length > 0 && (
           <div>
             <Group justify="space-between" align="center" my="xs">
-              <Divider label="Recent Posts" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.recentPosts")} style={{ flex: 1 }} />
               {posts.length > 1 && (
                 <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} type="companyPost" />
               )}
@@ -494,11 +498,11 @@ function LinkedinCompanyCard({ company, onSave }) {
                       )}
                       {p.url && (
                         <Text size="xs" c="blue" component="a" href={p.url} target="_blank">
-                          View →
+                          {t("competitorLookup.viewArrow")}
                         </Text>
                       )}
                     </Group>
-                    <SaveButton label="Save" onSave={() => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} />
+                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} />
                   </Group>
                 </Card>
               ))}
@@ -511,6 +515,7 @@ function LinkedinCompanyCard({ company, onSave }) {
 }
 
 function LinkedinPostCard({ post, onSave }) {
+  const { t } = useTranslation();
   if (!post) return null;
 
   // Decode HTML entities that Scrape Creators sometimes returns (e.g. &#39; &amp;)
@@ -521,7 +526,7 @@ function LinkedinPostCard({ post, onSave }) {
     return el.value;
   };
 
-  const title = decode(post.name) || "Untitled Post";
+  const title = decode(post.name) || t("competitorLookup.untitledPost");
   const headline = decode(post.headline);
   const content = decode(post.description);
   const authorName = post.author?.name || post.author;
@@ -545,9 +550,9 @@ function LinkedinPostCard({ post, onSave }) {
           </div>
           <Group gap="xs">
             <Badge color="blue" variant="light" size="lg">
-              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> Post
+              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.post")}
             </Badge>
-            <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+            <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
           </Group>
         </Group>
 
@@ -562,7 +567,7 @@ function LinkedinPostCard({ post, onSave }) {
             )}
             {authorFollowers != null && (
               <Badge size="sm" variant="light" color="gray">
-                {Number(authorFollowers).toLocaleString()} followers
+                {t("competitorLookup.followersCount", { count: Number(authorFollowers).toLocaleString() })}
               </Badge>
             )}
           </Group>
@@ -573,18 +578,18 @@ function LinkedinPostCard({ post, onSave }) {
           <Group gap="xl" justify="center" wrap="wrap">
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{likes.toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Likes</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.likes")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{comments.toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Comments</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.comments")}</Text>
             </div>
             {post.datePublished && (
               <div style={{ textAlign: "center" }}>
                 <Text fw={700} size="md" c="blue">
                   {new Date(post.datePublished).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                 </Text>
-                <Text size="xs" c="dimmed">Published</Text>
+                <Text size="xs" c="dimmed">{t("competitorLookup.published")}</Text>
               </div>
             )}
           </Group>
@@ -593,7 +598,7 @@ function LinkedinPostCard({ post, onSave }) {
         {/* Thumbnail + Content */}
         {content && (
           <div>
-            <Text fw={600} size="sm" mb={4}>Content</Text>
+            <Text fw={600} size="sm" mb={4}>{t("competitorLookup.content")}</Text>
             <ScrollArea h={content.length > 400 ? 180 : undefined}>
               <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{content}</Text>
             </ScrollArea>
@@ -604,16 +609,16 @@ function LinkedinPostCard({ post, onSave }) {
         {commentsArr.length > 0 && (
           <div>
             <Group justify="space-between" align="center" my="xs">
-              <Divider label={`Comments (${commentsArr.length})`} style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.commentsCount", { count: commentsArr.length })} style={{ flex: 1 }} />
               {commentsArr.length > 1 && (
-                <SaveAllButton items={commentsArr.slice(0, 6)} onSave={(_type, c) => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || "Unknown", likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} type="comment" />
+                <SaveAllButton items={commentsArr.slice(0, 6)} onSave={(_type, c) => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} type="comment" />
               )}
             </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
               {commentsArr.slice(0, 6).map((c, i) => (
                 <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
                   <Group gap={6} wrap="nowrap" mb={2}>
-                    <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || "Unknown"}</Text>
+                    <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || t("competitorLookup.unknown")}</Text>
                     {c.datePublished && (
                       <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>{new Date(c.datePublished).toLocaleDateString()}</Text>
                     )}
@@ -626,7 +631,7 @@ function LinkedinPostCard({ post, onSave }) {
                     </Group>
                   )}
                   <Group justify="flex-end" mt={4}>
-                    <SaveButton label="Save" onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || "Unknown", likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
+                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
                   </Group>
                 </Card>
               ))}
@@ -638,7 +643,7 @@ function LinkedinPostCard({ post, onSave }) {
         {moreArticles.length > 0 && (
           <div>
             <Group justify="space-between" align="center" my="xs">
-              <Divider label="Related Articles" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.relatedArticles")} style={{ flex: 1 }} />
               {moreArticles.length > 1 && (
                 <SaveAllButton items={moreArticles.slice(0, 5)} onSave={(_type, a) => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} type="article" />
               )}
@@ -652,9 +657,9 @@ function LinkedinPostCard({ post, onSave }) {
                   </div>
                   <Group gap="xs" wrap="nowrap">
                     {a.url && (
-                      <Text size="xs" c="blue" component="a" href={a.url} target="_blank">View</Text>
+                      <Text size="xs" c="blue" component="a" href={a.url} target="_blank">{t("competitorLookup.view")}</Text>
                     )}
-                    <SaveButton label="Save" onSave={() => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} />
+                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} />
                   </Group>
                 </Group>
               ))}
@@ -666,7 +671,7 @@ function LinkedinPostCard({ post, onSave }) {
         {post.url && (
           <Group justify="flex-end">
             <Text size="sm" c="blue" component="a" href={post.url} target="_blank" fw={500}>
-              View on LinkedIn →
+              {t("competitorLookup.viewOnLinkedinArrow")}
             </Text>
           </Group>
         )}
@@ -678,6 +683,7 @@ function LinkedinPostCard({ post, onSave }) {
 /* ─── X / Twitter Result Components ──────────────────────────────────────── */
 
 function XUserCard({ user, onSave }) {
+  const { t } = useTranslation();
   if (!user) return null;
   const m = user.public_metrics || {};
 
@@ -696,10 +702,10 @@ function XUserCard({ user, onSave }) {
             </div>
           </Group>
           <Badge color="dark" variant="light" size="lg">
-            <IconBrandX size={14} style={{ marginRight: 4 }} /> Profile
+            <IconBrandX size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
           </Badge>
           {onSave && (
-            <SaveButton label="Save Profile" onSave={() => onSave("profile", user)} />
+            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => onSave("profile", user)} />
           )}
         </Group>
 
@@ -707,33 +713,33 @@ function XUserCard({ user, onSave }) {
           <Group gap="xl" justify="center" wrap="wrap">
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{(m.followers_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Followers</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.followers")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{(m.following_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Following</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.following")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{(m.tweet_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Tweets</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.tweets")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
               <Text fw={700} size="xl" c="blue">{(m.listed_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">Listed</Text>
+              <Text size="xs" c="dimmed">{t("competitorLookup.listed")}</Text>
             </div>
           </Group>
         </Card>
 
         {user.description && (
           <div>
-            <Text fw={600} size="sm" mb={4}>Bio</Text>
+            <Text fw={600} size="sm" mb={4}>{t("competitorLookup.bio")}</Text>
             <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{user.description}</Text>
           </div>
         )}
 
         {user.created_at && (
           <Text size="xs" c="dimmed">
-            Joined {new Date(user.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+            {t("competitorLookup.joined")} {new Date(user.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
           </Text>
         )}
 
@@ -748,6 +754,7 @@ function XUserCard({ user, onSave }) {
 }
 
 function XTweetCard({ tweet, authorUsername, onSave }) {
+  const { t } = useTranslation();
   if (!tweet) return null;
   const m = tweet.public_metrics || {};
   const date = tweet.created_at
@@ -776,7 +783,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <IconBrandX size={16} style={{ opacity: 0.5 }} />
             {onSave && (
-              <SaveButton label="Save" onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
+              <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
             )}
           </Group>
         </Group>
@@ -793,7 +800,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
             {m.quote_count > 0 && <Group gap={4} wrap="nowrap"><IconQuote size={14} color="#794bc4" /><Text size="xs" c="dimmed">{m.quote_count.toLocaleString()}</Text></Group>}
           </Group>
           <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
-            View →
+            {t("competitorLookup.viewArrow")}
           </Text>
         </Group>
       </Stack>
@@ -802,6 +809,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
 }
 
 function XUserListCard({ users, title, onSaveUser }) {
+  const { t } = useTranslation();
   if (!users?.length) return null;
 
   return (
@@ -824,12 +832,12 @@ function XUserListCard({ users, title, onSaveUser }) {
                 <Text size="xs" c="dimmed">@{u.username}</Text>
                 {u.public_metrics && (
                   <Text size="xs" c="dimmed">
-                    {(u.public_metrics.followers_count || 0).toLocaleString()} followers
+                    {t("competitorLookup.followersCount", { count: (u.public_metrics.followers_count || 0).toLocaleString() })}
                   </Text>
                 )}
               </div>
               {onSaveUser && (
-                <SaveButton label="Save" onSave={() => onSaveUser(u)} />
+                <SaveButton label={t("competitorLookup.save")} onSave={() => onSaveUser(u)} />
               )}
             </Group>
           </Card>
@@ -840,6 +848,7 @@ function XUserListCard({ users, title, onSaveUser }) {
 }
 
 function XResults({ data, onSave }) {
+  const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
   const resultCount = Object.keys(results).length;
@@ -852,10 +861,10 @@ function XResults({ data, onSave }) {
 
   return (
     <Stack gap="md">
-      <Divider label={`X Results (${resultCount} returned)`} />
+      <Divider label={t("competitorLookup.xResultsReturned", { count: resultCount })} />
 
       {errors?.length > 0 && (
-        <Alert variant="light" color="orange" title="Some requests failed" icon={<IconAlertCircle />}>
+        <Alert variant="light" color="orange" title={t("competitorLookup.someRequestsFailed")} icon={<IconAlertCircle />}>
           {errors.map((e, i) => (
             <Text key={i} size="sm"><b>{e.endpoint}:</b> {e.error}</Text>
           ))}
@@ -863,8 +872,8 @@ function XResults({ data, onSave }) {
       )}
 
       {resultCount === 0 && !errors?.length && (
-        <Alert variant="light" color="gray" title="No results">
-          No data was returned. Please check the inputs and try again.
+        <Alert variant="light" color="gray" title={t("competitorLookup.noResults")}>
+          {t("competitorLookup.noDataReturnedInputs")}
         </Alert>
       )}
 
@@ -872,16 +881,16 @@ function XResults({ data, onSave }) {
       {results.userLookup && <XUserCard user={results.userLookup} onSave={onSave} />}
 
       {/* Followers */}
-      {results.followers && <XUserListCard users={results.followers} title="Followers" onSaveUser={(u) => onSave("user", u)} />}
+      {results.followers && <XUserListCard users={results.followers} title={t("competitorLookup.followers")} onSaveUser={(u) => onSave("user", u)} />}
 
       {/* Following */}
-      {results.following && <XUserListCard users={results.following} title="Following" onSaveUser={(u) => onSave("user", u)} />}
+      {results.following && <XUserListCard users={results.following} title={t("competitorLookup.following")} onSaveUser={(u) => onSave("user", u)} />}
 
       {/* User Tweets */}
       {results.userTweets?.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={`Tweets (${results.userTweets.length})`} style={{ flex: 1 }} />
+            <Divider label={t("competitorLookup.tweetsCount", { count: results.userTweets.length })} style={{ flex: 1 }} />
             <SaveAllButton items={results.userTweets} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
@@ -896,7 +905,7 @@ function XResults({ data, onSave }) {
       {results.userMentions?.tweets?.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={`Mentions (${results.userMentions.tweets.length})`} style={{ flex: 1 }} />
+            <Divider label={t("competitorLookup.mentionsCount", { count: results.userMentions.tweets.length })} style={{ flex: 1 }} />
             <SaveAllButton items={results.userMentions.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
@@ -915,7 +924,7 @@ function XResults({ data, onSave }) {
       {/* Tweet Lookup */}
       {results.tweetLookup?.tweet && (
         <div>
-          <Divider label="Tweet Lookup" my="xs" />
+          <Divider label={t("competitorLookup.tweetLookup")} my="xs" />
           <XTweetCard
             tweet={results.tweetLookup.tweet}
             authorUsername={findAuthor(results.tweetLookup.tweet.author_id, results.tweetLookup.users)}
@@ -928,7 +937,7 @@ function XResults({ data, onSave }) {
       {results.searchTweets?.tweets?.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={`Search Results (${results.searchTweets.tweets.length})`} style={{ flex: 1 }} />
+            <Divider label={t("competitorLookup.searchResultsCount", { count: results.searchTweets.tweets.length })} style={{ flex: 1 }} />
             <SaveAllButton items={results.searchTweets.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
@@ -950,16 +959,17 @@ function XResults({ data, onSave }) {
 /* ─── End X Results ──────────────────────────────────────────────────────── */
 
 function LinkedinResults({ data, onSave }) {
+  const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
   const resultCount = Object.keys(results).length;
 
   return (
     <Stack gap="md">
-      <Divider label={`LinkedIn Results (${resultCount} returned)`} />
+      <Divider label={t("competitorLookup.linkedinResultsReturned", { count: resultCount })} />
 
       {errors?.length > 0 && (
-        <Alert variant="light" color="orange" title="Some requests failed" icon={<IconAlertCircle />}>
+        <Alert variant="light" color="orange" title={t("competitorLookup.someRequestsFailed")} icon={<IconAlertCircle />}>
           {errors.map((e, i) => (
             <Text key={i} size="sm"><b>{e.endpoint}:</b> {e.error}</Text>
           ))}
@@ -967,8 +977,8 @@ function LinkedinResults({ data, onSave }) {
       )}
 
       {resultCount === 0 && !errors?.length && (
-        <Alert variant="light" color="gray" title="No results">
-          No data was returned. Please check the URLs and try again.
+        <Alert variant="light" color="gray" title={t("competitorLookup.noResults")}>
+          {t("competitorLookup.noDataReturnedUrls")}
         </Alert>
       )}
 
@@ -983,6 +993,7 @@ function LinkedinResults({ data, onSave }) {
 
 export default function CompetitorLookup() {
   const [connectedPlatforms, setConnectedPlatforms] = useState(getConnectedPlatforms);
+  const { t } = useTranslation();
 
   useEffect(() => {
     // Listen for toggle changes from ConnectedIntegrations (or other tabs)
@@ -2022,7 +2033,7 @@ export default function CompetitorLookup() {
     );
   }
 
-  function YouTubeCard({ data }) {
+  function YouTubeCard({ data, t }) {
     if (!data) return null;
 
     const [saving, setSaving] = useState(false);
@@ -2122,7 +2133,7 @@ export default function CompetitorLookup() {
                 leftSection={showTranscript ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
                 onClick={() => setShowTranscript(!showTranscript)}
               >
-                {showTranscript ? "Hide transcript" : "Show transcript"}
+                {showTranscript ? t("competitorLookup.hideTranscript") : t("competitorLookup.showTranscript")}
               </Button>
               {showTranscript && (
                 <ScrollArea h={250} mt="xs">
@@ -2132,8 +2143,8 @@ export default function CompetitorLookup() {
             </div>
           ) : (
             !data.transcriptAvailable && (
-              <Alert color="yellow" variant="light" title="Transcript unavailable">
-                YouTube does not allow downloading captions for this video.
+              <Alert color="yellow" variant="light" title={t("competitorLookup.transcriptUnavailable")}>
+                {t("competitorLookup.youtubeNotAllowCaptions")}
               </Alert>
             )
           )}
@@ -2292,7 +2303,7 @@ export default function CompetitorLookup() {
     );
   }
 
-  function YoutubeResults({ data, onSave }) {
+  function YoutubeResults({ data, onSave, t }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
     const count =
@@ -2353,13 +2364,13 @@ export default function CompetitorLookup() {
               videoId: results.videoDetails.id,
               transcript: results.transcript?.available ? results.transcript.text : null,
               transcriptAvailable: results.transcript?.available ?? true,
-            }} />
+            }} t={t} />
           </>
         )}
 
         {results.transcript && !results.videoDetails && (
           <>
-            <Divider label="Transcript" labelPosition="center" />
+            <Divider label={t("competitorLookup.transcript")} labelPosition="center" />
             <YTTranscript data={results.transcript} />
           </>
         )}
@@ -2367,7 +2378,7 @@ export default function CompetitorLookup() {
         {results.search?.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Search Results (${results.search.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.searchResultsCount", { count: results.search.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={results.search.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
@@ -2394,24 +2405,24 @@ export default function CompetitorLookup() {
               <div>
                 <Group gap="xs">
                   <Title order={4}>{p.full_name || p.fullName || p.username}</Title>
-                  {(p.is_verified || p.isVerified) && <Badge size="xs" color="blue">Verified</Badge>}
-                  {(p.is_private || p.isPrivate) && <Badge size="xs" color="gray">Private</Badge>}
+                  {(p.is_verified || p.isVerified) && <Badge size="xs" color="blue">{t("competitorLookup.verified")}</Badge>}
+                  {(p.is_private || p.isPrivate) && <Badge size="xs" color="gray">{t("competitorLookup.private")}</Badge>}
                 </Group>
                 <Text size="xs" c="dimmed">@{p.username}</Text>
                 {p.category && <Badge size="xs" variant="outline" mt={2}>{p.category}</Badge>}
               </div>
             </Group>
             <Badge variant="light" color="pink">
-              <IconBrandInstagram size={14} style={{ marginRight: 4 }} /> Profile
+              <IconBrandInstagram size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
             </Badge>
-            <SaveButton label="Save Profile" onSave={() => saveInstagramProfile(profile)} />
+            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => saveInstagramProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
             {[
-              { label: "Posts", value: fmtNum(p.media_count ?? p.edge_owner_to_timeline_media?.count ?? p.postsCount) },
-              { label: "Followers", value: fmtNum(p.follower_count ?? p.edge_followed_by?.count ?? p.followersCount) },
-              { label: "Following", value: fmtNum(p.following_count ?? p.edge_follow?.count ?? p.followingCount) },
+              { label: t("competitorLookup.posts"), value: fmtNum(p.media_count ?? p.edge_owner_to_timeline_media?.count ?? p.postsCount) },
+              { label: t("competitorLookup.followers"), value: fmtNum(p.follower_count ?? p.edge_followed_by?.count ?? p.followersCount) },
+              { label: t("competitorLookup.following"), value: fmtNum(p.following_count ?? p.edge_follow?.count ?? p.followingCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="lg">{value}</Text>
@@ -2441,10 +2452,10 @@ export default function CompetitorLookup() {
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Group gap="xs">
-            {isVideo && <Badge size="xs" variant="light">Video</Badge>}
-            {post.carousel_media_count > 1 && <Badge size="xs" variant="light">Carousel ({post.carousel_media_count})</Badge>}
+            {isVideo && <Badge size="xs" variant="light">{t("competitorLookup.video")}</Badge>}
+            {post.carousel_media_count > 1 && <Badge size="xs" variant="light">{t("competitorLookup.carouselCount", { count: post.carousel_media_count })}</Badge>}
           </Group>
-          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>No caption</i>}</Text>
+          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>{t("competitorLookup.noCaption")}</i>}</Text>
           <Text size="xs" c="dimmed">
             {post.user?.username || post.owner?.username || ""}
             {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
@@ -2609,25 +2620,25 @@ export default function CompetitorLookup() {
               <div>
                 <Group gap="xs">
                   <Title order={4}>{u.nickname || u.uniqueId}</Title>
-                  {u.verified && <Badge size="xs" color="blue">Verified</Badge>}
-                  {u.privateAccount && <Badge size="xs" color="gray">Private</Badge>}
+                  {u.verified && <Badge size="xs" color="blue">{t("competitorLookup.verified")}</Badge>}
+                  {u.privateAccount && <Badge size="xs" color="gray">{t("competitorLookup.private")}</Badge>}
                 </Group>
                 <Text size="xs" c="dimmed">@{u.uniqueId}</Text>
                 {u.commerceUserInfo?.category && <Badge size="xs" variant="outline" mt={2}>{u.commerceUserInfo.category}</Badge>}
               </div>
             </Group>
             <Badge variant="light" color="dark">
-              <IconBrandTiktok size={14} style={{ marginRight: 4 }} /> Profile
+              <IconBrandTiktok size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
             </Badge>
-            <SaveButton label="Save Profile" onSave={() => saveTiktokProfile(profile)} />
+            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => saveTiktokProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
             {[
-              { label: "Followers", value: fmtNum(stats.followerCount ?? u.followerCount) },
-              { label: "Following", value: fmtNum(stats.followingCount ?? u.followingCount) },
-              { label: "Likes", value: fmtNum(stats.heartCount ?? stats.heart ?? u.heartCount) },
-              { label: "Videos", value: fmtNum(stats.videoCount ?? u.videoCount) },
+              { label: t("competitorLookup.followers"), value: fmtNum(stats.followerCount ?? u.followerCount) },
+              { label: t("competitorLookup.following"), value: fmtNum(stats.followingCount ?? u.followingCount) },
+              { label: t("competitorLookup.likes"), value: fmtNum(stats.heartCount ?? stats.heart ?? u.heartCount) },
+              { label: t("competitorLookup.videos"), value: fmtNum(stats.videoCount ?? u.videoCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="lg">{value}</Text>
@@ -2658,7 +2669,7 @@ export default function CompetitorLookup() {
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>No description</i>}</Text>
+          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>{t("competitorLookup.noDescription")}</i>}</Text>
           <Text size="xs" c="dimmed">
             {author.uniqueId || author.unique_id || author.nickname || ""}
             {created ? ` · ${created}` : ""}
@@ -2675,7 +2686,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label="Save Post" onSave={() => onSave("post", video)} />
+              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", video)} />
             </Group>
           )}
         </Stack>
@@ -2685,7 +2696,7 @@ export default function CompetitorLookup() {
 
   function TkUserListCard({ users, title }) {
     const list = Array.isArray(users) ? users : [];
-    if (!list.length) return <Text size="sm" c="dimmed">No users found.</Text>;
+    if (!list.length) return <Text size="sm" c="dimmed">{t("competitorLookup.noUsersFound")}</Text>;
     return (
       <Stack gap="xs">
         <Group justify="flex-end">
@@ -2701,10 +2712,10 @@ export default function CompetitorLookup() {
                     <Text size="sm" fw={600} lineClamp={1}>{user.nickname || user.unique_id || user.uniqueId}</Text>
                     <Text size="xs" c="dimmed" lineClamp={1}>@{user.unique_id || user.uniqueId}</Text>
                     <Group gap="xs" mt={2}>
-                      {user.follower_count != null && <Badge size="xs" variant="light">{fmtNum(user.follower_count)} followers</Badge>}
+                      {user.follower_count != null && <Badge size="xs" variant="light">{t("competitorLookup.followersCount", { count: fmtNum(user.follower_count) })}</Badge>}
                     </Group>
                   </div>
-                  <SaveButton label="Save" onSave={() => saveTiktokUser(u)} />
+                  <SaveButton label={t("competitorLookup.save")} onSave={() => saveTiktokUser(u)} />
                 </Group>
               </Card>
             );
@@ -2746,12 +2757,12 @@ export default function CompetitorLookup() {
     return (
       <Stack gap="md">
         <Group justify="space-between">
-          <Text fw={600}>TikTok Results</Text>
-          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+          <Text fw={600}>{t("competitorLookup.tiktokResults")}</Text>
+          <Badge variant="light">{t("competitorLookup.itemsCount", { count })}</Badge>
         </Group>
 
         {errors.length > 0 && (
-          <Alert color="orange" title="Some requests failed">
+          <Alert color="orange" title={t("competitorLookup.someRequestsFailed")}>
             {errors.map((e, i) => (
               <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
             ))}
@@ -2760,7 +2771,7 @@ export default function CompetitorLookup() {
 
         {profileData && (
           <>
-            <Divider label="Profile" labelPosition="center" />
+            <Divider label={t("competitorLookup.profile")} labelPosition="center" />
             <TkProfileCard profile={profileData} />
           </>
         )}
@@ -2768,7 +2779,7 @@ export default function CompetitorLookup() {
         {profileVideos.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Profile Videos (${profileVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.profileVideosCount", { count: profileVideos.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={profileVideos} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -2779,33 +2790,33 @@ export default function CompetitorLookup() {
 
         {followingList.length > 0 && (
           <>
-            <Divider label={`Following (${followingList.length})`} labelPosition="center" />
-            <TkUserListCard users={followingList} title="Following" />
+            <Divider label={t("competitorLookup.followingCount", { count: followingList.length })} labelPosition="center" />
+            <TkUserListCard users={followingList} title={t("competitorLookup.following")} />
           </>
         )}
 
         {followersList.length > 0 && (
           <>
-            <Divider label={`Followers (${followersList.length})`} labelPosition="center" />
-            <TkUserListCard users={followersList} title="Followers" />
+            <Divider label={t("competitorLookup.followersCountLabel", { count: followersList.length })} labelPosition="center" />
+            <TkUserListCard users={followersList} title={t("competitorLookup.followers")} />
           </>
         )}
 
         {transcript != null && (
           <>
-            <Divider label="Transcript" labelPosition="center" />
+            <Divider label={t("competitorLookup.transcript")} labelPosition="center" />
             <Card withBorder radius="md" p="md">
               {transcript ? (
                 <>
                   <Group justify="flex-end" mb="xs">
-                    <SaveButton label="Save Transcript" onSave={() => saveTiktokTranscript(transcript)} />
+                    <SaveButton label={t("competitorLookup.saveTranscript")} onSave={() => saveTiktokTranscript(transcript)} />
                   </Group>
                   <ScrollArea h={300}>
                     <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{typeof transcript === 'string' ? transcript : JSON.stringify(transcript, null, 2)}</Text>
                   </ScrollArea>
                 </>
               ) : (
-                <Text size="sm" c="dimmed">No transcript available for this video.</Text>
+                <Text size="sm" c="dimmed">{t("competitorLookup.noTranscriptAvailable")}</Text>
               )}
             </Card>
           </>
@@ -2813,15 +2824,15 @@ export default function CompetitorLookup() {
 
         {searchUsersList.length > 0 && (
           <>
-            <Divider label={`Search Users (${searchUsersList.length})`} labelPosition="center" />
-            <TkUserListCard users={searchUsersList} title="Search Users" />
+            <Divider label={t("competitorLookup.searchUsersCount", { count: searchUsersList.length })} labelPosition="center" />
+            <TkUserListCard users={searchUsersList} title={t("competitorLookup.searchUsers")} />
           </>
         )}
 
         {searchHashtagList.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Hashtag Videos (${searchHashtagList.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.hashtagVideosCount", { count: searchHashtagList.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={searchHashtagList} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -2833,7 +2844,7 @@ export default function CompetitorLookup() {
         {searchKeywordList.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Keyword Search (${searchKeywordList.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.keywordSearchCount", { count: searchKeywordList.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={searchKeywordList.map(item => item.aweme_info || item)} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -2865,16 +2876,16 @@ export default function CompetitorLookup() {
               )}
             </div>
             <Badge variant="light" color="orange">
-              <IconBrandReddit size={14} style={{ marginRight: 4 }} /> Subreddit
+              <IconBrandReddit size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.subreddit")}
             </Badge>
-            <SaveButton label="Save Subreddit" onSave={() => saveRedditSubreddit(details)} />
+            <SaveButton label={t("competitorLookup.saveSubreddit")} onSave={() => saveRedditSubreddit(details)} />
           </Group>
 
           <Group gap="lg" justify="center">
             {[
-              { label: "Subscribers", value: fmtNum(details.subscribers) },
-              { label: "Weekly Active", value: fmtNum(details.weekly_active_users) },
-              { label: "Weekly Posts", value: fmtNum(details.weekly_contributions) },
+              { label: t("competitorLookup.subscribers"), value: fmtNum(details.subscribers) },
+              { label: t("competitorLookup.weeklyActive"), value: fmtNum(details.weekly_active_users) },
+              { label: t("competitorLookup.weeklyPosts"), value: fmtNum(details.weekly_contributions) },
             ].filter(x => x.value != null).map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="lg">{value}</Text>
@@ -2893,7 +2904,7 @@ export default function CompetitorLookup() {
 
           {details.rules?.length > 0 && (
             <div>
-              <Text size="xs" fw={600} mb={4}>Rules ({details.rules.length}):</Text>
+              <Text size="xs" fw={600} mb={4}>{t("competitorLookup.rulesCount", { count: details.rules.length })}</Text>
               {details.rules.slice(0, 5).map((r, i) => (
                 <Text key={i} size="xs" c="dimmed">• {r.short_name || r.title || r}</Text>
               ))}
@@ -2913,7 +2924,7 @@ export default function CompetitorLookup() {
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>No title</i>}</Text>
+          <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>{t("competitorLookup.noTitle")}</i>}</Text>
           {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
           <Text size="xs" c="dimmed">
             {post.author ? `u/${post.author}` : ""}
@@ -2932,7 +2943,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
             </Group>
           )}
         </Stack>
@@ -2942,7 +2953,7 @@ export default function CompetitorLookup() {
 
   function RedditCommentsList({ comments }) {
     const list = Array.isArray(comments) ? comments : [];
-    if (!list.length) return <Text size="sm" c="dimmed">No comments found.</Text>;
+    if (!list.length) return <Text size="sm" c="dimmed">{t("competitorLookup.noCommentsFound")}</Text>;
     return (
       <Stack gap="xs">
         <Group justify="flex-end">
@@ -2952,15 +2963,15 @@ export default function CompetitorLookup() {
           {list.slice(0, 30).map((c, i) => (
             <Card key={c.id || i} withBorder radius="sm" p="xs">
               <Group gap={6} mb={4} wrap="nowrap">
-                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>u/{c.author || "deleted"}</Text>
+                <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>u/{c.author || t("competitorLookup.deleted")}</Text>
                 {(c.score > 0) && <Badge size="xs" variant="light">{c.score} ⬆</Badge>}
               </Group>
               <Text size="xs" lineClamp={4}>{c.body || c.text || ""}</Text>
               {c.replies?.length > 0 && (
-                <Text size="xs" c="dimmed" mt={2}>{c.replies.length} replies</Text>
+                <Text size="xs" c="dimmed" mt={2}>{t("competitorLookup.repliesCount", { count: c.replies.length })}</Text>
               )}
               <Group justify="flex-end" mt={4}>
-                <SaveButton label="Save" onSave={() => saveRedditComment(c)} />
+                <SaveButton label={t("competitorLookup.save")} onSave={() => saveRedditComment(c)} />
               </Group>
             </Card>
           ))}
@@ -2980,7 +2991,7 @@ export default function CompetitorLookup() {
             <Text fw={600} size="sm" lineClamp={2}>{creative.title || creative.headline || ad.id}</Text>
             <Group gap="xs">
               <Badge variant="light" color="orange" size="xs">Ad</Badge>
-              <SaveButton label="Save" onSave={() => saveRedditAd(ad)} />
+              <SaveButton label={t("competitorLookup.save")} onSave={() => saveRedditAd(ad)} />
             </Group>
           </Group>
           {creative.body && <Text size="xs" lineClamp={3}>{creative.body}</Text>}
@@ -2989,7 +3000,7 @@ export default function CompetitorLookup() {
             {ad.industry && <Badge size="xs" variant="outline">{ad.industry}</Badge>}
             {ad.budget_category && <Badge size="xs" variant="outline">{ad.budget_category}</Badge>}
           </Group>
-          {profile.name && <Text size="xs" c="dimmed">By: {profile.name}</Text>}
+          {profile.name && <Text size="xs" c="dimmed">{t("competitorLookup.by")} {profile.name}</Text>}
         </Stack>
       </Card>
     );
@@ -3019,12 +3030,12 @@ export default function CompetitorLookup() {
     return (
       <Stack gap="md">
         <Group justify="space-between">
-          <Text fw={600}>Reddit Results</Text>
-          <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
+          <Text fw={600}>{t("competitorLookup.redditResults")}</Text>
+          <Badge variant="light">{t("competitorLookup.itemsCount", { count })}</Badge>
         </Group>
 
         {errors.length > 0 && (
-          <Alert color="orange" title="Some requests failed">
+          <Alert color="orange" title={t("competitorLookup.someRequestsFailed")}>
             {errors.map((e, i) => (
               <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
             ))}
@@ -3033,7 +3044,7 @@ export default function CompetitorLookup() {
 
         {detailsData && (
           <>
-            <Divider label="Subreddit Details" labelPosition="center" />
+            <Divider label={t("competitorLookup.subredditDetails")} labelPosition="center" />
             <RedditSubredditCard details={detailsData} />
           </>
         )}
@@ -3041,7 +3052,7 @@ export default function CompetitorLookup() {
         {subredditPostsArr.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Subreddit Posts (${subredditPostsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.subredditPostsCount", { count: subredditPostsArr.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={subredditPostsArr} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -3053,7 +3064,7 @@ export default function CompetitorLookup() {
         {subredditSearchArr.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Subreddit Search (${subredditSearchArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.subredditSearchCount", { count: subredditSearchArr.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={subredditSearchArr} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -3064,7 +3075,7 @@ export default function CompetitorLookup() {
 
         {commentsArr.length > 0 && (
           <>
-            <Divider label={`Comments (${commentsArr.length})`} labelPosition="center" />
+            <Divider label={t("competitorLookup.commentsCount", { count: commentsArr.length })} labelPosition="center" />
             <RedditCommentsList comments={commentsArr} />
           </>
         )}
@@ -3072,7 +3083,7 @@ export default function CompetitorLookup() {
         {searchArr.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Search Results (${searchArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.searchResultsCount", { count: searchArr.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={searchArr} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
@@ -3084,7 +3095,7 @@ export default function CompetitorLookup() {
         {adsArr.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Ads (${adsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.adsCount", { count: adsArr.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={adsArr} onSave={(_type, a) => saveRedditAd(a)} type="ad" />
             </Group>
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
@@ -3095,7 +3106,7 @@ export default function CompetitorLookup() {
 
         {adDetail && (
           <>
-            <Divider label="Ad Detail" labelPosition="center" />
+            <Divider label={t("competitorLookup.adDetail")} labelPosition="center" />
             <RedditAdCard ad={adDetail} />
           </>
         )}
@@ -3111,14 +3122,14 @@ export default function CompetitorLookup() {
       <Stack gap="lg">
         <Group justify="space-between" align="center">
           <div>
-            <Title order={2}>Competitor Lookup</Title>
+            <Title order={2}>{t("competitorLookup.title")}</Title>
             <Text size="sm" c="dimmed">
-              Search competitors across social platforms
+              {t("competitorLookup.subtitle")}
             </Text>
           </div>
           {creditsRemaining != null && (
             <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
-              <Text size="xs" c="dimmed" fw={500}>Credits Remaining (this key)</Text>
+              <Text size="xs" c="dimmed" fw={500}>{t("competitorLookup.creditsRemaining")}</Text>
               <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
                 {creditsRemaining.toLocaleString()}
               </Text>
@@ -3127,8 +3138,8 @@ export default function CompetitorLookup() {
         </Group>
 
         {!Object.values(connectedPlatforms).some(Boolean) && (
-          <Alert variant="light" color="blue" title="No platforms connected">
-            Go to Connected Integrations to enable platforms.
+          <Alert variant="light" color="blue" title={t("competitorLookup.noPlatformsConnected")}>
+            {t("competitorLookup.goToConnectedIntegrations")}
           </Alert>
         )}
 
@@ -3173,8 +3184,8 @@ export default function CompetitorLookup() {
             <Card withBorder radius="md" p="sm" mt="md">
               <Group gap="sm" align="flex-end">
                 <NumberInput
-                  label="Scrape Post Amount"
-                  description="Max results per endpoint — each page of ~10 results costs 1 credit"
+                  label={t("competitorLookup.scrapePostAmount")}
+                  description={t("competitorLookup.scrapePostAmountDesc")}
                   min={5}
                   max={100}
                   step={5}
@@ -3189,37 +3200,37 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="x" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>X / Twitter Lookup</Title>
+                  <Title order={4}>X / Twitter {t("competitorLookup.lookup")}</Title>
 
                   <Text size="sm" c="dimmed">
-                    Uses the official X API v2. Select the data you want to fetch.
+                    {t("competitorLookup.selectDataFetch")}
                   </Text>
 
                   {/* PROFILE & ACCOUNT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>👤 Profile & Account</Text>
+                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Lookup" info="Fetches user profile details including name, bio, followers, following, verified status, and account creation date." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userLookup")} info={t("competitorLookup.userLookupDesc")} />}
                         checked={xOptions.userLookup || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, userLookup: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Followers" info="Fetches the list of accounts following this user." />}
+                        label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.followersDesc")} />}
                         checked={xOptions.followers || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, followers: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Following" info="Fetches the list of accounts this user follows." />}
+                        label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.followingDesc")} />}
                         checked={xOptions.following || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, following: e.target.checked }))}
                       />
 
                       {(xOptions.userLookup || xOptions.followers || xOptions.following) && (
-                        <TextInput label="Username" placeholder="@jack" value={xInputs.username || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.username || ""}
                           onChange={(e) => setXInputs(prev => ({ ...prev, username: e.target.value }))} />
                       )}
                     </Stack>
@@ -3228,33 +3239,33 @@ export default function CompetitorLookup() {
                   {/* TWEETS & CONTENT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📝 Tweets & Content</Text>
+                      <Text fw={600}>📝 {t("competitorLookup.tweetsContent")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Tweets" info="Fetches recent tweets posted by the user including text, engagement metrics, and timestamps." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userTweets")} info={t("competitorLookup.userTweetsDesc")} />}
                         checked={xOptions.userTweets || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, userTweets: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Mentions" info="Fetches recent tweets that mention this user." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userMentions")} info={t("competitorLookup.userMentionsDesc")} />}
                         checked={xOptions.userMentions || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, userMentions: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Tweet Lookup" info="Fetches detailed information about a specific tweet including text, metrics, media, and context." />}
+                        label={<LabelWithInfo label={t("competitorLookup.tweetLookup")} info={t("competitorLookup.tweetLookupDesc")} />}
                         checked={xOptions.tweetLookup || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, tweetLookup: e.target.checked }))}
                       />
 
                       {(xOptions.userTweets || xOptions.userMentions) && (
-                        <TextInput label="Username" placeholder="@jack" value={xInputs.tweetsUsername || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.tweetsUsername || ""}
                           onChange={(e) => setXInputs(prev => ({ ...prev, tweetsUsername: e.target.value }))} />
                       )}
 
                       {xOptions.tweetLookup && (
-                        <TextInput label="Tweet URL or ID" placeholder="https://x.com/user/status/123..." value={xInputs.tweetUrl || ""}
+                        <TextInput label={t("competitorLookup.tweetUrlId")} placeholder="https://x.com/user/status/123..." value={xInputs.tweetUrl || ""}
                           onChange={(e) => setXInputs(prev => ({ ...prev, tweetUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3263,16 +3274,16 @@ export default function CompetitorLookup() {
                   {/* SEARCH */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🔍 Search</Text>
+                      <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search Tweets" info="Searches recent tweets matching a query, keyword, or hashtag using the official search endpoint." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchTweets")} info={t("competitorLookup.searchTweetsDesc")} />}
                         checked={xOptions.searchTweets || false}
                         onChange={(e) => setXOptions(prev => ({ ...prev, searchTweets: e.target.checked }))}
                       />
 
                       {xOptions.searchTweets && (
-                        <TextInput label="Search Query" placeholder="from:elonmusk OR #tech" value={xInputs.searchQuery || ""}
+                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="from:elonmusk OR #tech" value={xInputs.searchQuery || ""}
                           onChange={(e) => setXInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
                       )}
                     </Stack>
@@ -3284,11 +3295,11 @@ export default function CompetitorLookup() {
                     loading={xLoading}
                     onClick={handleXSubmit}
                   >
-                    Search X
+                    {t("competitorLookup.searchX")}
                   </Button>
 
                   {xError && (
-                    <Alert variant="light" color="red" title="Error" icon={<IconAlertCircle />}>
+                    <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
                       {xError}
                     </Alert>
                   )}
@@ -3302,31 +3313,31 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="youtube" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>YouTube Lookup</Title>
+                  <Title order={4}>{t("competitorLookup.youtubeLookup")}</Title>
 
                   <Text size="sm" c="dimmed">
-                    Uses the official YouTube Data API v3. Select the data you want to fetch.
+                    {t("competitorLookup.selectDataFetch")}
                   </Text>
 
                   {/* CHANNEL */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📺 Channel</Text>
+                      <Text fw={600}>📺 {t("competitorLookup.channel")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Channel Details" info="Fetches channel info including name, description, subscriber count, total videos, and banner art." />}
+                        label={<LabelWithInfo label={t("competitorLookup.channelDetails")} info={t("competitorLookup.channelDetailsDesc")} />}
                         checked={youtubeOptions.channelDetails || false}
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelDetails: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Channel Videos" info="Lists videos uploaded to a channel with titles, publish dates, view counts, and thumbnails." />}
+                        label={<LabelWithInfo label={t("competitorLookup.channelVideos")} info={t("competitorLookup.channelVideosDesc")} />}
                         checked={youtubeOptions.channelVideos || false}
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelVideos: e.target.checked }))}
                       />
 
                       {(youtubeOptions.channelDetails || youtubeOptions.channelVideos) && (
-                        <TextInput label="Channel URL or ID" placeholder="https://youtube.com/@MrBeast or UCX6OQ3..." value={youtubeInputs.channelUrl || ""}
+                        <TextInput label={t("competitorLookup.channelUrl")} placeholder="https://youtube.com/@MrBeast or UCX6OQ3..." value={youtubeInputs.channelUrl || ""}
                           onChange={(e) => setYoutubeInputs(prev => ({ ...prev, channelUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3335,22 +3346,22 @@ export default function CompetitorLookup() {
                   {/* VIDEO & CONTENT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🎬 Video & Content</Text>
+                      <Text fw={600}>🎬 {t("competitorLookup.videoContent")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Video Details" info="Fetches detailed info about a specific video including title, description, stats, tags, and category." />}
+                        label={<LabelWithInfo label={t("competitorLookup.videoDetails")} info={t("competitorLookup.videoDetailsDesc")} />}
                         checked={youtubeOptions.videoDetails || false}
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, videoDetails: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Transcript" info="Extracts captions/transcript from a YouTube video when available." />}
+                        label={<LabelWithInfo label={t("competitorLookup.transcript")} info={t("competitorLookup.transcriptDesc")} />}
                         checked={youtubeOptions.transcript || false}
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, transcript: e.target.checked }))}
                       />
 
                       {(youtubeOptions.videoDetails || youtubeOptions.transcript) && (
-                        <TextInput label="Video URL" placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
+                        <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
                           onChange={(e) => setYoutubeInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3359,16 +3370,16 @@ export default function CompetitorLookup() {
                   {/* SEARCH */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🔍 Search</Text>
+                      <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search" info="Searches YouTube for videos, channels, or playlists matching a query." />}
+                        label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.searchDesc")} />}
                         checked={youtubeOptions.search || false}
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, search: e.target.checked }))}
                       />
 
                       {youtubeOptions.search && (
-                        <TextInput label="Search Query" placeholder="react tutorial, #coding" value={youtubeInputs.searchQuery || ""}
+                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="react tutorial, #coding" value={youtubeInputs.searchQuery || ""}
                           onChange={(e) => setYoutubeInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
                       )}
                     </Stack>
@@ -3380,17 +3391,17 @@ export default function CompetitorLookup() {
                     loading={youtubeLoading}
                     onClick={handleYoutubeSubmit}
                   >
-                    Search YouTube
+                    {t("competitorLookup.searchYouTube")}
                   </Button>
 
                   {youtubeError && (
-                    <Alert color="red" title="YouTube Error" withCloseButton onClose={() => setYoutubeError(null)}>
+                    <Alert color="red" title={t("competitorLookup.youtubeError")} withCloseButton onClose={() => setYoutubeError(null)}>
                       {youtubeError}
                     </Alert>
                   )}
 
                   {youtubeResult && (
-                    <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} />
+                    <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />
                   )}
                 </Stack>
               </Tabs.Panel>
@@ -3400,7 +3411,7 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="linkedin" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>LinkedIn Lookup</Title>
+                  <Title order={4}>{t("competitorLookup.linkedinLookup")}</Title>
 
                   <Text size="sm" c="dimmed">
                     Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
@@ -3409,28 +3420,28 @@ export default function CompetitorLookup() {
                   {/* PROFILE & COMPANY */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>👔 Profile & Company</Text>
+                      <Text fw={600}>👔 {t("competitorLookup.profileCompany")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Person Profile" info="Fetches a person's LinkedIn profile including headline, summary, experience, education, and connection count." />}
+                        label={<LabelWithInfo label={t("competitorLookup.personProfile")} info={t("competitorLookup.personProfileDesc")} />}
                         checked={linkedinOptions.profile || false}
                         onChange={(e) => setLinkedinOptions(prev => ({ ...prev, profile: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Company Page" info="Fetches company page details including description, industry, employee count, and follower count." />}
+                        label={<LabelWithInfo label={t("competitorLookup.companyPage")} info={t("competitorLookup.companyPageDesc")} />}
                         checked={linkedinOptions.company || false}
                         onChange={(e) => setLinkedinOptions(prev => ({ ...prev, company: e.target.checked }))}
                       />
 
                       {linkedinOptions.profile && (
-                        <TextInput label="Profile URL or username" placeholder="https://linkedin.com/in/..."
+                        <TextInput label={t("competitorLookup.profileUrlUsername")} placeholder="https://linkedin.com/in/..."
                           value={linkedinInputs.profile}
                           onChange={(e) => setLinkedinInputs(prev => ({ ...prev, profile: e.target.value }))} />
                       )}
 
                       {linkedinOptions.company && (
-                        <TextInput label="Company URL or name" placeholder="https://linkedin.com/company/..."
+                        <TextInput label={t("competitorLookup.companyUrlName")} placeholder="https://linkedin.com/company/..."
                           value={linkedinInputs.company}
                           onChange={(e) => setLinkedinInputs(prev => ({ ...prev, company: e.target.value }))} />
                       )}
@@ -3440,16 +3451,16 @@ export default function CompetitorLookup() {
                   {/* POSTS */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📝 Posts</Text>
+                      <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Post" info="Fetches a specific LinkedIn post including content, reactions, comments count, and engagement metrics." />}
+                        label={<LabelWithInfo label={t("competitorLookup.post")} info={t("competitorLookup.postDesc")} />}
                         checked={linkedinOptions.post || false}
                         onChange={(e) => setLinkedinOptions(prev => ({ ...prev, post: e.target.checked }))}
                       />
 
                       {linkedinOptions.post && (
-                        <TextInput label="Post URL" placeholder="https://linkedin.com/posts/..."
+                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://linkedin.com/posts/..."
                           value={linkedinInputs.post}
                           onChange={(e) => setLinkedinInputs(prev => ({ ...prev, post: e.target.value }))} />
                       )}
@@ -3462,11 +3473,11 @@ export default function CompetitorLookup() {
                     loading={linkedinLoading}
                     onClick={handleLinkedinSubmit}
                   >
-                    Search LinkedIn
+                    {t("competitorLookup.searchLinkedin")}
                   </Button>
 
                   {linkedinError && (
-                    <Alert variant="light" color="red" title="Error" icon={<IconAlertCircle />}>
+                    <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
                       {linkedinError}
                     </Alert>
                   )}
@@ -3480,7 +3491,7 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="instagram" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>Instagram Lookup</Title>
+                  <Title order={4}>{t("competitorLookup.instagramLookup")}</Title>
 
                   <Text size="sm" c="dimmed">
                     Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
@@ -3489,16 +3500,16 @@ export default function CompetitorLookup() {
                   {/* PROFILE SECTION */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>👤 Profile & Account</Text>
+                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Profile" info="Scrapes detailed profile info including bio, followers, following, and account stats." />}
+                        label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.profileDesc")} />}
                         checked={instagramOptions.profile || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, profile: e.target.checked }))}
                       />
 
                       {instagramOptions.profile && (
-                        <TextInput label="Username" placeholder="@username" value={instagramInputs.username || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.username || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, username: e.target.value }))} />
                       )}
                     </Stack>
@@ -3507,27 +3518,27 @@ export default function CompetitorLookup() {
                   {/* POSTS SECTION */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📝 Posts & Content</Text>
+                      <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Posts" info="Scrapes the user's recent posts including images, videos, captions, and engagement metrics." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userPosts")} info={t("competitorLookup.userPostsDesc")} />}
                         checked={instagramOptions.userPosts || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, userPosts: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Post / Reel Info" info="Scrapes detailed info about a specific post or reel including media, caption, likes, and metadata." />}
+                        label={<LabelWithInfo label={t("competitorLookup.postReelInfo")} info={t("competitorLookup.postReelInfoDesc")} />}
                         checked={instagramOptions.singlePost || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, singlePost: e.target.checked }))}
                       />
 
                       {instagramOptions.userPosts && (
-                        <TextInput label="Username" placeholder="@username" value={instagramInputs.userPostsUsername || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userPostsUsername || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, userPostsUsername: e.target.value }))} />
                       )}
 
                       {instagramOptions.singlePost && (
-                        <TextInput label="Post URL" placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
+                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3536,27 +3547,27 @@ export default function CompetitorLookup() {
                   {/* REELS SECTION */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🎥 Reels</Text>
+                      <Text fw={600}>🎥 {t("competitorLookup.reels")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search Reels" info="Searches for reels by keyword or hashtag and returns matching video content with metadata." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchReels")} info={t("competitorLookup.searchReelsDesc")} />}
                         checked={instagramOptions.reelsSearch || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, reelsSearch: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Reels" info="Scrapes all reels from a specific user's profile including video URLs, captions, and engagement data." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userReels")} info={t("competitorLookup.userReelsDesc")} />}
                         checked={instagramOptions.userReels || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, userReels: e.target.checked }))}
                       />
 
                       {instagramOptions.reelsSearch && (
-                        <TextInput label="Search Term" placeholder="fitness, #workout" value={instagramInputs.reelsSearchTerm || ""}
+                        <TextInput label={t("competitorLookup.searchTerm")} placeholder="fitness, #workout" value={instagramInputs.reelsSearchTerm || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, reelsSearchTerm: e.target.value }))} />
                       )}
 
                       {instagramOptions.userReels && (
-                        <TextInput label="Username" placeholder="@username" value={instagramInputs.userReelsUsername || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userReelsUsername || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, userReelsUsername: e.target.value }))} />
                       )}
                     </Stack>
@@ -3565,16 +3576,16 @@ export default function CompetitorLookup() {
                   {/* HIGHLIGHTS SECTION */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>⭐ Highlights</Text>
+                      <Text fw={600}>⭐ {t("competitorLookup.highlights")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="User Highlights" info="Scrapes all story highlights for a user including cover images and media." />}
+                        label={<LabelWithInfo label={t("competitorLookup.userHighlights")} info={t("competitorLookup.userHighlightsDesc")} />}
                         checked={instagramOptions.highlightDetail || false}
                         onChange={(e) => setInstagramOptions(prev => ({ ...prev, highlightDetail: e.target.checked }))}
                       />
 
                       {instagramOptions.highlightDetail && (
-                        <TextInput label="Username" placeholder="@username" value={instagramInputs.highlightUrl || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.highlightUrl || ""}
                           onChange={(e) => setInstagramInputs(prev => ({ ...prev, highlightUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3586,11 +3597,11 @@ export default function CompetitorLookup() {
                     loading={instagramLoading}
                     onClick={handleInstagramSubmit}
                   >
-                    Search Instagram
+                    {t("competitorLookup.searchInstagram")}
                   </Button>
 
                   {instagramError && (
-                    <Alert color="red" title="Instagram Error" withCloseButton onClose={() => setInstagramError(null)}>
+                    <Alert color="red" title={t("competitorLookup.instagramError")} withCloseButton onClose={() => setInstagramError(null)}>
                       {instagramError}
                     </Alert>
                   )}
@@ -3607,7 +3618,7 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="tiktok" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>TikTok Lookup</Title>
+                  <Title order={4}>{t("competitorLookup.tiktokLookup")}</Title>
 
                   <Text size="sm" c="dimmed">
                     Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
@@ -3616,28 +3627,28 @@ export default function CompetitorLookup() {
                   {/* PROFILE & ACCOUNT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>👤 Profile & Account</Text>
+                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Profile" info="Scrapes TikTok profile details including bio, follower/following counts, likes, and verified status." />}
+                        label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.tiktokProfileDesc")} />}
                         checked={tiktokOptions.profile || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, profile: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Following" info="Scrapes the list of accounts a user is following." />}
+                        label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.tiktokFollowingDesc")} />}
                         checked={tiktokOptions.following || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, following: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Followers" info="Scrapes the list of followers for a specific user." />}
+                        label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.tiktokFollowersDesc")} />}
                         checked={tiktokOptions.followers || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, followers: e.target.checked }))}
                       />
 
                       {(tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && (
-                        <TextInput label="Username" placeholder="@username" value={tiktokInputs.username || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.username || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, username: e.target.value }))} />
                       )}
                     </Stack>
@@ -3646,27 +3657,27 @@ export default function CompetitorLookup() {
                   {/* VIDEOS & CONTENT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🎬 Videos & Content</Text>
+                      <Text fw={600}>🎬 {t("competitorLookup.videosContent")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Profile Videos" info="Scrapes all videos from a user's profile including captions, view counts, and engagement." />}
+                        label={<LabelWithInfo label={t("competitorLookup.profileVideos")} info={t("competitorLookup.profileVideosDesc")} />}
                         checked={tiktokOptions.profileVideos || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, profileVideos: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Transcript" info="Extracts the spoken transcript from a TikTok video." />}
+                        label={<LabelWithInfo label={t("competitorLookup.transcript")} info={t("competitorLookup.tiktokTranscriptDesc")} />}
                         checked={tiktokOptions.transcript || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
                       />
 
                       {tiktokOptions.profileVideos && (
-                        <TextInput label="Username" placeholder="@username" value={tiktokInputs.videosUsername || ""}
+                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.videosUsername || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
                       )}
 
                       {tiktokOptions.transcript && (
-                        <TextInput label="Video URL" placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
+                        <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3675,38 +3686,38 @@ export default function CompetitorLookup() {
                   {/* SEARCH & DISCOVERY */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>🔍 Search & Discovery</Text>
+                      <Text fw={600}>🔍 {t("competitorLookup.searchDiscovery")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search Users" info="Search for TikTok users by name or keyword and return matching profiles." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchUsers")} info={t("competitorLookup.searchUsersDesc")} />}
                         checked={tiktokOptions.searchUsers || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchUsers: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search by Hashtag" info="Search for videos associated with a specific hashtag." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchByHashtag")} info={t("competitorLookup.searchByHashtagDesc")} />}
                         checked={tiktokOptions.searchHashtag || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchHashtag: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search by Keyword" info="Search for videos matching a keyword query across TikTok." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchByKeyword")} info={t("competitorLookup.searchByKeywordDesc")} />}
                         checked={tiktokOptions.searchKeyword || false}
                         onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchKeyword: e.target.checked }))}
                       />
 
                       {tiktokOptions.searchUsers && (
-                        <TextInput label="User Search Query" placeholder="fitness creator" value={tiktokInputs.userSearchQuery || ""}
+                        <TextInput label={t("competitorLookup.userSearchQuery")} placeholder="fitness creator" value={tiktokInputs.userSearchQuery || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, userSearchQuery: e.target.value }))} />
                       )}
 
                       {tiktokOptions.searchHashtag && (
-                        <TextInput label="Hashtag" placeholder="#fitness" value={tiktokInputs.hashtag || ""}
+                        <TextInput label={t("competitorLookup.hashtag")} placeholder="#fitness" value={tiktokInputs.hashtag || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, hashtag: e.target.value }))} />
                       )}
 
                       {tiktokOptions.searchKeyword && (
-                        <TextInput label="Keyword" placeholder="workout routine" value={tiktokInputs.keyword || ""}
+                        <TextInput label={t("competitorLookup.keyword")} placeholder="workout routine" value={tiktokInputs.keyword || ""}
                           onChange={(e) => setTiktokInputs(prev => ({ ...prev, keyword: e.target.value }))} />
                       )}
                     </Stack>
@@ -3718,11 +3729,11 @@ export default function CompetitorLookup() {
                     disabled={!Object.values(tiktokOptions).some(Boolean)}
                     onClick={handleTiktokSubmit}
                   >
-                    Search TikTok
+                    {t("competitorLookup.searchTikTok")}
                   </Button>
 
                   {tiktokError && (
-                    <Alert color="red" title="Error" icon={<IconAlertCircle />}>
+                    <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
                       {tiktokError}
                     </Alert>
                   )}
@@ -3738,7 +3749,7 @@ export default function CompetitorLookup() {
               <Tabs.Panel value="reddit" pt="md">
                 <Stack gap="lg">
 
-                  <Title order={4}>Reddit Lookup</Title>
+                  <Title order={4}>{t("competitorLookup.redditLookup")}</Title>
 
                   <Text size="sm" c="dimmed">
                     Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
@@ -3747,33 +3758,33 @@ export default function CompetitorLookup() {
                   {/* SUBREDDIT */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📋 Subreddit</Text>
+                      <Text fw={600}>📋 {t("competitorLookup.subreddit")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Subreddit Details" info="Scrapes subreddit info including description, subscriber count, active users, creation date, and rules." />}
+                        label={<LabelWithInfo label={t("competitorLookup.subredditDetails")} info={t("competitorLookup.subredditDetailsDesc")} />}
                         checked={redditOptions.subredditDetails || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditDetails: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Subreddit Posts" info="Scrapes posts from a subreddit including titles, scores, comment counts, and post content." />}
+                        label={<LabelWithInfo label={t("competitorLookup.subredditPosts")} info={t("competitorLookup.subredditPostsDesc")} />}
                         checked={redditOptions.subredditPosts || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditPosts: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Subreddit Search" info="Searches within a specific subreddit for posts matching a query." />}
+                        label={<LabelWithInfo label={t("competitorLookup.subredditSearch")} info={t("competitorLookup.subredditSearchDesc")} />}
                         checked={redditOptions.subredditSearch || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditSearch: e.target.checked }))}
                       />
 
                       {(redditOptions.subredditDetails || redditOptions.subredditPosts || redditOptions.subredditSearch) && (
-                        <TextInput label="Subreddit" placeholder="r/reactjs" value={redditInputs.subreddit || ""}
+                        <TextInput label={t("competitorLookup.subreddit")} placeholder="r/reactjs" value={redditInputs.subreddit || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, subreddit: e.target.value }))} />
                       )}
 
                       {redditOptions.subredditSearch && (
-                        <TextInput label="Search Query" placeholder="state management" value={redditInputs.subredditQuery || ""}
+                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="state management" value={redditInputs.subredditQuery || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, subredditQuery: e.target.value }))} />
                       )}
                     </Stack>
@@ -3782,27 +3793,27 @@ export default function CompetitorLookup() {
                   {/* POSTS & SEARCH */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>💬 Posts & Search</Text>
+                      <Text fw={600}>💬 {t("competitorLookup.postsSearch")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Post Comments" info="Scrapes all comments on a specific Reddit post including nested replies, scores, and user details." />}
+                        label={<LabelWithInfo label={t("competitorLookup.postComments")} info={t("competitorLookup.postCommentsDesc")} />}
                         checked={redditOptions.postComments || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, postComments: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search" info="Searches across all of Reddit for posts matching a query." />}
+                        label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.redditSearchDesc")} />}
                         checked={redditOptions.search || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, search: e.target.checked }))}
                       />
 
                       {redditOptions.postComments && (
-                        <TextInput label="Post URL" placeholder="https://reddit.com/r/reactjs/comments/..." value={redditInputs.postUrl || ""}
+                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://reddit.com/r/reactjs/comments/..." value={redditInputs.postUrl || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
                       )}
 
                       {redditOptions.search && (
-                        <TextInput label="Search Query" placeholder="best javascript framework" value={redditInputs.searchQuery || ""}
+                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="best javascript framework" value={redditInputs.searchQuery || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
                       )}
                     </Stack>
@@ -3811,27 +3822,27 @@ export default function CompetitorLookup() {
                   {/* ADS */}
                   <Card withBorder radius="md" p="md">
                     <Stack gap="xs">
-                      <Text fw={600}>📢 Ads</Text>
+                      <Text fw={600}>📢 {t("competitorLookup.ads")}</Text>
 
                       <Checkbox
-                        label={<LabelWithInfo label="Search Ads" info="Searches for Reddit ads matching a query." />}
+                        label={<LabelWithInfo label={t("competitorLookup.searchAds")} info={t("competitorLookup.searchAdsDesc")} />}
                         checked={redditOptions.searchAds || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, searchAds: e.target.checked }))}
                       />
 
                       <Checkbox
-                        label={<LabelWithInfo label="Get Ad" info="Fetches details about a specific Reddit ad including creative, targeting, and spend info." />}
+                        label={<LabelWithInfo label={t("competitorLookup.getAd")} info={t("competitorLookup.getAdDesc")} />}
                         checked={redditOptions.getAd || false}
                         onChange={(e) => setRedditOptions(prev => ({ ...prev, getAd: e.target.checked }))}
                       />
 
                       {redditOptions.searchAds && (
-                        <TextInput label="Ad Search Query" placeholder="software, SaaS" value={redditInputs.adSearchQuery || ""}
+                        <TextInput label={t("competitorLookup.adSearchQuery")} placeholder="software, SaaS" value={redditInputs.adSearchQuery || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, adSearchQuery: e.target.value }))} />
                       )}
 
                       {redditOptions.getAd && (
-                        <TextInput label="Ad URL or ID" placeholder="https://reddit.com/..." value={redditInputs.adUrl || ""}
+                        <TextInput label={t("competitorLookup.adUrlId")} placeholder="https://reddit.com/..." value={redditInputs.adUrl || ""}
                           onChange={(e) => setRedditInputs(prev => ({ ...prev, adUrl: e.target.value }))} />
                       )}
                     </Stack>
@@ -3843,11 +3854,11 @@ export default function CompetitorLookup() {
                     disabled={!Object.values(redditOptions).some(Boolean)}
                     onClick={handleRedditSubmit}
                   >
-                    Search Reddit
+                    {t("competitorLookup.searchReddit")}
                   </Button>
 
                   {redditError && (
-                    <Alert color="red" title="Error" icon={<IconAlertCircle />}>
+                    <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
                       {redditError}
                     </Alert>
                   )}
@@ -3884,7 +3895,7 @@ export default function CompetitorLookup() {
           <Stack gap="lg">
             <Card withBorder radius="md">
               <Stack gap="xs">
-                <Title order={4}>Summary</Title>
+                <Title order={4}>{t("competitorLookup.summary")}</Title>
                 <Group gap="md" wrap="wrap">
                   <Group gap="xs">
                     <Text fw={500}>Username:</Text>
@@ -3910,7 +3921,7 @@ export default function CompetitorLookup() {
                 <Divider label="Converted Data" />
                 <Card withBorder radius="md">
                   <Stack gap="md">
-                    <Title order={5}>Universal Data Format</Title>
+                    <Title order={5}>{t("competitorLookup.universalDataFormat")}</Title>
                     {convertedData.map((item, idx) => (
                       <Card key={idx} withBorder radius="sm" p="sm">
                         <Group gap="md" wrap="wrap">

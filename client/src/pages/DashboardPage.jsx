@@ -48,38 +48,38 @@ const fmtK = (n) =>
   n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString();
 
 const KPI = [
-  { label: "Mentions", value: 18920, delta: +14 },
-  { label: "Avg Eng / mention", value: 96, delta: +7 },
-  { label: "Share of voice", value: "31%", delta: +2 },
-  { label: "Momentum (WoW)", value: "+12%", delta: +12 },
+  { labelKey: "mentions", value: 18920, delta: +14 },
+  { labelKey: "avgEngagement", value: 96, delta: +7 },
+  { labelKey: "shareOfVoice", value: "31%", delta: +2 },
+  { labelKey: "momentum", value: "+12%", delta: +12 },
 ];
 
 const ALERTS = [
   {
     icon: IconTrendingUp,
-    title: "Rising category: AI Security",
-    detail: "+38% mentions, engagement holding steady",
+    titleKey: "risingCategoryTitle",
+    detailKey: "risingCategoryDetail",
     link: {
       to: "/keywords?focus=category&value=AI%20Security",
-      label: "Open in Tracking",
+      labelKey: "openInTracking",
     },
   },
   {
     icon: IconSparkles,
-    title: "Niche hit: 24/7 SOC",
-    detail: "Low volume, high resonance (120 avg/mention)",
+    titleKey: "nicheHitTitle",
+    detailKey: "nicheHitDetail",
     link: {
       to: "/keywords?term=24%2F7%20SOC",
-      label: "Open in Tracking",
+      labelKey: "openInTracking",
     },
   },
   {
     icon: IconChartDots,
-    title: "Saturation risk: Zero Trust",
-    detail: "Volume ↑, engagement ↓ week-over-week",
+    titleKey: "saturationRiskTitle",
+    detailKey: "saturationRiskDetail",
     link: {
       to: "/keywords?term=Zero%20Trust",
-      label: "Investigate",
+      labelKey: "investigate",
     },
   },
 ];
@@ -93,20 +93,20 @@ const EFFECTIVENESS = [
 ];
 
 const COMP_FEED = [
-  { who: "Bytecore", platform: "LinkedIn", title: "Zero Trust explainer", kw: "zero trust", eng: 742 },
-  { who: "Infonetic", platform: "X", title: "SOC behind-the-scenes", kw: "24/7 soc", eng: 520 },
-  { who: "Kodex", platform: "LinkedIn", title: "AI Security launch recap", kw: "ai security", eng: 910 },
+  { who: "Bytecore", platform: "LinkedIn", titleKey: "compFeedZeroTrustExplainer", kw: "zero trust", eng: 742 },
+  { who: "Infonetic", platform: "X", titleKey: "compFeedSocBehindScenes", kw: "24/7 soc", eng: 520 },
+  { who: "Kodex", platform: "LinkedIn", titleKey: "compFeedAiSecurityLaunchRecap", kw: "ai security", eng: 910 },
 ];
 
 const TOP_POSTS = [
-  { who: "Chibitek", platform: "LinkedIn", title: "AI Security launch recap", eng: 980 },
-  { who: "Chibitek", platform: "X", title: "Endpoint MDR myths", eng: 488 },
-  { who: "Chibitek", platform: "Instagram", title: "SOC night shift", eng: 420 },
+  { who: "Chibitek", platform: "LinkedIn", titleKey: "topPostAiSecurityLaunchRecap", eng: 980 },
+  { who: "Chibitek", platform: "X", titleKey: "topPostEndpointMdrMyths", eng: 488 },
+  { who: "Chibitek", platform: "Instagram", titleKey: "topPostSocNightShift", eng: 420 },
 ];
 
 const BRIEFS = [
-  { kw: "AI security", idea: "Platform roundup with customer quote", platform: "LinkedIn", cta: "Draft brief", to: "/keywords?term=AI%20security" },
-  { kw: "24/7 SOC", idea: "Behind-the-scenes reel (night ops)", platform: "Instagram", cta: "Draft brief", to: "/keywords?term=24%2F7%20SOC" },
+  { kw: "AI security", ideaKey: "briefIdeaPlatformRoundup", platform: "LinkedIn", to: "/keywords?term=AI%20security" },
+  { kw: "24/7 SOC", ideaKey: "briefIdeaNightOpsReel", platform: "Instagram", to: "/keywords?term=24%2F7%20SOC" },
 ];
 
 /* ---------- Card shell ---------- */
@@ -136,13 +136,14 @@ function CardSection({ title, subtitle, right, children, className, pad = "xl" }
 
 /* ---------- Part 1 ---------- */
 function KPIStrip() {
+  const { t } = useTranslation();
   return (
     <div data-tour="dashboard-kpis">
-      <CardSection title="Engagement snapshot" right={<IconBolt className={classes.cardIcon} />}>
+      <CardSection title={t("dashboard.engagementSnapshot")} right={<IconBolt className={classes.cardIcon} />}>
         <div className={classes.kpis}>
           {KPI.map((k) => (
-            <div key={k.label} className={classes.kpi}>
-              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{k.label}</Text>
+            <div key={k.labelKey} className={classes.kpi}>
+              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{t(`dashboard.${k.labelKey}`)}</Text>
               <Group gap="xs" align="end" wrap="nowrap">
                 <Title order={2} className={classes.kpiValue}>
                   {typeof k.value === "number" ? fmtK(k.value) : k.value}
@@ -160,10 +161,11 @@ function KPIStrip() {
 }
 
 function OpportunityAlerts() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <div data-tour="dashboard-alerts">
-      <CardSection title="Opportunity alerts" subtitle="Fast movers & watchouts">
+      <CardSection title={t("dashboard.opportunityAlerts")} subtitle={t("dashboard.opportunityAlertsDesc")}>
         <Stack gap="md">
           {ALERTS.map((a, i) => {
             const Icon = a.icon;
@@ -174,8 +176,8 @@ function OpportunityAlerts() {
                     <Icon size={18} />
                   </ThemeIcon>
                   <Stack gap={2}>
-                    <Text fw={800}>{a.title}</Text>
-                    <Text size="sm" c="dimmed">{a.detail}</Text>
+                    <Text fw={800}>{t(`dashboard.${a.titleKey}`)}</Text>
+                    <Text size="sm" c="dimmed">{t(`dashboard.${a.detailKey}`)}</Text>
                   </Stack>
                 </Group>
                 <Button
@@ -183,7 +185,7 @@ function OpportunityAlerts() {
                   rightSection={<IconExternalLink size={16} />}
                   onClick={() => navigate(a.link.to)}
                 >
-                  {a.link.label}
+                  {t(`dashboard.${a.link.labelKey}`)}
                 </Button>
               </Group>
             );
@@ -195,29 +197,30 @@ function OpportunityAlerts() {
 }
 
 function EffectivenessScatter() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <CardSection
-      title="What works now"
-      subtitle="X: mentions · Y: avg engagement/mention · Size: total engagement"
+      title={t("dashboard.whatWorksNow")}
+      subtitle={t("dashboard.whatWorksNowAxes")}
       right={<IconTargetArrow className={classes.cardIcon} />}
     >
       <div className={classes.chartBox}>
         <ResponsiveContainer width="100%" height={360}>
           <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="mentions" name="Mentions" tickFormatter={fmtK} />
-            <YAxis dataKey="avgEng" name="Avg Eng/mention" />
+            <XAxis dataKey="mentions" name={t("dashboard.axisMentions")} tickFormatter={fmtK} />
+            <YAxis dataKey="avgEng" name={t("dashboard.axisAvgEngagementPerMention")} />
             <ZAxis dataKey="totalEng" range={[80, 360]} />
             <RechartsTooltip
               cursor={{ strokeDasharray: "3 3" }}
               contentStyle={{ borderRadius: 8 }}
-              formatter={(v, n) => (n === "Mentions" ? fmtK(v) : v)}
+              formatter={(v, n) => (n === t("dashboard.axisMentions") ? fmtK(v) : v)}
               labelFormatter={() => ""}
             />
             <Scatter
               data={EFFECTIVENESS}
-              name="Keywords"
+              name={t("dashboard.scatterKeywords")}
               onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
             />
           </ScatterChart>
@@ -229,8 +232,9 @@ function EffectivenessScatter() {
 
 /* ---------- Part 2 ---------- */
 function CompetitorMoves() {
+  const { t } = useTranslation();
   return (
-    <CardSection title="Competitor moves" subtitle="Recent high-engagement posts by competitors" className={classes.tall}>
+    <CardSection title={t("dashboard.competitorMoves")} subtitle={t("dashboard.competitorMovesDesc")} className={classes.tall}>
       <Stack gap="md">
         {COMP_FEED.map((p, idx) => (
           <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
@@ -239,7 +243,7 @@ function CompetitorMoves() {
               <Text fw={700}>{p.who}</Text>
               <Badge variant="light">{p.platform}</Badge>
               <Text c="dimmed">—</Text>
-              <Text className={classes.linkText}>{p.title}</Text>
+              <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
             </Group>
             <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
           </Group>
@@ -250,8 +254,9 @@ function CompetitorMoves() {
 }
 
 function TopPosts() {
+  const { t } = useTranslation();
   return (
-    <CardSection title="Top posts (proof)" subtitle="Your best performers using winning keywords">
+    <CardSection title={t("dashboard.topPostsProof")} subtitle={t("dashboard.topPostsProofDesc")}>
       <Stack gap="md">
         {TOP_POSTS.map((p, idx) => (
           <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
@@ -260,7 +265,7 @@ function TopPosts() {
               <Text fw={700}>{p.who}</Text>
               <Badge variant="light">{p.platform}</Badge>
               <Text c="dimmed">—</Text>
-              <Text className={classes.linkText}>{p.title}</Text>
+              <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
             </Group>
             <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
           </Group>
@@ -269,17 +274,18 @@ function TopPosts() {
       <Divider my="md" />
       <Group gap="xs" justify="center" c="dimmed">
         <IconBolt size={16} />
-        <Text size="sm">Upper-right dots in “What works now” guide quick wins.</Text>
+        <Text size="sm">{t("dashboard.quickWinsHint")}</Text>
       </Group>
     </CardSection>
   );
 }
 
 function NextActions() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <>
-    <CardSection title="Next actions" subtitle="Auto-suggested briefs based on momentum">
+    <CardSection title={t("dashboard.nextActions")} subtitle={t("dashboard.nextActionsDesc")}>
       <List spacing="sm" className={classes.listReset}>
         {BRIEFS.map((b, i) => (
           <List.Item key={i} className={`${classes.briefRow} ${classes.rowPad}`}>
@@ -290,10 +296,10 @@ function NextActions() {
                 </ThemeIcon>
                 <Stack gap={2}>
                   <Text fw={800}>{b.kw}</Text>
-                  <Text size="sm" c="dimmed">{b.idea} · {b.platform}</Text>
+                  <Text size="sm" c="dimmed">{t(`dashboard.${b.ideaKey}`)} · {b.platform}</Text>
                 </Stack>
               </Group>
-              <Button variant="light" onClick={() => navigate(b.to)}>{b.cta}</Button>
+              <Button variant="light" onClick={() => navigate(b.to)}>{t("dashboard.draftBrief")}</Button>
             </Group>
           </List.Item>
         ))}
@@ -301,26 +307,26 @@ function NextActions() {
     </CardSection>
     <div data-tour="dashboard-chart">
       <CardSection
-        title="What works now"
-        subtitle="X: mentions · Y: avg engagement/mention · Size: total engagement"
+        title={t("dashboard.whatWorksNow")}
+        subtitle={t("dashboard.whatWorksNowAxes")}
         right={<IconTargetArrow className={classes.cardIcon} />}
       >
         <div className={classes.chartBox}>
           <ResponsiveContainer width="100%" height="100%">
             <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="mentions" name="Mentions" tickFormatter={fmtK} />
-              <YAxis dataKey="avgEng" name="Avg Eng/mention" />
+              <XAxis dataKey="mentions" name={t("dashboard.axisMentions")} tickFormatter={fmtK} />
+              <YAxis dataKey="avgEng" name={t("dashboard.axisAvgEngagementPerMention")} />
               <ZAxis dataKey="totalEng" range={[80, 360]} />
               <RechartsTooltip
                 cursor={{ strokeDasharray: "3 3" }}
                 contentStyle={{ borderRadius: 8 }}
-                formatter={(v, n) => (n === "Mentions" ? fmtK(v) : v)}
+                formatter={(v, n) => (n === t("dashboard.axisMentions") ? fmtK(v) : v)}
                 labelFormatter={() => ""}
               />
               <Scatter
                 data={EFFECTIVENESS}
-                name="Keywords"
+                name={t("dashboard.scatterKeywords")}
                 onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
               />
             </ScatterChart>
@@ -333,6 +339,7 @@ function NextActions() {
 }
 
 function RecentPosts() {
+  const { t } = useTranslation();
   const [recentPosts, setRecentPosts] = React.useState([]);
 
   React.useEffect(() => {
@@ -372,8 +379,8 @@ function RecentPosts() {
           boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
         }}>
           <Text size="sm" fw={500}>{data.username}</Text>
-          <Text size="sm">Post #{data.index}</Text>
-          <Text size="sm">Engagement: {data.engagement}</Text>
+          <Text size="sm">{t("dashboard.postNumber")} #{data.index}</Text>
+          <Text size="sm">{t("dashboard.engagementLabel")}: {data.engagement}</Text>
         </div>
       );
     }
@@ -382,8 +389,8 @@ function RecentPosts() {
 
   return (
     <CardSection
-      title="Recent posts"
-      subtitle="Last 10 posts retrieved from Competitor Lookup"
+      title={t("dashboard.recentPosts")}
+      subtitle={t("dashboard.recentPostsDesc")}
       right={<IconChartDots className={classes.cardIcon} />}
     >
       {recentPosts.length > 0 ? (
@@ -400,14 +407,14 @@ function RecentPosts() {
               />
               <Scatter
                 data={recentPosts}
-                name="Posts"
+                name={t("dashboard.scatterPosts")}
                 fill="#ff6b6b"
               />
             </ScatterChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <Text c="dimmed">No recent posts yet. Retrieve posts from Competitor Lookup to see them here.</Text>
+        <Text c="dimmed">{t("dashboard.noRecentPosts")}</Text>
       )}
     </CardSection>
   );
@@ -415,6 +422,7 @@ function RecentPosts() {
 
 /* ---------- Page ---------- */
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [page, setPage] = React.useState(0);
   const [dir, setDir] = React.useState(1);
 
@@ -448,7 +456,7 @@ export default function DashboardPage() {
     <div className={classes.page}>
       <div className={classes.shell}>
         <header className={classes.header}>
-          <Title order={2} className={classes.title}>Dashboard</Title>
+          <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
         </header>
 
         <div className={classes.sliderWrap}>
@@ -496,7 +504,7 @@ export default function DashboardPage() {
                         borderRadius: 16,
                       }}
                     >
-                      <CardSection title="Competitor moves" subtitle="Recent high-engagement posts by competitors">
+                      <CardSection title={t("dashboard.competitorMoves")} subtitle={t("dashboard.competitorMovesDesc")}>
                         <Stack gap="md">
                           {COMP_FEED.map((p, idx) => (
                             <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
@@ -505,7 +513,7 @@ export default function DashboardPage() {
                                 <Text fw={700}>{p.who}</Text>
                                 <Badge variant="light">{p.platform}</Badge>
                                 <Text c="dimmed">—</Text>
-                                <Text className={classes.linkText}>{p.title}</Text>
+                                <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
                               </Group>
                               <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
                             </Group>
@@ -520,7 +528,7 @@ export default function DashboardPage() {
           </Box>
 
           <div className={classes.sideNav}>
-            <Tooltip label="Previous">
+            <Tooltip label={t("dashboard.previous")}>
               <ActionIcon
                 variant="light"
                 radius="xl"
@@ -538,7 +546,7 @@ export default function DashboardPage() {
               <span className={`${classes.dot} ${page === 1 ? classes.dotActive : ""}`} />
             </div>
 
-            <Tooltip label="Next">
+            <Tooltip label={t("dashboard.next")}>
               <ActionIcon
                 variant="light"
                 radius="xl"

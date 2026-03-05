@@ -57,12 +57,7 @@ const SpeechRecognition =
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
-const defaultConversation = [
-  {
-    role: "assistant",
-    content: "Hi! I am ChibitekAI. Ask me anything about your competitive research.",
-  },
-];
+
 
 const loadPersistedChat = () => {
   if (typeof window === "undefined") return null;
@@ -101,16 +96,28 @@ const fileToAttachment = (file) =>
     else reader.readAsDataURL(file);
   });
 
-const buildConversationTitle = (entries) => {
+const buildConversationTitle = (entries, t) => {
   const firstUserMessage = entries.find((entry) => entry.role === "user" && entry.content);
-  if (!firstUserMessage) return "New chat";
+  if (!firstUserMessage) return t("chat.newChat");
   const trimmed = firstUserMessage.content.trim();
-  if (!trimmed) return "New chat";
+  if (!trimmed) return t("chat.newChat");
   return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 };
 
 export default function ChatInput() {
+  const { t, i18n } = useTranslation();
   const persisted = useMemo(() => loadPersistedChat(), []);
+
+  const defaultConversation = useMemo(
+    () => [
+      {
+        role: "assistant",
+        content: t("chat.defaultGreeting"),
+      },
+    ],
+    [t]
+  );
+
   const [message, setMessage] = useState(persisted?.message ?? "");
   const [conversation, setConversation] = useState(
     persisted?.conversation ?? defaultConversation
@@ -130,7 +137,6 @@ export default function ChatInput() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
-  const { t } = useTranslation();
 
   useEffect(() => {
     let mounted = true;
@@ -152,6 +158,21 @@ export default function ChatInput() {
   useEffect(() => {
     hasHydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    setConversation((prev) => {
+      const hasUserMessages = prev.some((entry) => entry.role === "user");
+      if (hasUserMessages) return prev;
+      if (!prev.length) {
+        return [{ role: "assistant", content: t("chat.defaultGreeting") }];
+      }
+      if (prev.length === 1 && prev[0].role === "assistant") {
+        if (prev[0].content === t("chat.defaultGreeting")) return prev;
+        return [{ ...prev[0], content: t("chat.defaultGreeting") }];
+      }
+      return prev;
+    });
+  }, [i18n.resolvedLanguage, t]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || typeof window === "undefined") return;
@@ -315,7 +336,7 @@ export default function ChatInput() {
   const handleSaveConversation = async (titleOverride) => {
     if (!conversation.length) return;
     if (!currentUserId) {
-      setSaveNotice('Sign in to save conversations.');
+      setSaveNotice(t("chat.signInToSave"));
       return;
     }
     setIsSaving(true);
@@ -325,7 +346,7 @@ export default function ChatInput() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: titleOverride || buildConversationTitle(conversation),
+          title: titleOverride || buildConversationTitle(conversation, t, t),
           conversation,
           user_id: currentUserId,
         }),
@@ -337,21 +358,21 @@ export default function ChatInput() {
         throw new Error(`Failed to save${reason}`);
       }
 
-      setSaveNotice("Conversation saved.");
+      setSaveNotice(t("chat.conversationSaved"));
     } catch (error) {
-      setSaveNotice(error.message || "Failed to save conversation.");
+      setSaveNotice(error.message || t("chat.failedToSave"));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleOpenSaveModal = () => {
-    setSaveTitle(buildConversationTitle(conversation));
+    setSaveTitle(buildConversationTitle(conversation, t));
     setSaveModalOpen(true);
   };
 
   const handleConfirmSave = async () => {
-    await handleSaveConversation(saveTitle.trim() || buildConversationTitle(conversation));
+    await handleSaveConversation(saveTitle.trim() || buildConversationTitle(conversation, t));
     setSaveModalOpen(false);
   };
 
@@ -364,7 +385,7 @@ export default function ChatInput() {
 
   const handleOpenLoadModal = async () => {
     if (!currentUserId) {
-      setSaveNotice('Sign in to load conversations.');
+      setSaveNotice(t("chat.signInToLoad"));
       return;
     }
     setLoadModalOpen(true);
@@ -380,7 +401,7 @@ export default function ChatInput() {
       setSavedConversations(data.conversations || []);
     } catch (error) {
       setSavedConversations([]);
-      setSaveNotice(error.message || "Failed to load conversations.");
+      setSaveNotice(error.message || t("chat.failedToLoad"));
     } finally {
       setIsLoadingList(false);
     }
@@ -389,7 +410,7 @@ export default function ChatInput() {
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
     if (!currentUserId) {
-      setSaveNotice('Sign in to load conversations.');
+      setSaveNotice(t("chat.signInToLoad"));
       return;
     }
     setIsLoadingList(true);
@@ -412,10 +433,10 @@ export default function ChatInput() {
         setLoadModalOpen(false);
         setSaveNotice("");
       } else {
-        throw new Error("Saved conversation is invalid.");
+        throw new Error(t("chat.failedToLoad"));
       }
     } catch (error) {
-      setSaveNotice(error.message || 'Failed to load conversation.');
+      setSaveNotice(error.message || t("chat.failedToLoad"));
     } finally {
       setIsLoadingList(false);
     }
@@ -424,7 +445,7 @@ export default function ChatInput() {
   const handleDeleteConversation = async (conversationId) => {
     if (!conversationId) return;
     if (!currentUserId) {
-      setSaveNotice('Sign in to delete conversations.');
+      setSaveNotice(t("chat.signInToDelete"));
       return;
     }
 
@@ -462,9 +483,9 @@ export default function ChatInput() {
         const reason = errorBody?.error ? `: ${errorBody.error}` : '';
         throw new Error(`Failed to delete conversation${reason}`);
       }
-      setSaveNotice('Conversation deleted.');
+      setSaveNotice(t("chat.conversationDeleted"));
     } catch (error) {
-      setSaveNotice(error.message || 'Failed to delete conversation.');
+      setSaveNotice(error.message || t("chat.failedToDelete"));
       setSavedConversations(previousList);
       if (previousCurrentId === conversationId) {
         setConversation(previousConversation);
@@ -501,7 +522,7 @@ export default function ChatInput() {
             ChibitekAI
           </Title>
           <Text c="dimmed" mt={6}>
-            Chat with the model, attach files for context, or speak your prompt.
+            {t("chat.description", "Chat with the model, attach files for context, or speak your prompt.")}
           </Text>
 
           {saveNotice ? (
@@ -513,7 +534,7 @@ export default function ChatInput() {
           <Group justify="center" mt="md">
             <Menu shadow="md" width={240}>
               <Menu.Target>
-                <Button variant="light">Chat options</Button>
+                <Button variant="light">{t("chat.options")}</Button>
               </Menu.Target>
               <Menu.Dropdown>
                 <Menu.Item
@@ -521,13 +542,13 @@ export default function ChatInput() {
                   onClick={handleOpenSaveModal}
                   disabled={isSaving}
                 >
-                  {isSaving ? "Saving..." : "Save conversation"}
+                  {isSaving ? t("chat.saving") : t("chat.saveConversation")}
                 </Menu.Item>
                 <Menu.Item leftSection={<IconFolderOpen size={16} />} onClick={handleOpenLoadModal}>
-                  Load saved chat
+                  {t("chat.loadSavedChat")}
                 </Menu.Item>
                 <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleNewConversation}>
-                  Start a new chat
+                  {t("chat.startNewChat")}
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>
@@ -556,7 +577,7 @@ export default function ChatInput() {
                       }}
                     >
                       <Text size="xs" c="dimmed" mb={4}>
-                        {entry.role === "user" ? "You" : "ChibitekAI"}
+                        {entry.role === "user" ? t("chat.you") : t("chat.chibitekAI")}
                       </Text>
                       <Text style={{ whiteSpace: "pre-wrap" }}>{entry.content}</Text>
                       {entry.attachments?.length ? (
@@ -575,7 +596,7 @@ export default function ChatInput() {
                 {isSending ? (
                   <Group gap="xs">
                     <Loader size="sm" />
-                    <Text c="dimmed">Thinking...</Text>
+                    <Text c="dimmed">{t("chat.thinking")}</Text>
                   </Group>
                 ) : null}
               </Box>
@@ -594,7 +615,7 @@ export default function ChatInput() {
                 onClick={handleSummarizeRecentPosts}
                 disabled={isSending}
               >
-                Summarize recent posts
+                {t("chat.summarizeRecentPosts")}
               </Button>
             </Group>
 
@@ -631,7 +652,7 @@ export default function ChatInput() {
               />
 
               <TextInput
-                placeholder="Ask anything"
+                placeholder={t("chat.askAnything")}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyPress}
@@ -655,7 +676,7 @@ export default function ChatInput() {
                 size="lg"
                 onClick={toggleListening}
                 style={{ flexShrink: 0 }}
-                title={SpeechRecognition ? "Speak your prompt" : "Speech recognition unavailable"}
+                title={SpeechRecognition ? t("chat.speakYourPrompt") : t("chat.speechUnavailable")}
               >
                 {isListening ? <IconMicrophoneOff size={20} /> : <IconMicrophone size={20} />}
               </ActionIcon>
@@ -677,11 +698,11 @@ export default function ChatInput() {
       </Box>
 
       {/* NOTE: We keep modals OUTSIDE the tour root so the bubble can sit left of the main card without getting shoved. */}
-      <Modal opened={loadModalOpen} onClose={() => setLoadModalOpen(false)} title="Saved conversations" centered>
+      <Modal opened={loadModalOpen} onClose={() => setLoadModalOpen(false)} title={t("chat.savedConversations")} centered>
         {isLoadingList ? (
           <Group gap="xs">
             <Loader size="sm" />
-            <Text c="dimmed">Loading...</Text>
+            <Text c="dimmed">{t("chat.loading")}</Text>
           </Group>
         ) : savedConversations.length ? (
           <Box style={{ display: "flex", flexDirection: "column", gap: 12 }}>

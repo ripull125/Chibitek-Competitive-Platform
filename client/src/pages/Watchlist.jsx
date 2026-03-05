@@ -47,85 +47,90 @@ import {
 } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
-import { useTranslation } from "react-i18next";
 
 /* ── Platform metadata ─────────────────────────────────────────────── */
-const PLATFORMS = {
-  x:         { label: "X (Twitter)", color: "dark",   icon: IconBrandX },
-  youtube:   { label: "YouTube",     color: "red",    icon: IconBrandYoutube },
-  reddit:    { label: "Reddit",      color: "orange", icon: IconBrandReddit },
-  linkedin:  { label: "LinkedIn",    color: "blue",   icon: IconBrandLinkedin },
-  instagram: { label: "Instagram",   color: "grape",  icon: IconBrandInstagram },
-  tiktok:    { label: "TikTok",      color: "cyan",   icon: IconBrandTiktok },
-};
+function getPlatforms(t) {
+  return {
+    x:         { label: t("watchlist.platformNames.x"), color: "dark",   icon: IconBrandX },
+    youtube:   { label: t("watchlist.platformNames.youtube"), color: "red",    icon: IconBrandYoutube },
+    reddit:    { label: t("watchlist.platformNames.reddit"), color: "orange", icon: IconBrandReddit },
+    linkedin:  { label: t("watchlist.platformNames.linkedin"), color: "blue",   icon: IconBrandLinkedin },
+    instagram: { label: t("watchlist.platformNames.instagram"), color: "grape",  icon: IconBrandInstagram },
+    tiktok:    { label: t("watchlist.platformNames.tiktok"), color: "cyan",   icon: IconBrandTiktok },
+  };
+}
 
 /* ── Scrape-type options per platform ──────────────────────────────── */
-const SCRAPE_TYPES = {
-  x: [
-    { value: "user_posts",    label: "User Posts",    placeholder: "e.g. @elonmusk" },
-    { value: "user_mentions", label: "User Mentions",  placeholder: "e.g. @openai" },
-    { value: "followers",     label: "Followers List", placeholder: "e.g. @github" },
-    { value: "following",     label: "Following List", placeholder: "e.g. @github" },
-    { value: "search",        label: "Search Query",   placeholder: "e.g. AI agents" },
-  ],
-  youtube: [
-    { value: "channel_videos",  label: "Channel Videos",  placeholder: "Channel URL or @handle" },
-    { value: "channel_details", label: "Channel Details",  placeholder: "Channel URL or @handle" },
-    { value: "video_details",   label: "Video Details",    placeholder: "Video URL or ID" },
-    { value: "video_comments",  label: "Video Comments",   placeholder: "Video URL or ID" },
-    { value: "search",          label: "Search",           placeholder: "Search query" },
-  ],
-  reddit: [
-    { value: "subreddit_posts",   label: "Subreddit Posts",   placeholder: "e.g. r/MCP or MCP" },
-    { value: "subreddit_details", label: "Subreddit Details",  placeholder: "e.g. r/artificial" },
-    { value: "search",            label: "Search",             placeholder: "Search query" },
-  ],
-  linkedin: [
-    { value: "profile", label: "Profile",      placeholder: "LinkedIn profile URL" },
-    { value: "company", label: "Company Page",  placeholder: "LinkedIn company URL" },
-    { value: "post",    label: "Single Post",   placeholder: "LinkedIn post URL" },
-  ],
-  instagram: [
-    { value: "profile",     label: "Profile",     placeholder: "e.g. @natgeo" },
-    { value: "user_posts",  label: "User Posts",   placeholder: "e.g. @natgeo" },
-    { value: "user_reels",  label: "User Reels",   placeholder: "e.g. @natgeo" },
-  ],
-  tiktok: [
-    { value: "profile",         label: "Profile",        placeholder: "e.g. @tiktok" },
-    { value: "profile_videos",  label: "Profile Videos",  placeholder: "e.g. @tiktok" },
-    { value: "search",          label: "Keyword Search",  placeholder: "Search keyword" },
-  ],
-};
+function getScrapeTypes(t) {
+  return {
+    x: [
+      { value: "user_posts",    label: t("watchlist.scrapeTypes.userPosts"),    placeholder: t("watchlist.placeholders.atElon") },
+      { value: "user_mentions", label: t("watchlist.scrapeTypes.userMentions"),  placeholder: t("watchlist.placeholders.atOpenAi") },
+      { value: "followers",     label: t("watchlist.scrapeTypes.followersList"), placeholder: t("watchlist.placeholders.atGithub") },
+      { value: "following",     label: t("watchlist.scrapeTypes.followingList"), placeholder: t("watchlist.placeholders.atGithub") },
+      { value: "search",        label: t("watchlist.scrapeTypes.searchQuery"),   placeholder: t("watchlist.placeholders.aiAgents") },
+    ],
+    youtube: [
+      { value: "channel_videos",  label: t("watchlist.scrapeTypes.channelVideos"),  placeholder: t("watchlist.placeholders.channelUrlOrHandle") },
+      { value: "channel_details", label: t("watchlist.scrapeTypes.channelDetails"),  placeholder: t("watchlist.placeholders.channelUrlOrHandle") },
+      { value: "video_details",   label: t("watchlist.scrapeTypes.videoDetails"),    placeholder: t("watchlist.placeholders.videoUrlOrId") },
+      { value: "video_comments",  label: t("watchlist.scrapeTypes.videoComments"),   placeholder: t("watchlist.placeholders.videoUrlOrId") },
+      { value: "search",          label: t("watchlist.scrapeTypes.search"),           placeholder: t("watchlist.placeholders.searchQuery") },
+    ],
+    reddit: [
+      { value: "subreddit_posts",   label: t("watchlist.scrapeTypes.subredditPosts"),   placeholder: t("watchlist.placeholders.subredditMcp") },
+      { value: "subreddit_details", label: t("watchlist.scrapeTypes.subredditDetails"),  placeholder: t("watchlist.placeholders.subredditArtificial") },
+      { value: "search",            label: t("watchlist.scrapeTypes.search"),             placeholder: t("watchlist.placeholders.searchQuery") },
+    ],
+    linkedin: [
+      { value: "profile", label: t("watchlist.scrapeTypes.profile"),      placeholder: t("watchlist.placeholders.linkedinProfileUrl") },
+      { value: "company", label: t("watchlist.scrapeTypes.companyPage"),  placeholder: t("watchlist.placeholders.linkedinCompanyUrl") },
+      { value: "post",    label: t("watchlist.scrapeTypes.singlePost"),   placeholder: t("watchlist.placeholders.linkedinPostUrl") },
+    ],
+    instagram: [
+      { value: "profile",     label: t("watchlist.scrapeTypes.profile"),     placeholder: t("watchlist.placeholders.atNatgeo") },
+      { value: "user_posts",  label: t("watchlist.scrapeTypes.userPosts"),   placeholder: t("watchlist.placeholders.atNatgeo") },
+      { value: "user_reels",  label: t("watchlist.scrapeTypes.userReels"),   placeholder: t("watchlist.placeholders.atNatgeo") },
+    ],
+    tiktok: [
+      { value: "profile",         label: t("watchlist.scrapeTypes.profile"),        placeholder: t("watchlist.placeholders.atTiktok") },
+      { value: "profile_videos",  label: t("watchlist.scrapeTypes.profileVideos"),  placeholder: t("watchlist.placeholders.atTiktok") },
+      { value: "search",          label: t("watchlist.scrapeTypes.keywordSearch"),  placeholder: t("watchlist.placeholders.searchKeyword") },
+    ],
+  };
+}
 
 /* ── Config fields shown per platform+scrape_type ──────────────────── */
 // Each entry: { key (in config JSON), label, type, default, min, max, description }
-const CONFIG_FIELDS = {
-  x: {
-    user_posts:    [{ key: "max_results", label: "Max posts",      type: "number", defaultVal: 10, min: 1, max: 100 }],
-    user_mentions: [{ key: "max_results", label: "Max mentions",   type: "number", defaultVal: 10, min: 1, max: 100 }],
-    followers:     [{ key: "max_results", label: "Max followers",  type: "number", defaultVal: 20, min: 1, max: 100 }],
-    following:     [{ key: "max_results", label: "Max following",  type: "number", defaultVal: 20, min: 1, max: 100 }],
-    search:        [{ key: "max_results", label: "Max results",    type: "number", defaultVal: 10, min: 1, max: 100 }],
-  },
-  youtube: {
-    channel_videos: [{ key: "max_results", label: "Max videos",    type: "number", defaultVal: 10, min: 1, max: 50 }],
-    video_comments: [{ key: "max_results", label: "Max comments",  type: "number", defaultVal: 20, min: 1, max: 100 }],
-    search:         [{ key: "max_results", label: "Max results",   type: "number", defaultVal: 10, min: 1, max: 50 }],
-  },
-  reddit: {
-    subreddit_posts: [{ key: "max_results", label: "Max posts",   type: "number", defaultVal: 25, min: 1, max: 100 }],
-    search:          [{ key: "max_results", label: "Max results",  type: "number", defaultVal: 25, min: 1, max: 100 }],
-  },
-  linkedin: {},
-  instagram: {
-    user_posts:  [{ key: "max_results", label: "Max posts",  type: "number", defaultVal: 12, min: 1, max: 50 }],
-    user_reels:  [{ key: "max_results", label: "Max reels",  type: "number", defaultVal: 12, min: 1, max: 50 }],
-  },
-  tiktok: {
-    profile_videos: [{ key: "max_results", label: "Max videos",   type: "number", defaultVal: 20, min: 1, max: 50 }],
-    search:         [{ key: "max_results", label: "Max results",  type: "number", defaultVal: 20, min: 1, max: 50 }],
-  },
-};
+function getConfigFields(t) {
+  return {
+    x: {
+      user_posts:    [{ key: "max_results", label: t("watchlist.config.maxPosts"),      type: "number", defaultVal: 10, min: 1, max: 100 }],
+      user_mentions: [{ key: "max_results", label: t("watchlist.config.maxMentions"),   type: "number", defaultVal: 10, min: 1, max: 100 }],
+      followers:     [{ key: "max_results", label: t("watchlist.config.maxFollowers"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      following:     [{ key: "max_results", label: t("watchlist.config.maxFollowing"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      search:        [{ key: "max_results", label: t("watchlist.config.maxResults"),    type: "number", defaultVal: 10, min: 1, max: 100 }],
+    },
+    youtube: {
+      channel_videos: [{ key: "max_results", label: t("watchlist.config.maxVideos"),    type: "number", defaultVal: 10, min: 1, max: 50 }],
+      video_comments: [{ key: "max_results", label: t("watchlist.config.maxComments"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      search:         [{ key: "max_results", label: t("watchlist.config.maxResults"),   type: "number", defaultVal: 10, min: 1, max: 50 }],
+    },
+    reddit: {
+      subreddit_posts: [{ key: "max_results", label: t("watchlist.config.maxPosts"),   type: "number", defaultVal: 25, min: 1, max: 100 }],
+      search:          [{ key: "max_results", label: t("watchlist.config.maxResults"),  type: "number", defaultVal: 25, min: 1, max: 100 }],
+    },
+    linkedin: {},
+    instagram: {
+      user_posts:  [{ key: "max_results", label: t("watchlist.config.maxPosts"),  type: "number", defaultVal: 12, min: 1, max: 50 }],
+      user_reels:  [{ key: "max_results", label: t("watchlist.config.maxReels"),  type: "number", defaultVal: 12, min: 1, max: 50 }],
+    },
+    tiktok: {
+      profile_videos: [{ key: "max_results", label: t("watchlist.config.maxVideos"),   type: "number", defaultVal: 20, min: 1, max: 50 }],
+      search:         [{ key: "max_results", label: t("watchlist.config.maxResults"),  type: "number", defaultVal: 20, min: 1, max: 50 }],
+    },
+  };
+}
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
 async function getUserId() {
@@ -145,16 +150,16 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-function relativeTime(dateStr) {
-  if (!dateStr) return "Never";
+function relativeTime(dateStr, t) {
+  if (!dateStr) return t("watchlist.never");
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("watchlist.justNow");
+  if (mins < 60) return t("watchlist.minutesAgo", { count: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return t("watchlist.hoursAgo", { count: hrs });
   const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return t("watchlist.daysAgo", { count: days });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -162,6 +167,9 @@ function relativeTime(dateStr) {
    ═══════════════════════════════════════════════════════════════════════ */
 export default function Watchlist() {
   const { t } = useTranslation();
+  const PLATFORMS = useMemo(() => getPlatforms(t), [t]);
+  const SCRAPE_TYPES = useMemo(() => getScrapeTypes(t), [t]);
+  const CONFIG_FIELDS = useMemo(() => getConfigFields(t), [t]);
 
   /* ── state ───────────────────────── */
   const [items, setItems] = useState([]);
@@ -240,7 +248,7 @@ export default function Watchlist() {
   const handleAdd = async () => {
     setFormError("");
     if (!formType || !formTarget.trim()) {
-      setFormError("Scrape type and target are required.");
+      setFormError(t("watchlist.scrapeTypeTargetRequired"));
       return;
     }
     setFormSaving(true);
@@ -368,15 +376,15 @@ export default function Watchlist() {
         <div>
           <Title order={2}>
             <IconRobot size={28} style={{ verticalAlign: "middle", marginRight: 8 }} />
-            Auto-Scrape Watchlist
+            {t("watchlist.title")}
           </Title>
           <Text size="sm" c="dimmed" mt={4}>
-            Define what to scrape automatically. Run all enabled items at once or individually.
+            {t("watchlist.subtitle")}
           </Text>
         </div>
 
         <Group>
-          <Tooltip label="Refresh list">
+          <Tooltip label={t("watchlist.refreshList")}>
             <ActionIcon variant="subtle" onClick={loadItems} loading={loading}>
               <IconRefresh size={18} />
             </ActionIcon>
@@ -389,11 +397,11 @@ export default function Watchlist() {
             disabled={enabledCount === 0}
             onClick={runAll}
           >
-            Run All ({enabledCount})
+            {t("watchlist.runAllCount", { count: enabledCount })}
           </Button>
 
           <Button leftSection={<IconPlus size={16} />} onClick={() => setAddOpen(true)}>
-            Add Item
+            {t("watchlist.addItem")}
           </Button>
         </Group>
       </Group>
@@ -410,10 +418,10 @@ export default function Watchlist() {
         <Paper withBorder p="xl" ta="center" radius="md">
           <IconRobot size={48} style={{ opacity: 0.25 }} />
           <Text mt="md" c="dimmed">
-            Your watchlist is empty. Add items to start auto-scraping competitors, channels, and subreddits.
+            {t("watchlist.emptyDescription")}
           </Text>
           <Button mt="md" leftSection={<IconPlus size={16} />} onClick={() => setAddOpen(true)}>
-            Add Your First Item
+            {t("watchlist.addFirstItem")}
           </Button>
         </Paper>
       )}
@@ -448,14 +456,14 @@ export default function Watchlist() {
                       size="xs"
                       checked={item.enabled}
                       onChange={() => toggleEnabled(item)}
-                      label={item.enabled ? "On" : "Off"}
+                      label={item.enabled ? t("watchlist.on") : t("watchlist.off")}
                     />
                   </Group>
                 </Group>
 
                 <Group gap="lg" mb={8}>
                   <Text size="xs" c="dimmed" lineClamp={1} title={item.target}>
-                    Target: {item.target}
+                    {t("watchlist.targetLabel")} {item.target}
                   </Text>
                   {item.config && Object.keys(item.config).length > 0 && (
                     <Text size="xs" c="dimmed">
@@ -463,12 +471,12 @@ export default function Watchlist() {
                     </Text>
                   )}
                   <Text size="xs" c="dimmed">
-                    Last run: {relativeTime(item.last_run_at)}
+                    {t("watchlist.lastRun")} {relativeTime(item.last_run_at, t)}
                   </Text>
                 </Group>
 
                 <Group gap={6}>
-                  <Tooltip label="Run now">
+                  <Tooltip label={t("watchlist.runNow")}>
                     <Button
                       variant="light"
                       color="teal"
@@ -477,7 +485,7 @@ export default function Watchlist() {
                       leftSection={<IconPlayerPlay size={12} />}
                       onClick={() => runItem(item.id)}
                     >
-                      Run
+                      {t("watchlist.run")}
                     </Button>
                   </Tooltip>
 
@@ -496,7 +504,7 @@ export default function Watchlist() {
                           });
                         }}
                       >
-                        {isExpanded ? "Hide Results" : "Show Results"}
+                        {isExpanded ? t("watchlist.hideResults") : t("watchlist.showResults")}
                       </Button>
                       <Button
                         variant="subtle"
@@ -507,18 +515,18 @@ export default function Watchlist() {
                           setViewOpen(true);
                         }}
                       >
-                        Expand
+                        {t("watchlist.expand")}
                       </Button>
                     </>
                   )}
                   {result && !result.success && (
                     <Badge size="sm" color="red" variant="light">
-                      Error: {result.error}
+                      {t("watchlist.errorLabel")} {result.error}
                     </Badge>
                   )}
 
                   <div style={{ flex: 1 }} />
-                  <Tooltip label="Delete">
+                  <Tooltip label={t("watchlist.delete")}>
                     <ActionIcon variant="light" color="red" size="sm" onClick={() => setDeleteId(item.id)}>
                       <IconTrash size={14} />
                     </ActionIcon>
@@ -548,35 +556,35 @@ export default function Watchlist() {
       <Modal
         opened={addOpen}
         onClose={() => { setAddOpen(false); setFormError(""); }}
-        title="Add Watchlist Item"
+        title={t("watchlist.addWatchlistItem")}
         size="md"
       >
         <Stack>
           <Select
-            label="Platform"
+            label={t("watchlist.platform")}
             data={Object.entries(PLATFORMS).map(([k, v]) => ({ value: k, label: v.label }))}
             value={formPlatform}
             onChange={(v) => setFormPlatform(v)}
           />
 
           <Select
-            label="Scrape Type"
-            placeholder="Select what to scrape"
+            label={t("watchlist.scrapeType")}
+            placeholder={t("watchlist.selectWhatToScrape")}
             data={currentScrapeTypes.map((s) => ({ value: s.value, label: s.label }))}
             value={formType}
             onChange={(v) => setFormType(v)}
           />
 
           <TextInput
-            label="Target"
-            placeholder={selectedTypeMeta?.placeholder || "Username, URL, or search query"}
+            label={t("watchlist.target")}
+            placeholder={selectedTypeMeta?.placeholder || t("watchlist.usernameUrlOrSearchQuery")}
             value={formTarget}
             onChange={(e) => setFormTarget(e.currentTarget.value)}
           />
 
           <TextInput
-            label="Label (optional)"
-            placeholder="Friendly name for this item"
+            label={t("watchlist.labelOptional")}
+            placeholder={t("watchlist.friendlyNamePlaceholder")}
             value={formLabel}
             onChange={(e) => setFormLabel(e.currentTarget.value)}
           />
@@ -587,7 +595,7 @@ export default function Watchlist() {
             if (!fields.length) return null;
             return (
               <>
-                <Divider label="Options" labelPosition="center" />
+                <Divider label={t("watchlist.options")} labelPosition="center" />
                 {fields.map((f) => (
                   <NumberInput
                     key={f.key}
@@ -610,8 +618,8 @@ export default function Watchlist() {
           )}
 
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button loading={formSaving} onClick={handleAdd}>Add to Watchlist</Button>
+            <Button variant="default" onClick={() => setAddOpen(false)}>{t("watchlist.cancel")}</Button>
+            <Button loading={formSaving} onClick={handleAdd}>{t("watchlist.addToWatchlist")}</Button>
           </Group>
         </Stack>
       </Modal>
@@ -620,13 +628,13 @@ export default function Watchlist() {
       <Modal
         opened={!!deleteId}
         onClose={() => setDeleteId(null)}
-        title="Remove Item"
+        title={t("watchlist.removeItem")}
         size="sm"
       >
-        <Text size="sm">Are you sure you want to remove this item from your watchlist?</Text>
+        <Text size="sm">{t("watchlist.confirmRemoveItem")}</Text>
         <Group justify="flex-end" mt="md">
-          <Button variant="default" onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button color="red" onClick={confirmDelete}>Delete</Button>
+          <Button variant="default" onClick={() => setDeleteId(null)}>{t("watchlist.cancel")}</Button>
+          <Button color="red" onClick={confirmDelete}>{t("watchlist.delete")}</Button>
         </Group>
       </Modal>
 
@@ -643,7 +651,7 @@ export default function Watchlist() {
                 {viewData.scrapeType?.replace(/_/g, " ") || viewData.platform}
               </Badge>
             </Group>
-          ) : "Scraped Data"
+          ) : t("watchlist.scrapedData")
         }
         size="xl"
       >
@@ -701,6 +709,7 @@ function cardLinkProps(url) {
 
 /* ── Save-to-Saved-Posts button (matches CompetitorLookup style) ──── */
 function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shares, comments, extra, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   const alreadySaved = savedPostIds?.has(String(postId));
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   // Derive effective status: if already saved in DB, always show saved
@@ -746,7 +755,7 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
       disabled={effective === "saved"}
       onClick={handleSave}
     >
-      {effective === "saved" ? "Saved ✓" : effective === "error" ? "Retry" : "Save"}
+      {effective === "saved" ? t("watchlist.saved") : effective === "error" ? t("watchlist.retry") : t("watchlist.save")}
     </Button>
   );
 }
@@ -755,9 +764,10 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
    ResultsRenderer — smart platform-aware display
    ═══════════════════════════════════════════════════════════════════════ */
 function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   const [showRaw, setShowRaw] = useState(false);
 
-  if (!data) return <Text size="sm" c="dimmed" ta="center" py="sm">No data returned.</Text>;
+  if (!data) return <Text size="sm" c="dimmed" ta="center" py="sm">{t("watchlist.noDataReturned")}</Text>;
 
   return (
     <Stack gap="sm">
@@ -772,7 +782,7 @@ function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) 
         onClick={() => setShowRaw((v) => !v)}
         mt={4}
       >
-        {showRaw ? "Hide" : "Show"} raw JSON
+        {showRaw ? t("watchlist.hide") : t("watchlist.show")} {t("watchlist.rawJson")}
       </Button>
       <Collapse in={showRaw}>
         <Code block style={{ maxHeight: 260, overflow: "auto", fontSize: 11 }}>
@@ -820,9 +830,10 @@ function extractArray(data, ...keys) {
    X / Twitter
    ═══════════════════════════════════════════════════════════════════════ */
 function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   if (scrapeType === "followers" || scrapeType === "following") {
     const users = extractArray(data, "data", "users") || [];
-    if (!users.length) return <Text size="sm" c="dimmed">No users returned.</Text>;
+    if (!users.length) return <Text size="sm" c="dimmed">{t("watchlist.noUsersReturned")}</Text>;
     return (
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
         {users.map((u, i) => (
@@ -840,8 +851,8 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
                 {u.description && <Text size="xs" c="dimmed" lineClamp={1} mt={2}>{u.description}</Text>}
                 {u.public_metrics && (
                   <Group gap={6} mt={4}>
-                    <Badge size="xs" variant="light">{fmtNum(u.public_metrics.followers_count)} followers</Badge>
-                    <Badge size="xs" variant="light">{fmtNum(u.public_metrics.tweet_count)} tweets</Badge>
+                    <Badge size="xs" variant="light">{t("watchlist.followersCount", { count: fmtNum(u.public_metrics.followers_count) })}</Badge>
+                    <Badge size="xs" variant="light">{t("watchlist.tweetsCount", { count: fmtNum(u.public_metrics.tweet_count) })}</Badge>
                   </Group>
                 )}
               </div>
@@ -858,7 +869,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const tweetUsers = data?.users || [];
   const findAuthor = (authorId) => tweetUsers.find((u) => u.id === authorId);
 
-  if (!tweets.length) return <Text size="sm" c="dimmed">No tweets returned.</Text>;
+  if (!tweets.length) return <Text size="sm" c="dimmed">{t("watchlist.noTweetsReturned")}</Text>;
 
   return (
     <Stack gap="xs">
@@ -889,7 +900,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
                   {t.created_at && <Text size="xs" c="dimmed">{fmtDate(t.created_at)}</Text>}
                   {t.lang && t.lang !== "und" && <Badge size="xs" variant="light" color="gray">{t.lang}</Badge>}
                   <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${t.id}`} target="_blank" rel="noopener">
-                    View →
+                    {t("watchlist.viewArrow")}
                   </Text>
                 </Group>
                 <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} savedPostIds={savedPostIds} onSaved={onSaved} />
@@ -906,6 +917,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    YouTube
    ═══════════════════════════════════════════════════════════════════════ */
 function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   // Channel details — single object
   if (scrapeType === "channel_details") {
     const ch = data;
@@ -926,9 +938,9 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           )}
           <Group gap="xl" justify="center">
             {[
-              { label: "Subscribers", value: fmtNum(ch.subscribers) },
-              { label: "Views", value: fmtNum(ch.totalViews) },
-              { label: "Videos", value: fmtNum(ch.videoCount) },
+              { label: t("watchlist.subscribers"), value: fmtNum(ch.subscribers) },
+              { label: t("watchlist.views"), value: fmtNum(ch.totalViews) },
+              { label: t("watchlist.videos"), value: fmtNum(ch.videoCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="md">{value}</Text>
@@ -937,7 +949,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
             ))}
           </Group>
           {ch.description && <Text size="xs" c="dimmed" lineClamp={3}>{ch.description}</Text>}
-          {ch.country && <Text size="xs" c="dimmed">Country: {ch.country}</Text>}
+          {ch.country && <Text size="xs" c="dimmed">{t("watchlist.countryLabel")} {ch.country}</Text>}
         </Stack>
       </Card>
     );
@@ -978,7 +990,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Video comments — returns [{ author, text, likes, ... }]
   if (scrapeType === "video_comments") {
     const comments = extractArray(data, "comments") || [];
-    if (!comments.length) return <Text size="sm" c="dimmed">No comments returned.</Text>;
+    if (!comments.length) return <Text size="sm" c="dimmed">{t("watchlist.noCommentsReturned")}</Text>;
     return (
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
         {comments.map((c, i) => (
@@ -989,7 +1001,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
               {c.likes > 0 && <Badge size="xs" variant="light">❤️ {c.likes}</Badge>}
             </Group>
             <Text size="xs" lineClamp={3}>{c.text}</Text>
-            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{c.replyCount} {c.replyCount === 1 ? "reply" : "replies"}</Text>}
+            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{t("watchlist.replyCount", { count: c.replyCount })}</Text>}
           </Card>
         ))}
       </SimpleGrid>
@@ -998,7 +1010,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
 
   // Videos list: channel_videos, search — returns [{ id, title, thumbnails, ... }]
   const videos = extractArray(data, "items", "videos") || [];
-  if (!videos.length) return <Text size="sm" c="dimmed">No videos returned.</Text>;
+  if (!videos.length) return <Text size="sm" c="dimmed">{t("watchlist.noVideosReturned")}</Text>;
   return (
     <Stack gap="xs">
       {videos.map((v, i) => {
@@ -1042,6 +1054,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    Reddit
    ═══════════════════════════════════════════════════════════════════════ */
 function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   // Subreddit details — single object
   if (scrapeType === "subreddit_details") {
     const sub = data?.data || data;
@@ -1059,8 +1072,8 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           </Group>
           <Group gap="xl" justify="center">
             {[
-              { label: "Members", value: fmtNum(sub.subscribers) },
-              { label: "Weekly Active", value: fmtNum(sub.weekly_active_users || sub.active_user_count || sub.accounts_active) },
+              { label: t("watchlist.members"), value: fmtNum(sub.subscribers) },
+              { label: t("watchlist.weeklyActive"), value: fmtNum(sub.weekly_active_users || sub.active_user_count || sub.accounts_active) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="md">{value}</Text>
@@ -1082,7 +1095,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // Each post might be wrapped: { data: { ... } } (Reddit listing style)
   const normalizedPosts = posts.map(p => p.data || p);
 
-  if (!normalizedPosts.length) return <Text size="sm" c="dimmed">No posts returned.</Text>;
+  if (!normalizedPosts.length) return <Text size="sm" c="dimmed">{t("watchlist.noPostsReturned")}</Text>;
 
   return (
     <Stack gap="xs">
@@ -1096,7 +1109,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
                 <img src={thumb} alt="" style={{ width: 64, height: 64, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                <Text size="sm" fw={600} lineClamp={2}>{post.title || <i>No title</i>}</Text>
+                <Text size="sm" fw={600} lineClamp={2}>{post.title || <i>{t("watchlist.noTitle")}</i>}</Text>
                 {post.selftext && <Text size="xs" c="dimmed" lineClamp={2}>{post.selftext.slice(0, 200)}</Text>}
                 <Group gap={6}>
                   {post.author && <Text size="xs" c="dimmed">u/{post.author}</Text>}
@@ -1130,6 +1143,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    LinkedIn
    ═══════════════════════════════════════════════════════════════════════ */
 function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   const d = data?.data || data;
 
   if (scrapeType === "profile") {
@@ -1148,13 +1162,13 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
             {d.followers != null && (
               <Stack align="center" gap={0}>
                 <Text fw={700} size="md">{fmtNum(d.followers)}</Text>
-                <Text size="xs" c="dimmed">Followers</Text>
+                <Text size="xs" c="dimmed">{t("watchlist.followers")}</Text>
               </Stack>
             )}
             {d.connections != null && (
               <Stack align="center" gap={0}>
                 <Text fw={700} size="md">{fmtNum(d.connections)}</Text>
-                <Text size="xs" c="dimmed">Connections</Text>
+                <Text size="xs" c="dimmed">{t("watchlist.connections")}</Text>
               </Stack>
             )}
           </Group>
@@ -1163,7 +1177,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           {/* Experience */}
           {d.experience?.length > 0 && (
             <>
-              <Divider label="Experience" labelPosition="center" />
+              <Divider label={t("watchlist.experience")} labelPosition="center" />
               {d.experience.slice(0, 3).map((exp, i) => (
                 <Group key={i} gap="sm" wrap="nowrap">
                   {exp.logo && <img src={exp.logo} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
@@ -1179,7 +1193,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           {/* Recent activity */}
           {(d.activity?.length > 0 || d.recentPosts?.length > 0) && (
             <>
-              <Divider label="Recent Activity" labelPosition="center" />
+              <Divider label={t("watchlist.recentActivity")} labelPosition="center" />
               {(d.activity || d.recentPosts || []).slice(0, 3).map((post, i) => (
                 <Card key={i} withBorder radius="sm" p="xs">
                   <Text size="xs" lineClamp={2}>{post.text || post.title || post.content}</Text>
@@ -1211,10 +1225,10 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           </Group>
           <Group gap="xl" justify="center">
             {d.followers != null && (
-              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.followers)}</Text><Text size="xs" c="dimmed">Followers</Text></Stack>
+              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.followers)}</Text><Text size="xs" c="dimmed">{t("watchlist.followers")}</Text></Stack>
             )}
             {(d.employees != null || d.employeeCount != null) && (
-              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.employees || d.employeeCount)}</Text><Text size="xs" c="dimmed">Employees</Text></Stack>
+              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.employees || d.employeeCount)}</Text><Text size="xs" c="dimmed">{t("watchlist.employees")}</Text></Stack>
             )}
           </Group>
           {d.description && <Text size="xs" c="dimmed" lineClamp={4}>{d.description}</Text>}
@@ -1253,6 +1267,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    Instagram
    ═══════════════════════════════════════════════════════════════════════ */
 function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   // Profile
   if (scrapeType === "profile") {
     const p = data?.data || data;
@@ -1270,9 +1285,9 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           </Group>
           <Group gap="xl" justify="center">
             {[
-              { label: "Followers", value: p.follower_count ?? p.followers },
-              { label: "Following", value: p.following_count ?? p.following },
-              { label: "Posts", value: p.media_count ?? p.posts },
+              { label: t("watchlist.followers"), value: p.follower_count ?? p.followers },
+              { label: t("watchlist.following"), value: p.following_count ?? p.following },
+              { label: t("watchlist.posts"), value: p.media_count ?? p.posts },
             ].filter(({ value }) => value != null).map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="md">{fmtNum(value)}</Text>
@@ -1293,7 +1308,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const rawItems = extractArray(data, "posts", "items", "reels", "data") || [];
   const postItems = rawItems.map(p => p.node || p.media || p);
 
-  if (!postItems.length) return <Text size="sm" c="dimmed">No {isReels ? "reels" : "posts"} returned.</Text>;
+  if (!postItems.length) return <Text size="sm" c="dimmed">{isReels ? t("watchlist.noReelsReturned") : t("watchlist.noPostsReturned")}</Text>;
 
   return (
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -1350,6 +1365,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    TikTok
    ═══════════════════════════════════════════════════════════════════════ */
 function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
   // Profile
   if (scrapeType === "profile") {
     const p = data?.data || data;
@@ -1367,10 +1383,10 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
           </Group>
           <Group gap="xl" justify="center">
             {[
-              { label: "Followers", value: p.followerCount ?? p.followers },
-              { label: "Following", value: p.followingCount ?? p.following },
-              { label: "Likes", value: p.heartCount ?? p.hearts ?? p.likes },
-              { label: "Videos", value: p.videoCount ?? p.videos },
+              { label: t("watchlist.followers"), value: p.followerCount ?? p.followers },
+              { label: t("watchlist.following"), value: p.followingCount ?? p.following },
+              { label: t("watchlist.likes"), value: p.heartCount ?? p.hearts ?? p.likes },
+              { label: t("watchlist.videos"), value: p.videoCount ?? p.videos },
             ].filter(({ value }) => value != null).map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="md">{fmtNum(value)}</Text>
@@ -1388,7 +1404,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   // ScrapeCreators: { itemList: [...] } or { search_item_list: [...] }
   const videos = extractArray(data, "itemList", "search_item_list", "items", "data", "videos") || [];
 
-  if (!videos.length) return <Text size="sm" c="dimmed">No videos returned.</Text>;
+  if (!videos.length) return <Text size="sm" c="dimmed">{t("watchlist.noVideosReturned")}</Text>;
 
   return (
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
@@ -1429,6 +1445,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
    Generic fallback — auto-detects arrays in the data
    ═══════════════════════════════════════════════════════════════════════ */
 function GenericRenderer({ data }) {
+  const { t } = useTranslation();
   // Try to find an array of items anywhere in the data
   let list;
   if (Array.isArray(data)) {
@@ -1454,13 +1471,13 @@ function GenericRenderer({ data }) {
           item.title || item.name || item.display_name || item.username ||
           item.text?.slice(0, 100) || item.content?.slice(0, 100) || item.full_text?.slice(0, 100) ||
           item.desc?.slice(0, 100) || item.caption?.slice(0, 100) ||
-          `Item ${idx + 1}`;
+          t("watchlist.itemNumber", { count: idx + 1 });
         const description = item.description || item.selftext || item.body || item.text || item.content || item.about || "";
         const stats = [];
         if (item.likes != null || item.like_count != null) stats.push(`❤️ ${fmtNum(item.likes ?? item.like_count)}`);
         if (item.views != null || item.view_count != null) stats.push(`👁 ${fmtNum(item.views ?? item.view_count)}`);
         if (item.comments != null || item.comment_count != null || item.num_comments != null) stats.push(`💬 ${fmtNum(item.comments ?? item.comment_count ?? item.num_comments)}`);
-        if (item.followers_count != null || item.subscribers != null) stats.push(`${fmtNum(item.followers_count ?? item.subscribers)} followers`);
+        if (item.followers_count != null || item.subscribers != null) stats.push(t("watchlist.followersCount", { count: fmtNum(item.followers_count ?? item.subscribers) }));
         if (item.score != null) stats.push(`⬆ ${fmtNum(item.score)}`);
 
         return (

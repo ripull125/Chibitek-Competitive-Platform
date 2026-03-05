@@ -35,49 +35,38 @@ import { useTranslation } from "react-i18next";
 const CATALOG = [
   {
     key: "x",
-    name: "X / Twitter",
-    desc: "Public tweets, profiles, and engagement.",
     icon: IconBrandX,
     color: "#000000",
   },
   {
     key: "linkedin",
-    name: "LinkedIn",
-    desc: "Professional posts and company updates.",
     icon: IconBrandLinkedin,
     color: "#0A66C2",
   },
   {
     key: "instagram",
-    name: "Instagram",
-    desc: "Public posts and profile metadata.",
     icon: IconBrandInstagram,
     color: "#E1306C",
   },
   {
     key: "tiktok",
-    name: "TikTok",
-    desc: "Creator posts and stats.",
     icon: IconBrandTiktok,
     color: "#000000",
   },
   {
     key: "reddit",
-    name: "Reddit",
-    desc: "Subreddit posts, comments, and media.",
     icon: IconBrandReddit,
     color: "#FF4500",
   },
   {
     key: "youtube",
-    name: "YouTube",
-    desc: "Channels, videos, and comments.",
     icon: IconBrandYoutube,
     color: "#FF0000",
   },
 ];
 
 export default function ConnectedIntegrations() {
+  const { t } = useTranslation();
   const [connected, setConnected] = useState(getConnectedPlatforms);
   const [search, setSearch] = useState("");
 
@@ -91,10 +80,12 @@ export default function ConnectedIntegrations() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return CATALOG;
-    return CATALOG.filter((p) =>
-      `${p.name} ${p.desc} ${p.key}`.toLowerCase().includes(q)
-    );
-  }, [search]);
+    return CATALOG.filter((p) => {
+      const name = t(`connectedIntegrations.platforms.${p.key}.name`);
+      const desc = t(`connectedIntegrations.platforms.${p.key}.desc`);
+      return `${name} ${desc} ${p.key}`.toLowerCase().includes(q);
+    });
+  }, [search, t]);
 
   function handleToggle(key) {
     const next = togglePlatform(key);
@@ -106,17 +97,17 @@ export default function ConnectedIntegrations() {
       <Card withBorder shadow="xs" radius="lg" p="xl">
         <Stack gap="xs">
           <Title order={2} className="pageTitle">
-            Connected integrations
+            {t("connectedIntegrations.title")}
           </Title>
           <Text c="dimmed">
-            Toggle platforms on or off. Connected platforms appear as tabs in Competitor Lookup.
+            {t("connectedIntegrations.subtitle")}
           </Text>
         </Stack>
 
         <Stack gap="md" mt="lg">
           <TextInput
             leftSection={<IconSearch size={16} />}
-            placeholder="Search platforms…"
+            placeholder={t("connectedIntegrations.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ minWidth: 260, maxWidth: 340 }}
@@ -128,6 +119,8 @@ export default function ConnectedIntegrations() {
             {filtered.map((prov) => {
               const Icon = prov.icon;
               const isOn = !!connected[prov.key];
+              const platName = t(`connectedIntegrations.platforms.${prov.key}.name`);
+              const platDesc = t(`connectedIntegrations.platforms.${prov.key}.desc`);
 
               return (
                 <Card key={prov.key} withBorder radius="md" p="lg">
@@ -138,19 +131,19 @@ export default function ConnectedIntegrations() {
                       </Box>
                       <Box>
                         <Group gap="xs">
-                          <Text fw={600}>{prov.name}</Text>
+                          <Text fw={600}>{platName}</Text>
                           {isOn ? (
                             <Badge color="green" variant="light">
-                              Connected
+                              {t("connectedIntegrations.badgeConnected")}
                             </Badge>
                           ) : (
                             <Badge color="gray" variant="light">
-                              Not connected
+                              {t("connectedIntegrations.badgeNotConnected")}
                             </Badge>
                           )}
                         </Group>
                         <Text c="dimmed" size="sm" mt={4}>
-                          {prov.desc}
+                          {platDesc}
                         </Text>
                       </Box>
                     </Group>
@@ -162,7 +155,7 @@ export default function ConnectedIntegrations() {
                         leftSection={<IconPlugConnectedX size={16} />}
                         onClick={() => handleToggle(prov.key)}
                       >
-                        Disconnect
+                        {t("connectedIntegrations.buttonDisconnect")}
                       </Button>
                     ) : (
                       <Button
@@ -171,7 +164,7 @@ export default function ConnectedIntegrations() {
                         leftSection={<IconPlugConnected size={16} />}
                         onClick={() => handleToggle(prov.key)}
                       >
-                        Connect
+                        {t("connectedIntegrations.buttonConnect")}
                       </Button>
                     )}
                   </Group>

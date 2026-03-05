@@ -19,8 +19,9 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const { t } = useTranslation();
 
-  const unauthorizedMessage = "You are not authorized to access this application.";
+  const unauthorizedMessage = t("login.unauthorizedMessage");
 
   const nextPath = useMemo(() => {
     return searchParams.get("next") || location.state?.from || "/";
@@ -85,7 +86,7 @@ export default function Login() {
     setErrorMsg("");
     if (!supabase) {
       setErrorMsg(
-        "Supabase client isn't configured. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in client/.env."
+        t("login.supabaseNotConfigured")
       );
       return;
     }
@@ -107,7 +108,7 @@ export default function Login() {
       if (error) throw error;
       // Browser will redirect away to Google.
     } catch (e) {
-      setErrorMsg(e?.message || "Failed to start Google OAuth");
+      setErrorMsg(e?.message || t("login.failedStartGoogleOauth"));
       setLoading(false);
     }
   };
@@ -116,15 +117,15 @@ export default function Login() {
     <Center h="100dvh" style={{ background: "var(--mantine-color-gray-0)" }}>
       <Paper radius="md" p="xl" withBorder style={{ width: 420, maxWidth: "92vw" }}>
         <Stack gap="md">
-          <Title order={2}>Sign in</Title>
+          <Title order={2}>{t("login.signInTitle")}</Title>
           <Text c="dimmed">
-            Use Google to sign in. You’ll be redirected back here automatically.
+            {t("login.signInDescription")}
           </Text>
 
           {errorMsg ? <Text c="red">{errorMsg}</Text> : null}
 
           <Button loading={loading} onClick={signInWithGoogle} size="md">
-            Continue with Google
+            {t("login.continueWithGoogle")}
           </Button>
         </Stack>
       </Paper>

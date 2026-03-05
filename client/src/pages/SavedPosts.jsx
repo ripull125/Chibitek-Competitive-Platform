@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon, Alert, Badge, Button, Card, Collapse, Divider,
@@ -34,10 +34,11 @@ function Metric({ icon, value }) {
 /* ── X / Twitter card ────────────────────────────────────────────────────── */
 
 function XPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const handle = post.extra?.author_handle || post.extra?.username || post.username || "unknown";
+  const handle = post.extra?.author_handle || post.extra?.username || post.username || t("savedPosts.unknown");
   const name = post.extra?.author_name || handle;
 
   return (
@@ -75,7 +76,7 @@ function XPostCard({ post, onDelete }) {
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
           </Button>
         )}
 
@@ -99,10 +100,11 @@ function XPostCard({ post, onDelete }) {
 /* ── YouTube card ────────────────────────────────────────────────────────── */
 
 function YouTubePostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [showTranscript, setShowTranscript] = useState(false);
   const [showDesc, setShowDesc] = useState(false);
-  const title = post.extra?.title || "Untitled Video";
-  const channel = post.extra?.channelTitle || post.extra?.username || post.username || "Unknown Channel";
+  const title = post.extra?.title || t("savedPosts.untitledVideo");
+  const channel = post.extra?.channelTitle || post.extra?.username || post.username || t("savedPosts.unknownChannel");
   const description = post.extra?.description || "";
   const transcript = post.content || "";
   const descLong = description.length > 200;
@@ -126,7 +128,7 @@ function YouTubePostCard({ post, onDelete }) {
               )}
             </div>
           </Group>
-          <Tooltip label="Remove saved post">
+          <Tooltip label={t("savedPosts.removeSavedPost")}>
             <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
               <IconTrash size={15} />
             </ActionIcon>
@@ -145,7 +147,7 @@ function YouTubePostCard({ post, onDelete }) {
                 leftSection={showDesc ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
                 onClick={() => setShowDesc(!showDesc)}
               >
-                {showDesc ? "Show less" : "Show more"}
+                {showDesc ? t("savedPosts.showLess") : t("savedPosts.showMore")}
               </Button>
             )}
           </div>
@@ -157,7 +159,7 @@ function YouTubePostCard({ post, onDelete }) {
               leftSection={showTranscript ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
               onClick={() => setShowTranscript(!showTranscript)}
             >
-              {showTranscript ? "Hide transcript" : "Show transcript"}
+              {showTranscript ? t("savedPosts.hideTranscript") : t("savedPosts.showTranscript")}
             </Button>
             <Collapse in={showTranscript}>
               <Paper p="sm" mt="xs" radius="sm"
@@ -183,10 +185,11 @@ function YouTubePostCard({ post, onDelete }) {
 /* ── LinkedIn card ───────────────────────────────────────────────────────── */
 
 function LinkedInPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.extra?.author_name || post.username || "Unknown";
+  const name = post.extra?.author_name || post.username || t("savedPosts.unknown");
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #0A66C2" }}>
@@ -208,7 +211,7 @@ function LinkedInPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandLinkedin size={18} color="#0A66C2" style={{ opacity: 0.7 }} />
-            <Tooltip label="Remove saved post">
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
               </ActionIcon>
@@ -222,7 +225,7 @@ function LinkedInPostCard({ post, onDelete }) {
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
           </Button>
         )}
 
@@ -239,10 +242,11 @@ function LinkedInPostCard({ post, onDelete }) {
 /* ── Instagram card ──────────────────────────────────────────────────────── */
 
 function InstagramPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
@@ -264,7 +268,7 @@ function InstagramPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandInstagram size={18} color="#E1306C" style={{ opacity: 0.7 }} />
-            <Tooltip label="Remove saved post">
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
               </ActionIcon>
@@ -278,7 +282,7 @@ function InstagramPostCard({ post, onDelete }) {
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
           </Button>
         )}
 
@@ -296,10 +300,11 @@ function InstagramPostCard({ post, onDelete }) {
 /* ── TikTok card ─────────────────────────────────────────────────────────── */
 
 function TikTokPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #000" }}>
@@ -321,7 +326,7 @@ function TikTokPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandTiktok size={18} style={{ opacity: 0.7 }} />
-            <Tooltip label="Remove saved post">
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
               </ActionIcon>
@@ -335,7 +340,7 @@ function TikTokPostCard({ post, onDelete }) {
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
           </Button>
         )}
 
@@ -354,10 +359,11 @@ function TikTokPostCard({ post, onDelete }) {
 /* ── Reddit card ─────────────────────────────────────────────────────────── */
 
 function RedditPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
@@ -379,7 +385,7 @@ function RedditPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandReddit size={18} color="#FF4500" style={{ opacity: 0.7 }} />
-            <Tooltip label="Remove saved post">
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
               </ActionIcon>
@@ -393,7 +399,7 @@ function RedditPostCard({ post, onDelete }) {
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
           </Button>
         )}
 
@@ -410,12 +416,13 @@ function RedditPostCard({ post, onDelete }) {
 /* ── Generic fallback card ───────────────────────────────────────────────── */
 
 function GenericPostCard({ post, onDelete }) {
+  const { t } = useTranslation();
   return (
     <Card withBorder radius="md" p="lg">
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap" }}>{post.content}</Text>
-          <Tooltip label="Remove saved post">
+          <Tooltip label={t("savedPosts.removeSavedPost")}>
             <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
               <IconTrash size={15} />
             </ActionIcon>
@@ -434,22 +441,24 @@ function GenericPostCard({ post, onDelete }) {
 
 /* ── platform config (default IDs; overridden dynamically from server) ──── */
 
-const PLATFORM_CARD_CONFIG = {
-  x: { label: "X / Twitter", icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
-  instagram: { label: "Instagram", icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
-  tiktok: { label: "TikTok", icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
-  youtube: { label: "YouTube", icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
-  linkedin: { label: "LinkedIn", icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
-  reddit: { label: "Reddit", icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
-};
+function getPlatformCardConfig(t) {
+  return {
+    x: { label: t("savedPosts.platforms.x"), icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
+    instagram: { label: t("savedPosts.platforms.instagram"), icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
+    tiktok: { label: t("savedPosts.platforms.tiktok"), icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
+    youtube: { label: t("savedPosts.platforms.youtube"), icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
+    linkedin: { label: t("savedPosts.platforms.linkedin"), icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
+    reddit: { label: t("savedPosts.platforms.reddit"), icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
+  };
+}
 
 const DEFAULT_PLATFORM_MAP = {
-  1: { ...PLATFORM_CARD_CONFIG.x },
-  3: { ...PLATFORM_CARD_CONFIG.instagram },
-  5: { ...PLATFORM_CARD_CONFIG.tiktok },
-  8: { ...PLATFORM_CARD_CONFIG.youtube },
-  9: { ...PLATFORM_CARD_CONFIG.linkedin },
-  10: { ...PLATFORM_CARD_CONFIG.reddit },
+  1: "x",
+  3: "instagram",
+  5: "tiktok",
+  8: "youtube",
+  9: "linkedin",
+  10: "reddit",
 };
 
 /* ── page ─────────────────────────────────────────────────────────────────── */
@@ -461,25 +470,33 @@ export default function SavedPosts() {
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
   const [currentUserId, setCurrentUserId] = useState(null);
   const [notice, setNotice] = useState("");
-  const [platformMap, setPlatformMap] = useState(DEFAULT_PLATFORM_MAP);
+  const [platformMap, setPlatformMap] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
+  const PLATFORM_CARD_CONFIG = useMemo(() => getPlatformCardConfig(t), [t]);
 
-  /* Fetch platform IDs from server to keep in sync with DB */
   useEffect(() => {
+    const newMap = {};
     fetch(apiUrl("/api/platforms"))
       .then((r) => r.json())
       .then((data) => {
         if (data && typeof data === "object") {
-          const newMap = { ...DEFAULT_PLATFORM_MAP };
           for (const [key, id] of Object.entries(data)) {
             const cfg = PLATFORM_CARD_CONFIG[key];
             if (cfg && id) newMap[id] = { ...cfg };
           }
-          setPlatformMap(newMap);
         }
       })
-      .catch(() => { }); // fall back to defaults
-  }, []);
+      .catch(() => { })
+      .finally(() => {
+        for (const [id, key] of Object.entries(DEFAULT_PLATFORM_MAP)) {
+          if (!newMap[id]) {
+            const cfg = PLATFORM_CARD_CONFIG[key];
+            if (cfg) newMap[id] = { ...cfg };
+          }
+        }
+        setPlatformMap(newMap);
+      });
+  }, [PLATFORM_CARD_CONFIG]);
 
   useEffect(() => {
     let mounted = true;
@@ -496,7 +513,7 @@ export default function SavedPosts() {
   useEffect(() => {
     if (!currentUserId) {
       setPosts([]);
-      setNotice("Sign in to view your saved posts.");
+      setNotice(t("savedPosts.signInToView"));
       setLoading(false);
       return;
     }
@@ -505,7 +522,7 @@ export default function SavedPosts() {
     fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
       .then(r => r.json())
       .then(data => setPosts(data.posts || []))
-      .catch(() => setNotice("Failed to load posts."))
+      .catch(() => setNotice(t("savedPosts.failedLoadPosts")))
       .finally(() => setLoading(false));
 
     window.dispatchEvent(
@@ -517,7 +534,7 @@ export default function SavedPosts() {
     const itemId = deleteModal.postId;
     setDeleteModal({ open: false, postId: null });
     if (!currentUserId) {
-      setNotice("Sign in to delete saved items.");
+      setNotice(t("savedPosts.signInToDelete"));
       return;
     }
     try {
@@ -527,12 +544,12 @@ export default function SavedPosts() {
       );
       if (!resp.ok) {
         const error = await resp.json();
-        throw new Error(error.error || "Failed to delete post");
+        throw new Error(error.error || t("savedPosts.failedDeletePost"));
       }
       setPosts((prev) => prev.filter((p) => p.id !== itemId));
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete post: " + err.message);
+      alert(t("savedPosts.deleteError", { message: err.message }));
     }
   }
 
@@ -590,7 +607,7 @@ export default function SavedPosts() {
             >
               {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
               <Text fw={700} size="sm">
-                {cfg?.label || `Platform ${platformId}`} ({platformPosts.length})
+                {cfg?.label || t("savedPosts.platformFallback", { platformId })} ({platformPosts.length})
               </Text>
               {isOpen
                 ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
