@@ -16,6 +16,7 @@ export function normalizeXPost(tweet, { platformId, competitorId }) {
       comments: tweet.public_metrics?.reply_count ?? 0,
       other_json: {
         quotes: tweet.public_metrics?.quote_count ?? 0,
+        views: tweet.public_metrics?.impression_count ?? 0,
       },
     },
   };

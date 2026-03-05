@@ -120,7 +120,7 @@ export async function getUserIdByUsername(username) {
   }
 }
 
-const TWEET_FIELDS = "created_at,public_metrics,lang,conversation_id,in_reply_to_user_id,referenced_tweets,entities,source";
+const TWEET_FIELDS = "created_at,public_metrics,lang,conversation_id,in_reply_to_user_id,referenced_tweets,entities,source,impression_count";
 
 export async function fetchPostsByUserId(userId, maxResults = 10) {
   const res = await requestWithTokenFallback({

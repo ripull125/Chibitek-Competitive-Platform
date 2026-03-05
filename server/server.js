@@ -414,21 +414,21 @@ app.post('/api/chat', async (req, res) => {
 
     const postsContext = latestPosts.length
       ? [
-          'Latest posts from Supabase (most recent first):',
-          JSON.stringify(
-            latestPosts.slice(0, 20).map((post) => ({
-              platform_id: post.platform_id,
-              competitor_id: post.competitor_id,
-              platform_post_id: post.platform_post_id,
-              url: post.url,
-              content: String(post.content || '').slice(0, 400),
-              created_at: post.created_at,
-              published_at: post.published_at,
-            })),
-            null,
-            2
-          ),
-        ].join('\n')
+        'Latest posts from Supabase (most recent first):',
+        JSON.stringify(
+          latestPosts.slice(0, 20).map((post) => ({
+            platform_id: post.platform_id,
+            competitor_id: post.competitor_id,
+            platform_post_id: post.platform_post_id,
+            url: post.url,
+            content: String(post.content || '').slice(0, 400),
+            created_at: post.created_at,
+            published_at: post.published_at,
+          })),
+          null,
+          2
+        ),
+      ].join('\n')
       : null;
 
     const systemMessages = [
@@ -879,6 +879,7 @@ app.post("/api/posts", async (req, res) => {
           author_name: author_name || username,
           author_handle: author_handle || username,
           username,
+          views: views ?? 0,
         },
       });
       if (detailsError) {
@@ -919,6 +920,8 @@ app.get("/api/posts", async (req, res) => {
       .select(`
   id,
   platform_id,
+  platform_post_id,
+  url,
   content,
   published_at,
   tone,
@@ -945,6 +948,8 @@ app.get("/api/posts", async (req, res) => {
       return {
         id: post.id,
         platform_id: post.platform_id || 0,
+        platform_post_id: post.platform_post_id || null,
+        url: post.url || null,
         content: post.content,
         published_at: post.published_at,
         tone: post.tone || null,
@@ -1755,6 +1760,11 @@ app.post('/api/tiktok/search', async (req, res) => {
 
     // ── Profile & Account ──────────────────────────────────────────────
     const handle = extractTkUsername(inputs.username);
+    const videosHandle = extractTkUsername(inputs.videosUsername);
+
+    // Deduplicate: if both profile and profileVideos target the same handle,
+    // make ONE API call and reuse the result for both labels.
+    const sameHandle = handle && videosHandle && handle === videosHandle;
 
     if (options.profile && handle) {
       labels.push('profile');
@@ -1770,9 +1780,9 @@ app.post('/api/tiktok/search', async (req, res) => {
     }
 
     // ── Videos & Content ───────────────────────────────────────────────
-    // Profile videos come from the profile endpoint's itemList
-    const videosHandle = extractTkUsername(inputs.videosUsername);
-    if (options.profileVideos && videosHandle) {
+    // Profile videos come from the profile endpoint's itemList.
+    // Skip the duplicate call if we already fetched the same handle above.
+    if (options.profileVideos && videosHandle && !(sameHandle && options.profile)) {
       labels.push('profileVideos');
       tasks.push(scrapeCreators('/v1/tiktok/profile', { handle: videosHandle }));
     }
@@ -1818,6 +1828,11 @@ app.post('/api/tiktok/search', async (req, res) => {
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
       }
     });
+
+    // If we deduped the profile+profileVideos call, copy profile → profileVideos
+    if (sameHandle && options.profile && options.profileVideos && results.profile && !results.profileVideos) {
+      results.profileVideos = results.profile;
+    }
 
     return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
@@ -2317,17 +2332,17 @@ app.get('/api/platforms', async (req, res) => {
 // the UI can show which social networks it appears on.
 // ─────────────────────────────────────────────────────────────────────────────
 const KW_STOPWORDS = new Set([
-  'about','after','again','also','another','back','been','before','being',
-  'between','both','came','come','could','each','even','every','from','give',
-  'going','good','great','have','here','into','just','keep','know','like',
-  'look','make','more','most','much','need','never','next','once','only',
-  'open','other','over','same','should','since','some','such','than','that',
-  'them','then','there','these','think','those','through','time','very','want',
-  'well','were','what','when','where','which','while','will','with','your',
-  'people','way','day','how','our','use','now','may','new','you','all','can',
-  'get','got','its','let','him','her','his','she','they','was','are','has',
-  'had','does','did','the','and','for','not','but','this','from','they',
-  'been','out','too','any','one','via','just','also','really','like','still',
+  'about', 'after', 'again', 'also', 'another', 'back', 'been', 'before', 'being',
+  'between', 'both', 'came', 'come', 'could', 'each', 'even', 'every', 'from', 'give',
+  'going', 'good', 'great', 'have', 'here', 'into', 'just', 'keep', 'know', 'like',
+  'look', 'make', 'more', 'most', 'much', 'need', 'never', 'next', 'once', 'only',
+  'open', 'other', 'over', 'same', 'should', 'since', 'some', 'such', 'than', 'that',
+  'them', 'then', 'there', 'these', 'think', 'those', 'through', 'time', 'very', 'want',
+  'well', 'were', 'what', 'when', 'where', 'which', 'while', 'will', 'with', 'your',
+  'people', 'way', 'day', 'how', 'our', 'use', 'now', 'may', 'new', 'you', 'all', 'can',
+  'get', 'got', 'its', 'let', 'him', 'her', 'his', 'she', 'they', 'was', 'are', 'has',
+  'had', 'does', 'did', 'the', 'and', 'for', 'not', 'but', 'this', 'from', 'they',
+  'been', 'out', 'too', 'any', 'one', 'via', 'just', 'also', 'really', 'like', 'still',
 ]);
 
 function extractPostKeywords(content, extraJson, platformName) {
@@ -2337,15 +2352,15 @@ function extractPostKeywords(content, extraJson, platformName) {
 
   if (platformName === 'youtube') {
     // YouTube stores title + description in extra_json
-    if (extraJson?.title)       parts.push(extraJson.title);
+    if (extraJson?.title) parts.push(extraJson.title);
     if (extraJson?.description) parts.push(extraJson.description.slice(0, 400));
   }
   if (platformName === 'reddit') {
     // Reddit posts have title as content and optionally subreddit in extra_json
-    if (extraJson?.subreddit)   parts.push(`r/${extraJson.subreddit}`);
+    if (extraJson?.subreddit) parts.push(`r/${extraJson.subreddit}`);
   }
   if (platformName === 'linkedin') {
-    if (extraJson?.name)        parts.push(extraJson.name);
+    if (extraJson?.name) parts.push(extraJson.name);
   }
 
   const combined = parts.join(' ');
@@ -2377,13 +2392,13 @@ function extractPostKeywords(content, extraJson, platformName) {
 
 // Platform name lookup keyed by numeric ID (populated once from DB at query time)
 const PLATFORM_DISPLAY = {
-  x:         { label: 'X',         color: 'dark'   },
-  twitter:   { label: 'X',         color: 'dark'   },
-  youtube:   { label: 'YouTube',   color: 'red'    },
-  linkedin:  { label: 'LinkedIn',  color: 'blue'   },
-  instagram: { label: 'Instagram', color: 'pink'   },
-  tiktok:    { label: 'TikTok',    color: 'violet' },
-  reddit:    { label: 'Reddit',    color: 'orange' },
+  x: { label: 'X', color: 'dark' },
+  twitter: { label: 'X', color: 'dark' },
+  youtube: { label: 'YouTube', color: 'red' },
+  linkedin: { label: 'LinkedIn', color: 'blue' },
+  instagram: { label: 'Instagram', color: 'pink' },
+  tiktok: { label: 'TikTok', color: 'violet' },
+  reddit: { label: 'Reddit', color: 'orange' },
 };
 
 app.get('/api/keywords', async (req, res) => {
@@ -2423,29 +2438,29 @@ app.get('/api/keywords', async (req, res) => {
         (a, b) => new Date(b.snapshot_at || 0) - new Date(a.snapshot_at || 0)
       )[0] || {};
 
-      const likes    = Number(m.likes    || 0);
+      const likes = Number(m.likes || 0);
       const comments = Number(m.comments || 0);
-      const views    = Number(m.other_json?.views || 0);
+      const views = Number(m.other_json?.views || 0);
 
       const weightedScore =
         comments * 5 +
-        likes    * 2 +
+        likes * 2 +
         Math.log10(views + 1) * 1;  // log-scaled views avoid YouTube dominating
 
       const platformName = (p.platforms?.name || '').toLowerCase();
-      const extraJson    = p.post_details_platform?.[0]?.extra_json || {};
+      const extraJson = p.post_details_platform?.[0]?.extra_json || {};
 
       return {
-        id:            p.id,
+        id: p.id,
         weightedScore,
         likes,
         comments,
         views,
-        platform_id:   p.platform_id,
+        platform_id: p.platform_id,
         platform_name: platformName,
         competitor_id: p.competitor_id,
-        keywords:      extractPostKeywords(p.content, extraJson, platformName),
-        chronoIdx:     idx,
+        keywords: extractPostKeywords(p.content, extraJson, platformName),
+        chronoIdx: idx,
       };
     });
 
@@ -2488,12 +2503,12 @@ app.get('/api/keywords', async (req, res) => {
         const d = kwData[kw];
         d.scores.push(post.normalizedScore);
         d.rawScores.push(post.weightedScore);
-        d.totalLikes    += post.likes;
+        d.totalLikes += post.likes;
         d.totalComments += post.comments;
-        d.totalViews    += post.views;
+        d.totalViews += post.views;
         if (post.platform_name) d.platforms.add(post.platform_name);
         if (isRecent) d.recentScores.push(post.normalizedScore);
-        else          d.olderScores.push(post.normalizedScore);
+        else d.olderScores.push(post.normalizedScore);
       });
     });
 
@@ -2502,27 +2517,27 @@ app.get('/api/keywords', async (req, res) => {
     const results = [];
 
     Object.entries(kwData).forEach(([kw, d]) => {
-      const n      = d.scores.length;
-      const avg    = d.scores.reduce((s, v) => s + v, 0) / n;
+      const n = d.scores.length;
+      const avg = d.scores.reduce((s, v) => s + v, 0) / n;
       const rawAvg = d.rawScores.reduce((s, v) => s + v, 0) / n;
 
       // Bayesian shrinkage toward globalMean (1.0)
       const bayesianAvg = (n * avg + K * globalMean) / (n + K);
 
       // Consistency: penalise high variance (CV = coefficient of variation)
-      const variance    = d.scores.reduce((s, v) => s + (v - avg) ** 2, 0) / n;
-      const stdDev      = Math.sqrt(variance);
-      const cv          = avg > 0 ? stdDev / avg : 0;
+      const variance = d.scores.reduce((s, v) => s + (v - avg) ** 2, 0) / n;
+      const stdDev = Math.sqrt(variance);
+      const cv = avg > 0 ? stdDev / avg : 0;
       const consistency = 1 / (1 + Math.min(cv, 1.0));
 
       // Trend: compare recent vs older normalised performance
       const recentAvg = d.recentScores.length
         ? d.recentScores.reduce((s, v) => s + v, 0) / d.recentScores.length : avg;
-      const olderAvg  = d.olderScores.length
-        ? d.olderScores.reduce((s, v) => s + v, 0) / d.olderScores.length  : avg;
+      const olderAvg = d.olderScores.length
+        ? d.olderScores.reduce((s, v) => s + v, 0) / d.olderScores.length : avg;
       const trendRatio = olderAvg > 0 ? recentAvg / olderAvg : 1;
       const trendBoost = trendRatio > 1 ? Math.min(Math.sqrt(trendRatio), 1.5) : 1.0;
-      const trendDir   = trendRatio >= 1.4 ? 'rising' : trendRatio <= 0.7 ? 'falling' : 'stable';
+      const trendDir = trendRatio >= 1.4 ? 'rising' : trendRatio <= 0.7 ? 'falling' : 'stable';
 
       const rawScore = bayesianAvg * consistency * trendBoost;
 
@@ -2532,18 +2547,18 @@ app.get('/api/keywords', async (req, res) => {
         .filter((v, i, a) => a.findIndex(x => x.label === v.label) === i); // dedupe by label
 
       results.push({
-        term:          kw,
+        term: kw,
         rawScore,
-        kpi:           0,          // filled in after normalisation below
+        kpi: 0,          // filled in after normalisation below
         avgEngagement: Math.round(rawAvg),
         normalizedAvg: Math.round(avg * 100) / 100,
-        sampleSize:    n,
-        consistency:   Math.round(consistency * 100),
-        trend:         Math.round(trendRatio * 100) / 100,
+        sampleSize: n,
+        consistency: Math.round(consistency * 100),
+        trend: Math.round(trendRatio * 100) / 100,
         trendDir,
-        totalLikes:    d.totalLikes,
+        totalLikes: d.totalLikes,
         totalComments: d.totalComments,
-        totalViews:    d.totalViews,
+        totalViews: d.totalViews,
         platforms,
       });
     });
