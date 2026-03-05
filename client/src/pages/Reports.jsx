@@ -21,6 +21,7 @@ import {
 import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // holds posts already converted to universal format
 // previous version used a global var; switched to component state instead

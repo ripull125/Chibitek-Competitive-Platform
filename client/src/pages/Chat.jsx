@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-react';
 import { apiUrl } from '../utils/api';
 import { supabase } from '../supabaseClient';
+import { useTranslation } from "react-i18next";
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
 const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
@@ -123,6 +124,7 @@ export default function ChatInput() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const hasHydratedRef = useRef(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     let mounted = true;

@@ -30,6 +30,7 @@ import {
   togglePlatform,
 } from "../utils/connectedPlatforms";
 import "../utils/ui.css";
+import { useTranslation } from "react-i18next";
 
 const CATALOG = [
   {

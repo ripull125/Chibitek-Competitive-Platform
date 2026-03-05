@@ -41,6 +41,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import classes from "./DashboardPage.module.css";
+import { useTranslation } from "react-i18next";
 
 /* ---------- Utils & demo data ---------- */
 const fmtK = (n) =>

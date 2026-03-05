@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 
 import classes from "./Settings.module.css";
 import "../utils/ui.css";
+import { useTranslation } from "react-i18next";
 
 function SettingsCard({ label, title, description, children }) {
   return (

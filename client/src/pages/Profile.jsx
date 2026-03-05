@@ -21,6 +21,7 @@ import {
 import { IconCamera, IconCheck, IconUser } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import "../utils/ui.css"; // shared title styles
+import { useTranslation } from "react-i18next";
 
 function useObjectUrl(file) {
   const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);

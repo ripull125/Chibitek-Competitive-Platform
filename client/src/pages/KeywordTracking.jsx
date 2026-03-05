@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
+import { useTranslation } from "react-i18next";
 
 /* ── tiny helpers ─────────────────────────────────────────────────────────── */
 

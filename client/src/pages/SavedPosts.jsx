@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ActionIcon, Alert, Badge, Button, Card, Collapse, Divider,
   Group, LoadingOverlay, Modal, Paper, Stack, Text, Title, Tooltip,
@@ -59,7 +60,7 @@ function XPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandX size={18} style={{ opacity: 0.55 }} />
-            <Tooltip label="Remove saved post">
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
               </ActionIcon>
@@ -454,6 +455,7 @@ const DEFAULT_PLATFORM_MAP = {
 /* ── page ─────────────────────────────────────────────────────────────────── */
 
 export default function SavedPosts() {
+  const { t } = useTranslation();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState({ open: false, postId: null });
@@ -557,9 +559,9 @@ export default function SavedPosts() {
 
       {/* page header */}
       <Group justify="space-between" align="center">
-        <Title order={2}>Saved Posts</Title>
+        <Title order={2}>{t("savedPosts.title")}</Title>
         <Badge variant="filled" size="lg" radius="sm" color="blue">
-          {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
+          {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
         </Badge>
       </Group>
 
@@ -567,7 +569,7 @@ export default function SavedPosts() {
 
       {!loading && posts.length === 0 && !notice && (
         <Alert color="gray" variant="light" radius="md">
-          No saved posts yet. Head to Competitor Lookup to search and save posts.
+          {t("savedPosts.noSavedPosts")}
         </Alert>
       )}
 
@@ -614,14 +616,14 @@ export default function SavedPosts() {
       <Modal
         opened={deleteModal.open}
         onClose={() => setDeleteModal({ open: false, postId: null })}
-        title="Confirm Delete"
+        title={t("savedPosts.confirmDeleteTitle")}
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete this post? This action cannot be undone.</Text>
+          <Text>{t("savedPosts.confirmDeleteMessage")}</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>Cancel</Button>
-            <Button color="red" onClick={handleDelete}>Delete</Button>
+            <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>{t("savedPosts.cancel")}</Button>
+            <Button color="red" onClick={handleDelete}>{t("savedPosts.delete")}</Button>
           </Group>
         </Stack>
       </Modal>

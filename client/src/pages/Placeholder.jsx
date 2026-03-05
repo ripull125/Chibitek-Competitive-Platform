@@ -5,6 +5,7 @@ import DownloadJSON from "../../components/DownloadJSON";
 import DownloadTXT from "../../components/DownloadTXT";
 import DownloadCSV from "../../components/DownloadCSV";
 import { apiUrl } from "../utils/api";
+import { useTranslation } from "react-i18next";
 
 // Import the RechartsTest chart
 // import RechartsTest from "../../../recharts/src/RechartsTest.jsx";

@@ -47,6 +47,7 @@ import {
 } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
+import { useTranslation } from "react-i18next";
 
 /* ── Platform metadata ─────────────────────────────────────────────── */
 const PLATFORMS = {

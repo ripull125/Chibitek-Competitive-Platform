@@ -46,6 +46,7 @@ import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
 import { Checkbox, NumberInput, Transition } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 
 function LabelWithInfo({ label, info }) {
   return (
