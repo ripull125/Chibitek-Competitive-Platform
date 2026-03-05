@@ -84,9 +84,20 @@ const TOUR_FLOW = [
         title: "Trending keywords",
         body: "This table shows what is trending right now, including volume and rank movement.",
       },
+      
+    ],
+  },
+  {
+    key: "autoscraper",
+    path: "/watchlist",
+    tips: [
       {
-        title: "Category momentum",
-        body: "Charts show category movement over time so you can spot shifts early.",
+        title: "Autoscraper",
+        body: "Automatically pull posts from your watchlist so you can focus on analysis.",
+      },
+      {
+        title: "Configure and run",
+        body: "Add targets, set schedules, and execute scrapes with a click to keep data fresh.",
       },
     ],
   },
