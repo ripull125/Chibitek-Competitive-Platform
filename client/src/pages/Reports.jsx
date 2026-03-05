@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Alert, Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
-import { IconDownload, IconSparkles, IconRefresh } from "@tabler/icons-react";
+import { Badge, Button, Card, Checkbox, Chip, Container, Group, Title, Paper, LoadingOverlay, RangeSlider, SegmentedControl, Stack, Text, Select, Switch } from "@mantine/core";
+import { IconDownload, IconSparkles, IconRefresh, IconChartDots, IconChartBar } from "@tabler/icons-react";
 import {
   ScatterChart,
   Scatter,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -30,6 +32,7 @@ const KW_SUMMARY_KEY = "chibitek-keyword-summary";
 
 export default function Reports() {
   const chartRef = useRef(null);
+  const toneChartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
   const [includeTone, setIncludeTone] = useState(true);
   const [includeSummary, setIncludeSummary] = useState(true);
@@ -43,6 +46,10 @@ export default function Reports() {
   const [topKeywords, setTopKeywords] = useState([]);
   const [keywordSummary, setKeywordSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [toneFilter, setToneFilter] = useState([]);        // empty = show all
+  const [engRange, setEngRange] = useState([0, 100]);       // percentile range
+  const [chartView, setChartView] = useState("scatter");    // scatter | bar
+  const [showUnlabeled, setShowUnlabeled] = useState(true);
   const { t } = useTranslation();
 
   // Persist & restore keyword summary from localStorage
@@ -212,17 +219,33 @@ export default function Reports() {
         cursorY += 10;
       }
 
-      // ── Tone Analysis
+      // ── Tone Analysis (chart screenshot + text stats)
       if (includeTone && toneEngagementData.length > 0) {
+        // Screenshot the tone chart
+        if (toneChartRef.current) {
+          const toneCanvas = await html2canvas(toneChartRef.current, { scale: 2 });
+          const toneImgData = toneCanvas.toDataURL("image/png");
+          const toneImgW = contentWidth;
+          let toneImgH = (toneCanvas.height * toneImgW) / toneCanvas.width;
+          const maxToneH = pageHeight - margin * 2 - 10;
+          if (toneImgH > maxToneH) {
+            const s = maxToneH / toneImgH;
+            toneImgH = maxToneH;
+            const sw = toneImgW * s;
+            const xOff = margin + (contentWidth - sw) / 2;
+            checkPage(toneImgH + 10);
+            pdf.addImage(toneImgData, "PNG", xOff, cursorY, sw, toneImgH);
+          } else {
+            checkPage(toneImgH + 10);
+            pdf.addImage(toneImgData, "PNG", margin, cursorY, toneImgW, toneImgH);
+          }
+          cursorY += toneImgH + 16;
+        }
+
+        // Stats text
         checkPage(60);
-        pdf.setFontSize(13);
-        pdf.setFont(undefined, "bold");
-        pdf.text(t("reports.engagementChartTitle"), margin, cursorY);
-        cursorY += 16;
         pdf.setFontSize(10);
         pdf.setFont(undefined, "normal");
-
-        // Stats
         const totalEng = toneEngagementData.reduce((s, p) => s + p.engagement, 0);
         const avgEng = (totalEng / toneEngagementData.length).toFixed(2);
         pdf.text(`${t("reports.totalPosts")}: ${toneEngagementData.length}`, margin, cursorY);
@@ -270,6 +293,52 @@ export default function Reports() {
   ];
 
   const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
+
+  // ── Derived: which tones exist in the data
+  const activeTones = useMemo(() => {
+    const set = new Set();
+    toneEngagementData.forEach(d => { if (d.tone) set.add(d.tone); });
+    return TONES.filter(t => set.has(t));
+  }, [toneEngagementData]);
+
+  // ── Derived: engagement min/max for the slider
+  const engMinMax = useMemo(() => {
+    if (!toneEngagementData.length) return [0, 1];
+    const vals = toneEngagementData.map(d => d.engagement);
+    return [Math.min(...vals), Math.max(...vals)];
+  }, [toneEngagementData]);
+
+  // ── Derived: filtered chart data
+  const filteredToneData = useMemo(() => {
+    const [lo, hi] = engMinMax;
+    const range = hi - lo || 1;
+    return toneEngagementData.filter(d => {
+      // Tone filter
+      if (toneFilter.length > 0) {
+        if (d.tone && !toneFilter.includes(d.tone)) return false;
+        if (!d.tone && !showUnlabeled) return false;
+      }
+      if (!d.tone && !showUnlabeled) return false;
+      // Engagement percentile filter
+      const pct = ((d.engagement - lo) / range) * 100;
+      if (pct < engRange[0] || pct > engRange[1]) return false;
+      return true;
+    });
+  }, [toneEngagementData, toneFilter, engRange, engMinMax, showUnlabeled]);
+
+  // ── Derived: bar chart aggregation by tone
+  const barData = useMemo(() => {
+    const map = {};
+    filteredToneData.forEach(d => {
+      const key = d.tone || 'Unlabeled';
+      if (!map[key]) map[key] = { tone: key, totalEngagement: 0, count: 0 };
+      map[key].totalEngagement += d.engagement;
+      map[key].count += 1;
+    });
+    return Object.values(map)
+      .map(d => ({ ...d, avgEngagement: Math.round(d.totalEngagement / d.count) }))
+      .sort((a, b) => b.avgEngagement - a.avgEngagement);
+  }, [filteredToneData]);
 
   return (
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
@@ -429,42 +498,135 @@ export default function Reports() {
       )}
 
       {/* Saved Posts Source-Based Engagement Chart */}
-      {includeTone && <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
-        <Title order={2} size="h3" mb="md">
-          {t("reports.engagementChartTitle")}
-        </Title>
-        {toneEngagementData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={400}>
-            <ScatterChart>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" name={t("reports.postIndex")} />
-              <YAxis dataKey="engagement" name={t("reports.engagement")} />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Legend />
-              {TONES.map((tone) => {
-                const pts = toneEngagementData.filter((d) => d.tone === tone);
-                if (!pts || !pts.length) return null;
-                return (
-                  <Scatter
-                    key={tone}
-                    name={tone}
-                    data={pts}
-                    dataKey="engagement"
-                    fill={TONE_COLOR[tone]}
-                  />
-                );
-              })}
-              {/* Fallback for unlabelled posts */}
-              {toneEngagementData.some((d) => !d.tone) && (
-                <Scatter
-                  name={t("reports.unlabeled")}
-                  data={toneEngagementData.filter((d) => !d.tone)}
-                  dataKey="engagement"
-                  fill="#adb5bd"
-                />
+      {includeTone && <Paper ref={toneChartRef} p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
+        <Group justify="space-between" mb="sm" align="flex-start">
+          <Title order={2} size="h3">
+            {t("reports.engagementChartTitle")}
+          </Title>
+          <SegmentedControl
+            size="xs"
+            value={chartView}
+            onChange={setChartView}
+            data={[
+              { label: <Group gap={4}><IconChartDots size={14} /> Scatter</Group>, value: 'scatter' },
+              { label: <Group gap={4}><IconChartBar size={14} /> Bar</Group>, value: 'bar' },
+            ]}
+          />
+        </Group>
+
+        {/* ── Filter bar ── */}
+        {toneEngagementData.length > 0 && (
+          <Stack gap="xs" mb="md">
+            {/* Tone chip filters */}
+            <Group gap={6} wrap="wrap">
+              <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Tones:</Text>
+              {activeTones.map(tone => (
+                <Chip
+                  key={tone}
+                  size="xs"
+                  variant="light"
+                  color={TONE_COLOR[tone]}
+                  checked={toneFilter.length === 0 || toneFilter.includes(tone)}
+                  onChange={(checked) => {
+                    setToneFilter(prev => {
+                      if (prev.length === 0) {
+                        // selecting one = filter to only that one
+                        return [tone];
+                      }
+                      if (checked) {
+                        const next = [...prev, tone];
+                        // if all are selected, reset to show-all
+                        return next.length >= activeTones.length ? [] : next;
+                      }
+                      return prev.filter(t => t !== tone);
+                    });
+                  }}
+                >
+                  {tone}
+                </Chip>
+              ))}
+              <Chip
+                size="xs"
+                variant="light"
+                color="gray"
+                checked={showUnlabeled}
+                onChange={setShowUnlabeled}
+              >
+                Unlabeled
+              </Chip>
+              {toneFilter.length > 0 && (
+                <Button size="compact-xs" variant="subtle" onClick={() => setToneFilter([])}>Reset</Button>
               )}
-            </ScatterChart>
-          </ResponsiveContainer>
+            </Group>
+
+            {/* Engagement range slider */}
+            <Group gap="sm" align="center">
+              <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Range:</Text>
+              <div style={{ flex: 1, maxWidth: 300 }}>
+                <RangeSlider
+                  size="xs"
+                  min={0}
+                  max={100}
+                  value={engRange}
+                  onChange={setEngRange}
+                  label={(v) => `${v}%`}
+                  marks={[{ value: 0, label: 'Low' }, { value: 50, label: 'Mid' }, { value: 100, label: 'High' }]}
+                />
+              </div>
+              <Text size="xs" c="dimmed">{filteredToneData.length} / {toneEngagementData.length} posts</Text>
+            </Group>
+          </Stack>
+        )}
+
+        {filteredToneData.length > 0 ? (
+          chartView === 'scatter' ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <ScatterChart>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="index" name={t("reports.postIndex")} />
+                <YAxis dataKey="engagement" name={t("reports.engagement")} />
+                <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                <Legend />
+                {TONES.map((tone) => {
+                  const pts = filteredToneData.filter((d) => d.tone === tone);
+                  if (!pts.length) return null;
+                  return (
+                    <Scatter
+                      key={tone}
+                      name={tone}
+                      data={pts}
+                      dataKey="engagement"
+                      fill={TONE_COLOR[tone]}
+                    />
+                  );
+                })}
+                {showUnlabeled && filteredToneData.some((d) => !d.tone) && (
+                  <Scatter
+                    name={t("reports.unlabeled")}
+                    data={filteredToneData.filter((d) => !d.tone)}
+                    dataKey="engagement"
+                    fill="#adb5bd"
+                  />
+                )}
+              </ScatterChart>
+            </ResponsiveContainer>
+          ) : (
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={barData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tone" tick={{ fontSize: 11 }} interval={0} angle={-25} textAnchor="end" height={60} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="avgEngagement" name="Avg Engagement" radius={[4, 4, 0, 0]}>
+                  {barData.map((entry) => (
+                    <Cell key={entry.tone} fill={TONE_COLOR[entry.tone] || '#adb5bd'} />
+                  ))}
+                </Bar>
+                <Bar dataKey="count" name="Post Count" radius={[4, 4, 0, 0]} fill="#868e96" opacity={0.5} />
+              </BarChart>
+            </ResponsiveContainer>
+          )
         ) : (
           <Title order={4} c="dimmed">{t("reports.noPostsToDisplay")}</Title>
         )}
