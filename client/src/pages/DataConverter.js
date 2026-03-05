@@ -5,6 +5,7 @@ import { apiBase } from '../utils/api';
  * @property {string} Name/Source - The username or source of the data
  * @property {number} Engagement - Total engagement count (likes + retweets + replies + quotes + bookmarks)
  * @property {string} Message - The post text content
+ * @property {String} Tone
  */
 
 // Client-side sentiment removed.  labels will be provided by the server LLM via `/api/assign-strategy`.
@@ -51,7 +52,7 @@ export { convertXInput, convertSavedPosts };
  * Send universal-format posts to the server for LLM-based tone analysis.
  * Calls /api/tone for each post individually using Cerebras.
  * @param {Array<Object>} universalPosts - array of objects with keys 'Name/Source', 'Engagement', 'Message'
- * @returns {Promise<Array<Object>>} - resolved array of posts augmented with `Tone`
+ * @returns {Promise<Array<Object>>} - resolved array of posts augmented with `tone`
  */
 // simple fetch wrapper with timeout support
 async function fetchWithTimeout(resource, options = {}, timeout = 5000) {
@@ -64,7 +65,7 @@ async function fetchWithTimeout(resource, options = {}, timeout = 5000) {
   }
 }
 
-async function analyzeUniversalPosts(universalPosts) {
+async function analyzeUniversalPosts(universalPosts, userId) {
   if (!Array.isArray(universalPosts)) throw new Error('universalPosts must be an array');
 
   const analyzed = [];
@@ -73,7 +74,7 @@ async function analyzeUniversalPosts(universalPosts) {
     // ensure there's a non-empty message to send; server rejects falsy
     const msgText = String(post.Message || '').trim();
     if (!msgText) {
-      analyzed.push({ ...post, Tone: null, _toneError: 'empty message' });
+      analyzed.push({ ...post, tone: null, _toneError: 'empty message' });
       continue;
     }
 
@@ -91,7 +92,11 @@ async function analyzeUniversalPosts(universalPosts) {
         resp = await fetchWithTimeout(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msgText }),
+          body: JSON.stringify({
+            message: msgText,
+            post_id: post.id,  // pass post id if available
+            user_id: userId,   // pass user id if available
+          }),
         }, 5000);
         if (resp && resp.ok) break; // success, exit loop
         if (resp) {
@@ -105,7 +110,7 @@ async function analyzeUniversalPosts(universalPosts) {
 
     if (!resp || !resp.ok) {
       console.error('Tone API error for message:', lastError);
-      analyzed.push({ ...post, Tone: null, _toneError: lastError });
+      analyzed.push({ ...post, tone: null, _toneError: lastError });
       continue;
     }
 
@@ -114,13 +119,13 @@ async function analyzeUniversalPosts(universalPosts) {
       const toneLabel = data.result?.normalized?.tone || data.result?.parsed?.tone || null;
       analyzed.push({
         ...post,
-        Tone: toneLabel,
+        tone: toneLabel,
         _toneRaw: data.result?.raw,
         _toneParsed: data.result?.parsed,
       });
     } catch (err) {
       console.error('Failed parsing tone response:', err);
-      analyzed.push({ ...post, Tone: null, _toneError: String(err.message) });
+      analyzed.push({ ...post, tone: null, _toneError: String(err.message) });
     }
   }
 
@@ -143,11 +148,15 @@ function convertSavedPosts(posts) {
     // Calculate total engagement from likes, shares, and comments
     const engagement = (post.likes || 0) + (post.shares || 0) + (post.comments || 0);
     const messageText = post.content || '';
+    // preserve any tone value that may already exist in the saved post
+    const toneValue = post.tone !== undefined ? post.tone : null;
     
     return {
+      id: post.id,
       'Name/Source': 'Saved Posts',
       'Engagement': engagement,
-      'Message': messageText
+      'Message': messageText,
+      tone: toneValue,
     };
   });
 }
