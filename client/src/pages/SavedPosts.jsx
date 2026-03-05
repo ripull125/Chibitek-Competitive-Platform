@@ -199,7 +199,7 @@ function LinkedInPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.extra?.author_name || post.username || "Unknown";
+  const name = post.extra?.author_name || post.username || t("savedPosts.unknown");
   const tone = post.tone;
 
   return (
@@ -261,7 +261,7 @@ function InstagramPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
   const tone = post.tone;
 
   return (
@@ -325,7 +325,7 @@ function TikTokPostCard({ post, onDelete }) {
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const tone = post.tone;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #000" }}>
@@ -388,7 +388,7 @@ function RedditPostCard({ post, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (post.content || "").length > 280;
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || "Unknown";
+  const name = post.username || post.extra?.username || t("savedPosts.unknown");
   const tone = post.tone;
 
   return (
@@ -475,16 +475,14 @@ function GenericPostCard({ post, onDelete }) {
 
 /* ── platform config (default IDs; overridden dynamically from server) ──── */
 
-function getPlatformCardConfig(t) {
-  return {
-    x: { label: t("savedPosts.platforms.x"), icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
-    instagram: { label: t("savedPosts.platforms.instagram"), icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
-    tiktok: { label: t("savedPosts.platforms.tiktok"), icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
-    youtube: { label: t("savedPosts.platforms.youtube"), icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
-    linkedin: { label: t("savedPosts.platforms.linkedin"), icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
-    reddit: { label: t("savedPosts.platforms.reddit"), icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
-  };
-}
+const PLATFORM_CARD_CONFIG = {
+  x: { label: "X / Twitter", icon: IconBrandX, color: "#1d9bf0", Card: XPostCard },
+  instagram: { label: "Instagram", icon: IconBrandInstagram, color: "#E1306C", Card: InstagramPostCard },
+  tiktok: { label: "TikTok", icon: IconBrandTiktok, color: "#000", Card: TikTokPostCard },
+  youtube: { label: "YouTube", icon: IconBrandYoutube, color: "#ff0000", Card: YouTubePostCard },
+  linkedin: { label: "LinkedIn", icon: IconBrandLinkedin, color: "#0A66C2", Card: LinkedInPostCard },
+  reddit: { label: "Reddit", icon: IconBrandReddit, color: "#FF4500", Card: RedditPostCard },
+};
 
 const DEFAULT_PLATFORM_MAP = {
   1: { ...PLATFORM_CARD_CONFIG.x },
@@ -507,7 +505,6 @@ export default function SavedPosts() {
   const [notice, setNotice] = useState("");
   const [platformMap, setPlatformMap] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
-  const PLATFORM_CARD_CONFIG = useMemo(() => getPlatformCardConfig(t), [t]);
 
   useEffect(() => {
     const newMap = {};
@@ -523,15 +520,14 @@ export default function SavedPosts() {
       })
       .catch(() => { })
       .finally(() => {
-        for (const [id, key] of Object.entries(DEFAULT_PLATFORM_MAP)) {
+        for (const [id, cfg] of Object.entries(DEFAULT_PLATFORM_MAP)) {
           if (!newMap[id]) {
-            const cfg = PLATFORM_CARD_CONFIG[key];
-            if (cfg) newMap[id] = { ...cfg };
+            newMap[id] = { ...cfg };
           }
         }
         setPlatformMap(newMap);
       });
-  }, [PLATFORM_CARD_CONFIG]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

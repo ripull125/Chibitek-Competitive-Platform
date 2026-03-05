@@ -7,7 +7,9 @@ const resources = {
         start: "Start",
         refresh: "Refresh",
         current: "Current:",
-        chooseLanguage: "Choose language"
+        chooseLanguage: "Choose language",
+        post: "post",
+        posts: "posts"
       },
       nav: {
         dashboard: "Dashboard",
@@ -420,7 +422,7 @@ const resources = {
         you: "You",
         chibitekAI: "ChibitekAI",
         savedConversations: "Saved conversations",
-        
+
       },
       reports: {
         title: "Reports",
@@ -694,7 +696,9 @@ const resources = {
         start: "開始",
         refresh: "更新",
         current: "現在:",
-        chooseLanguage: "言語を選択"
+        chooseLanguage: "言語を選択",
+        post: "件の投稿",
+        posts: "件の投稿"
       },
       nav: {
         dashboard: "ダッシュボード",
@@ -1077,7 +1081,7 @@ const resources = {
       chat: {
         title: "チャット（AI）",
         description: "モデルとチャットしたり、コンテキスト用のファイルを添付したり、プロンプトを話したりできます。",
-        defaultGreeting: "こんにちは！私はChibitekAIです。競合リサーチについて何でも聞いてください。", 
+        defaultGreeting: "こんにちは！私はChibitekAIです。競合リサーチについて何でも聞いてください。",
         newChat: "新規チャット",
         chats: "チャット",
         enterMessage: "メッセージを入力...",
@@ -1380,7 +1384,9 @@ const resources = {
         start: "Démarrer",
         refresh: "Actualiser",
         current: "Actuel :",
-        chooseLanguage: "Choisir la langue"
+        chooseLanguage: "Choisir la langue",
+        post: "article",
+        posts: "articles"
       },
       nav: {
         dashboard: "Tableau de bord",
@@ -2066,7 +2072,9 @@ const resources = {
         start: "Starten",
         refresh: "Aktualisieren",
         current: "Aktuell:",
-        chooseLanguage: "Sprache wählen"
+        chooseLanguage: "Sprache wählen",
+        post: "Beitrag",
+        posts: "Beiträge"
       },
       nav: {
         dashboard: "Dashboard",
@@ -2753,7 +2761,9 @@ const resources = {
         start: "Comenzar",
         refresh: "Actualizar",
         current: "Actual:",
-        chooseLanguage: "Elegir idioma"
+        chooseLanguage: "Elegir idioma",
+        post: "publicación",
+        posts: "publicaciones"
       },
       nav: {
         dashboard: "Panel",
