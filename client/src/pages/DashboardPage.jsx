@@ -1,5 +1,5 @@
 // client/src/pages/DashboardPage.jsx
-import React from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ActionIcon,
   Avatar,
@@ -9,557 +9,932 @@ import {
   Card,
   Divider,
   Group,
-  List,
-  ScrollArea,
+  Paper,
+  SegmentedControl,
+  Select,
+  SimpleGrid,
+  Skeleton,
   Stack,
   Text,
   ThemeIcon,
   Title,
   Tooltip,
-  Transition,
 } from "@mantine/core";
 import {
-  IconArrowUp,
-  IconArrowDown,
-  IconBolt,
+  IconArrowUpRight,
+  IconArrowDownRight,
+  IconBrandInstagram,
+  IconBrandLinkedin,
+  IconBrandReddit,
+  IconBrandTiktok,
+  IconBrandX,
+  IconBrandYoutube,
+  IconChartBar,
+  IconChartDots,
+  IconChartLine,
+  IconDownload,
   IconExternalLink,
+  IconEye,
+  IconHeart,
+  IconMessage,
+  IconMessageChatbot,
+  IconMoodSmile,
   IconSparkles,
   IconTargetArrow,
-  IconChartDots,
   IconTrendingUp,
+  IconUsers,
 } from "@tabler/icons-react";
 import {
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
-  ZAxis,
-  Tooltip as RechartsTooltip,
   CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { apiUrl } from "../utils/api";
 import classes from "./DashboardPage.module.css";
 import { useTranslation } from "react-i18next";
 
-/* ---------- Utils & demo data ---------- */
-const fmtK = (n) =>
-  n >= 1000 ? `${Math.round(n / 100) / 10}k` : n.toLocaleString();
+/* ------------------------------------------------------------------ */
+/*  Constants                                                          */
+/* ------------------------------------------------------------------ */
+const PLATFORM_COLORS = {
+  x: "#1DA1F2",
+  twitter: "#1DA1F2",
+  linkedin: "#0A66C2",
+  instagram: "#E4405F",
+  youtube: "#FF0000",
+  tiktok: "#00f2ea",
+  reddit: "#FF4500",
+};
 
-const KPI = [
-  { labelKey: "mentions", value: 18920, delta: +14 },
-  { labelKey: "avgEngagement", value: 96, delta: +7 },
-  { labelKey: "shareOfVoice", value: "31%", delta: +2 },
-  { labelKey: "momentum", value: "+12%", delta: +12 },
-];
+const PLATFORM_ICONS = {
+  x: IconBrandX,
+  twitter: IconBrandX,
+  linkedin: IconBrandLinkedin,
+  instagram: IconBrandInstagram,
+  youtube: IconBrandYoutube,
+  tiktok: IconBrandTiktok,
+  reddit: IconBrandReddit,
+};
 
-const ALERTS = [
-  {
-    icon: IconTrendingUp,
-    titleKey: "risingCategoryTitle",
-    detailKey: "risingCategoryDetail",
-    link: {
-      to: "/keywords?focus=category&value=AI%20Security",
-      labelKey: "openInTracking",
-    },
-  },
-  {
-    icon: IconSparkles,
-    titleKey: "nicheHitTitle",
-    detailKey: "nicheHitDetail",
-    link: {
-      to: "/keywords?term=24%2F7%20SOC",
-      labelKey: "openInTracking",
-    },
-  },
-  {
-    icon: IconChartDots,
-    titleKey: "saturationRiskTitle",
-    detailKey: "saturationRiskDetail",
-    link: {
-      to: "/keywords?term=Zero%20Trust",
-      labelKey: "investigate",
-    },
-  },
-];
+const PIE_COLORS = ["#339AF0", "#51CF66", "#FF6B6B", "#FCC419", "#845EF7", "#FF922B"];
 
-const EFFECTIVENESS = [
-  { keyword: "AI security", mentions: 21000, avgEng: 108, totalEng: 226800 },
-  { keyword: "Zero trust", mentions: 15000, avgEng: 82, totalEng: 123000 },
-  { keyword: "Endpoint MDR", mentions: 5000, avgEng: 91, totalEng: 45500 },
-  { keyword: "24/7 SOC", mentions: 2000, avgEng: 120, totalEng: 24000 },
-  { keyword: "Threat intel", mentions: 6000, avgEng: 98, totalEng: 58800 },
-];
+const fmtK = (n) => {
+  if (n == null) return "0";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  return n.toLocaleString();
+};
 
-const COMP_FEED = [
-  { who: "Bytecore", platform: "LinkedIn", titleKey: "compFeedZeroTrustExplainer", kw: "zero trust", eng: 742 },
-  { who: "Infonetic", platform: "X", titleKey: "compFeedSocBehindScenes", kw: "24/7 soc", eng: 520 },
-  { who: "Kodex", platform: "LinkedIn", titleKey: "compFeedAiSecurityLaunchRecap", kw: "ai security", eng: 910 },
-];
+const fmtDate = (d) => {
+  const date = new Date(d);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
 
-const TOP_POSTS = [
-  { who: "Chibitek", platform: "LinkedIn", titleKey: "topPostAiSecurityLaunchRecap", eng: 980 },
-  { who: "Chibitek", platform: "X", titleKey: "topPostEndpointMdrMyths", eng: 488 },
-  { who: "Chibitek", platform: "Instagram", titleKey: "topPostSocNightShift", eng: 420 },
-];
+/* ------------------------------------------------------------------ */
+/*  Data fetching hook                                                 */
+/* ------------------------------------------------------------------ */
+function useDashboardData() {
+  const [posts, setPosts] = useState([]);
+  const [keywords, setKeywords] = useState([]);
+  const [platformIdMap, setPlatformIdMap] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
 
-const BRIEFS = [
-  { kw: "AI security", ideaKey: "briefIdeaPlatformRoundup", platform: "LinkedIn", to: "/keywords?term=AI%20security" },
-  { kw: "24/7 SOC", ideaKey: "briefIdeaNightOpsReel", platform: "Instagram", to: "/keywords?term=24%2F7%20SOC" },
-];
-
-/* ---------- Card shell ---------- */
-function CardSection({ title, subtitle, right, children, className, pad = "xl" }) {
-  return (
-    <Card withBorder shadow="xs" radius="lg" p={pad} className={`${classes.card} ${className || ""}`}>
-      {(title || subtitle || right) && (
-        <>
-          <Group justify="space-between" align="flex-start" className={classes.cardHeader}>
-            <Stack gap={4}>
-              {title && (
-                <Text className={classes.cardTitle} fw={800} tt="uppercase" size="xs" c="dimmed">
-                  {title}
-                </Text>
-              )}
-              {subtitle && <Text size="xs" c="dimmed">{subtitle}</Text>}
-            </Stack>
-            {right}
-          </Group>
-          <Divider className={classes.cardDivider} />
-        </>
-      )}
-      {children}
-    </Card>
-  );
-}
-
-/* ---------- Part 1 ---------- */
-function KPIStrip() {
-  const { t } = useTranslation();
-  return (
-    <div data-tour="dashboard-kpis">
-      <CardSection title={t("dashboard.engagementSnapshot")} right={<IconBolt className={classes.cardIcon} />}>
-        <div className={classes.kpis}>
-          {KPI.map((k) => (
-            <div key={k.labelKey} className={classes.kpi}>
-              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{t(`dashboard.${k.labelKey}`)}</Text>
-              <Group gap="xs" align="end" wrap="nowrap">
-                <Title order={2} className={classes.kpiValue}>
-                  {typeof k.value === "number" ? fmtK(k.value) : k.value}
-                </Title>
-                <Badge radius="sm" variant="light" className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}>
-                  {k.delta >= 0 ? `+${k.delta}%` : `${k.delta}%`}
-                </Badge>
-              </Group>
-            </div>
-          ))}
-        </div>
-      </CardSection>
-    </div>
-  );
-}
-
-function OpportunityAlerts() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  return (
-    <div data-tour="dashboard-alerts">
-      <CardSection title={t("dashboard.opportunityAlerts")} subtitle={t("dashboard.opportunityAlertsDesc")}>
-        <Stack gap="md">
-          {ALERTS.map((a, i) => {
-            const Icon = a.icon;
-            return (
-              <Group key={i} justify="space-between" align="center" className={classes.rowPad}>
-                <Group gap="sm">
-                  <ThemeIcon variant="light" radius="lg" size={36}>
-                    <Icon size={18} />
-                  </ThemeIcon>
-                  <Stack gap={2}>
-                    <Text fw={800}>{t(`dashboard.${a.titleKey}`)}</Text>
-                    <Text size="sm" c="dimmed">{t(`dashboard.${a.detailKey}`)}</Text>
-                  </Stack>
-                </Group>
-                <Button
-                  variant="light"
-                  rightSection={<IconExternalLink size={16} />}
-                  onClick={() => navigate(a.link.to)}
-                >
-                  {t(`dashboard.${a.link.labelKey}`)}
-                </Button>
-              </Group>
-            );
-          })}
-        </Stack>
-      </CardSection>
-    </div>
-  );
-}
-
-function EffectivenessScatter() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  return (
-    <CardSection
-      title={t("dashboard.whatWorksNow")}
-      subtitle={t("dashboard.whatWorksNowAxes")}
-      right={<IconTargetArrow className={classes.cardIcon} />}
-    >
-      <div className={classes.chartBox}>
-        <ResponsiveContainer width="100%" height={360}>
-          <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="mentions" name={t("dashboard.axisMentions")} tickFormatter={fmtK} />
-            <YAxis dataKey="avgEng" name={t("dashboard.axisAvgEngagementPerMention")} />
-            <ZAxis dataKey="totalEng" range={[80, 360]} />
-            <RechartsTooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              contentStyle={{ borderRadius: 8 }}
-              formatter={(v, n) => (n === t("dashboard.axisMentions") ? fmtK(v) : v)}
-              labelFormatter={() => ""}
-            />
-            <Scatter
-              data={EFFECTIVENESS}
-              name={t("dashboard.scatterKeywords")}
-              onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
-            />
-          </ScatterChart>
-        </ResponsiveContainer>
-      </div>
-    </CardSection>
-  );
-}
-
-/* ---------- Part 2 ---------- */
-function CompetitorMoves() {
-  const { t } = useTranslation();
-  return (
-    <CardSection title={t("dashboard.competitorMoves")} subtitle={t("dashboard.competitorMovesDesc")} className={classes.tall}>
-      <Stack gap="md">
-        {COMP_FEED.map((p, idx) => (
-          <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
-            <Group gap="sm" wrap="nowrap" align="center" className={classes.feedLeft}>
-              <Avatar size={22} radius="xl" className={classes.brandDot} />
-              <Text fw={700}>{p.who}</Text>
-              <Badge variant="light">{p.platform}</Badge>
-              <Text c="dimmed">—</Text>
-              <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
-            </Group>
-            <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
-          </Group>
-        ))}
-      </Stack>
-    </CardSection>
-  );
-}
-
-function TopPosts() {
-  const { t } = useTranslation();
-  return (
-    <CardSection title={t("dashboard.topPostsProof")} subtitle={t("dashboard.topPostsProofDesc")}>
-      <Stack gap="md">
-        {TOP_POSTS.map((p, idx) => (
-          <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
-            <Group gap="sm" wrap="nowrap" align="center">
-              <Avatar size={22} radius="xl" className={classes.brandDot} />
-              <Text fw={700}>{p.who}</Text>
-              <Badge variant="light">{p.platform}</Badge>
-              <Text c="dimmed">—</Text>
-              <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
-            </Group>
-            <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
-          </Group>
-        ))}
-      </Stack>
-      <Divider my="md" />
-      <Group gap="xs" justify="center" c="dimmed">
-        <IconBolt size={16} />
-        <Text size="sm">{t("dashboard.quickWinsHint")}</Text>
-      </Group>
-    </CardSection>
-  );
-}
-
-function NextActions() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  return (
-    <>
-    <CardSection title={t("dashboard.nextActions")} subtitle={t("dashboard.nextActionsDesc")}>
-      <List spacing="sm" className={classes.listReset}>
-        {BRIEFS.map((b, i) => (
-          <List.Item key={i} className={`${classes.briefRow} ${classes.rowPad}`}>
-            <Group justify="space-between" align="center">
-              <Group gap="sm" align="center">
-                <ThemeIcon variant="light" radius="xl" size={30}>
-                  <IconSparkles size={16} />
-                </ThemeIcon>
-                <Stack gap={2}>
-                  <Text fw={800}>{b.kw}</Text>
-                  <Text size="sm" c="dimmed">{t(`dashboard.${b.ideaKey}`)} · {b.platform}</Text>
-                </Stack>
-              </Group>
-              <Button variant="light" onClick={() => navigate(b.to)}>{t("dashboard.draftBrief")}</Button>
-            </Group>
-          </List.Item>
-        ))}
-      </List>
-    </CardSection>
-    <div data-tour="dashboard-chart">
-      <CardSection
-        title={t("dashboard.whatWorksNow")}
-        subtitle={t("dashboard.whatWorksNowAxes")}
-        right={<IconTargetArrow className={classes.cardIcon} />}
-      >
-        <div className={classes.chartBox}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="mentions" name={t("dashboard.axisMentions")} tickFormatter={fmtK} />
-              <YAxis dataKey="avgEng" name={t("dashboard.axisAvgEngagementPerMention")} />
-              <ZAxis dataKey="totalEng" range={[80, 360]} />
-              <RechartsTooltip
-                cursor={{ strokeDasharray: "3 3" }}
-                contentStyle={{ borderRadius: 8 }}
-                formatter={(v, n) => (n === t("dashboard.axisMentions") ? fmtK(v) : v)}
-                labelFormatter={() => ""}
-              />
-              <Scatter
-                data={EFFECTIVENESS}
-                name={t("dashboard.scatterKeywords")}
-                onClick={(data) => navigate(`/keywords?term=${encodeURIComponent(data.payload.keyword)}`)}
-              />
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
-      </CardSection>
-    </div>
-    </>
-  );
-}
-
-function RecentPosts() {
-  const { t } = useTranslation();
-  const [recentPosts, setRecentPosts] = React.useState([]);
-
-  React.useEffect(() => {
+  useEffect(() => {
     let mounted = true;
     const load = async () => {
-      let userId = null;
+      setLoading(true);
+      let uid = null;
       if (supabase) {
         const { data } = await supabase.auth.getUser();
-        userId = data?.user?.id || null;
+        uid = data?.user?.id || null;
       }
-      if (!mounted) return;
-      const storageKey = userId
-        ? `recentCompetitorPosts_${userId}`
-        : 'recentCompetitorPosts';
-      const stored = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      const chartData = stored.map((post, index) => ({
-        index: index + 1,
-        engagement: post.engagement,
-        username: post.username,
-        content: post.content,
-      }));
-      setRecentPosts(chartData);
+      if (mounted) setUserId(uid);
+
+      const qs = uid ? "?user_id=" + uid : "";
+      const [postsRes, kwRes, platRes] = await Promise.all([
+        fetch(apiUrl("/api/posts" + qs)).then((r) => r.json()).catch(() => ({ posts: [] })),
+        fetch(apiUrl("/api/keywords" + qs)).then((r) => r.json()).catch(() => ({ keywords: [] })),
+        fetch(apiUrl("/api/platforms")).then((r) => r.json()).catch(() => ({ platforms: {} })),
+      ]);
+
+      // Build reverse map: numeric id → platform name
+      const idToName = {};
+      const platforms = platRes.platforms || {};
+      for (const [name, id] of Object.entries(platforms)) {
+        idToName[id] = name;
+      }
+
+      if (mounted) {
+        setPosts(Array.isArray(postsRes.posts) ? postsRes.posts : []);
+        setKeywords(Array.isArray(kwRes.keywords) ? kwRes.keywords : []);
+        setPlatformIdMap(idToName);
+        setLoading(false);
+      }
     };
     load();
     return () => { mounted = false; };
   }, []);
 
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div style={{
-          backgroundColor: '#fff',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          padding: '8px 12px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-        }}>
-          <Text size="sm" fw={500}>{data.username}</Text>
-          <Text size="sm">{t("dashboard.postNumber")} #{data.index}</Text>
-          <Text size="sm">{t("dashboard.engagementLabel")}: {data.engagement}</Text>
-        </div>
-      );
-    }
-    return null;
-  };
+  return { posts, keywords, platformIdMap, loading, userId };
+}
 
+/* ------------------------------------------------------------------ */
+/*  Derived analytics                                                  */
+/* ------------------------------------------------------------------ */
+function guessPlatform(post) {
+  const url = (post.url || "").toLowerCase();
+  if (url.includes("twitter.com") || url.includes("x.com")) return "x";
+  if (url.includes("linkedin.com")) return "linkedin";
+  if (url.includes("instagram.com")) return "instagram";
+  if (url.includes("youtube.com") || url.includes("youtu.be")) return "youtube";
+  if (url.includes("tiktok.com")) return "tiktok";
+  if (url.includes("reddit.com")) return "reddit";
+  const extra = post.extra || {};
+  if (extra.channelTitle || extra.videoId) return "youtube";
+  return "other";
+}
+
+function useAnalytics(posts, keywords, platformIdMap) {
+  return useMemo(() => {
+    if (!posts.length) return null;
+
+    // Resolve platform name: prefer server-provided ID map, then URL heuristic
+    const resolvePlatform = (p) => {
+      if (platformIdMap[p.platform_id]) return platformIdMap[p.platform_id];
+      if (p.extra?.platform) return p.extra.platform.toLowerCase();
+      return guessPlatform(p);
+    };
+
+    // Tag every post with its resolved platform name
+    const taggedPosts = posts.map((p) => ({
+      ...p,
+      _platform: resolvePlatform(p),
+    }));
+
+    const totalPosts = taggedPosts.length;
+    const totalLikes = taggedPosts.reduce((s, p) => s + (p.likes || 0), 0);
+    const totalComments = taggedPosts.reduce((s, p) => s + (p.comments || 0), 0);
+    const totalViews = taggedPosts.reduce((s, p) => s + (p.views || p.extra?.views || 0), 0);
+    const totalShares = taggedPosts.reduce((s, p) => s + (p.shares || 0), 0);
+    const totalEngagement = totalLikes + totalComments + totalShares;
+    const avgEngagement = totalPosts ? Math.round(totalEngagement / totalPosts) : 0;
+
+    // Unique platform names
+    const platformNames = [...new Set(taggedPosts.map((p) => p._platform))];
+
+    // Engagement over time (with per-platform breakdown)
+    const byDay = {};
+    taggedPosts.forEach((p) => {
+      const d = (p.published_at || p.created_at || "").slice(0, 10);
+      if (!d) return;
+      if (!byDay[d]) byDay[d] = { date: d, likes: 0, comments: 0, shares: 0, views: 0, posts: 0, _byPlatform: {} };
+      byDay[d].likes += p.likes || 0;
+      byDay[d].comments += p.comments || 0;
+      byDay[d].shares += p.shares || 0;
+      byDay[d].views += p.views || p.extra?.views || 0;
+      byDay[d].posts += 1;
+      // per-platform
+      const plat = p._platform;
+      if (!byDay[d]._byPlatform[plat]) byDay[d]._byPlatform[plat] = { likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      byDay[d]._byPlatform[plat].likes += p.likes || 0;
+      byDay[d]._byPlatform[plat].comments += p.comments || 0;
+      byDay[d]._byPlatform[plat].shares += p.shares || 0;
+      byDay[d]._byPlatform[plat].views += p.views || p.extra?.views || 0;
+      byDay[d]._byPlatform[plat].posts += 1;
+    });
+    const engagementOverTime = Object.values(byDay)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((d) => ({ ...d, engagement: d.likes + d.comments + d.shares }));
+
+    // Engagement by platform
+    const byPlatform = {};
+    taggedPosts.forEach((p) => {
+      const name = p._platform;
+      if (!byPlatform[name]) byPlatform[name] = { platform: name, likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      byPlatform[name].likes += p.likes || 0;
+      byPlatform[name].comments += p.comments || 0;
+      byPlatform[name].shares += p.shares || 0;
+      byPlatform[name].views += p.views || p.extra?.views || 0;
+      byPlatform[name].posts += 1;
+    });
+    const platformBreakdown = Object.values(byPlatform)
+      .map((d) => ({ ...d, engagement: d.likes + d.comments + d.shares }))
+      .sort((a, b) => b.engagement - a.engagement);
+
+    // Top posts
+    const topPosts = [...taggedPosts]
+      .map((p) => ({
+        ...p,
+        engagement: (p.likes || 0) + (p.comments || 0) + (p.shares || 0),
+        platformName: p._platform,
+      }))
+      .sort((a, b) => b.engagement - a.engagement)
+      .slice(0, 8);
+
+    // Top keywords
+    const topKeywords = [...keywords]
+      .sort((a, b) => (b.kpi || 0) - (a.kpi || 0))
+      .slice(0, 10);
+
+    // Tone distribution
+    const tones = {};
+    taggedPosts.forEach((p) => {
+      if (p.tone) { tones[p.tone] = (tones[p.tone] || 0) + 1; }
+    });
+    const toneDistribution = Object.entries(tones)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    // Competitors
+    const byCompetitor = {};
+    taggedPosts.forEach((p) => {
+      const name = p.username || p.extra?.author_handle || p.extra?.username || "Unknown";
+      if (!byCompetitor[name]) byCompetitor[name] = { name, likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      byCompetitor[name].likes += p.likes || 0;
+      byCompetitor[name].comments += p.comments || 0;
+      byCompetitor[name].shares += p.shares || 0;
+      byCompetitor[name].views += p.views || p.extra?.views || 0;
+      byCompetitor[name].posts += 1;
+    });
+    const competitors = Object.values(byCompetitor)
+      .map((c) => ({ ...c, engagement: c.likes + c.comments + c.shares }))
+      .sort((a, b) => b.engagement - a.engagement)
+      .slice(0, 6);
+
+    return {
+      totalPosts, totalLikes, totalComments, totalViews, totalShares,
+      totalEngagement, avgEngagement, engagementOverTime, platformBreakdown,
+      platformNames, topPosts, topKeywords, toneDistribution, competitors,
+    };
+  }, [posts, keywords, platformIdMap]);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reusable Section Card                                              */
+/* ------------------------------------------------------------------ */
+function SectionCard({ title, subtitle, icon: Icon, children, onViewData, right, tourId }) {
   return (
-    <CardSection
-      title={t("dashboard.recentPosts")}
-      subtitle={t("dashboard.recentPostsDesc")}
-      right={<IconChartDots className={classes.cardIcon} />}
-    >
-      {recentPosts.length > 0 ? (
-        <div className={classes.chartBox}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" name="Post Index" type="number" />
-              <YAxis dataKey="engagement" name="Engagement" />
-              <RechartsTooltip
-                cursor={{ strokeDasharray: "3 3" }}
-                contentStyle={{ borderRadius: 8 }}
-                content={<CustomTooltip />}
-              />
-              <Scatter
-                data={recentPosts}
-                name={t("dashboard.scatterPosts")}
-                fill="#ff6b6b"
-              />
-            </ScatterChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <Text c="dimmed">{t("dashboard.noRecentPosts")}</Text>
-      )}
-    </CardSection>
+    <Card withBorder shadow="sm" radius="lg" p="xl" className={classes.sectionCard} data-tour={tourId}>
+      <Group justify="space-between" align="flex-start" mb="md">
+        <Group gap="sm" align="center">
+          {Icon && (
+            <ThemeIcon variant="light" radius="lg" size={38}>
+              <Icon size={20} />
+            </ThemeIcon>
+          )}
+          <Stack gap={2}>
+            <Text fw={800} tt="uppercase" size="xs" c="dimmed" style={{ letterSpacing: "0.06em" }}>
+              {title}
+            </Text>
+            {subtitle && <Text size="xs" c="dimmed">{subtitle}</Text>}
+          </Stack>
+        </Group>
+        <Group gap="xs">
+          {right}
+          {onViewData && (
+            <Tooltip label="View raw data">
+              <ActionIcon variant="light" radius="lg" size="lg" onClick={onViewData}>
+                <IconExternalLink size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      </Group>
+      <Divider mb="md" opacity={0.15} />
+      {children}
+    </Card>
   );
 }
 
-/* ---------- Page ---------- */
+/* ------------------------------------------------------------------ */
+/*  KPI Strip                                                          */
+/* ------------------------------------------------------------------ */
+function KPIStrip({ analytics }) {
+  const kpis = [
+    { label: "Total Posts", value: analytics.totalPosts, icon: IconChartDots, color: "blue" },
+    { label: "Total Engagement", value: fmtK(analytics.totalEngagement), icon: IconHeart, color: "pink" },
+    { label: "Avg Engagement", value: fmtK(analytics.avgEngagement), icon: IconTrendingUp, color: "teal" },
+    { label: "Total Views", value: fmtK(analytics.totalViews), icon: IconEye, color: "violet" },
+    { label: "Total Comments", value: fmtK(analytics.totalComments), icon: IconMessage, color: "orange" },
+    { label: "Platforms", value: analytics.platformNames.length, icon: IconUsers, color: "cyan" },
+  ];
+
+  return (
+    <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md" data-tour="dashboard-kpis">
+      {kpis.map((k) => {
+        const Icon = k.icon;
+        return (
+          <Card key={k.label} withBorder shadow="xs" radius="lg" p="lg" className={classes.kpiCard}>
+            <Group gap="sm" align="center" mb={8}>
+              <ThemeIcon variant="light" color={k.color} radius="md" size={32}>
+                <Icon size={18} />
+              </ThemeIcon>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+                {k.label}
+              </Text>
+            </Group>
+            <Text fw={800} size="xl" className={classes.kpiValue}>{k.value}</Text>
+          </Card>
+        );
+      })}
+    </SimpleGrid>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Engagement Over Time (with filters)                                */
+/* ------------------------------------------------------------------ */
+const DATE_RANGES = [
+  { value: "all", label: "All time" },
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+  { value: "90", label: "Last 90 days" },
+];
+
+function EngagementTimeline({ data, platformNames }) {
+  const navigate = useNavigate();
+  const [platformFilter, setPlatformFilter] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
+  const [metric, setMetric] = useState("all");
+
+  const platformOptions = useMemo(() => [
+    { value: "all", label: "All platforms" },
+    ...platformNames.map((p) => ({ value: p, label: p.charAt(0).toUpperCase() + p.slice(1) })),
+  ], [platformNames]);
+
+  const filteredData = useMemo(() => {
+    let result = data;
+
+    // Date range filter
+    if (dateRange !== "all") {
+      const days = parseInt(dateRange, 10);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      result = result.filter((d) => d.date >= cutoffStr);
+    }
+
+    // Platform filter: re-aggregate from per-platform breakdown
+    if (platformFilter !== "all") {
+      result = result.map((d) => {
+        const platData = d._byPlatform?.[platformFilter];
+        if (!platData) return { ...d, likes: 0, comments: 0, shares: 0, views: 0, engagement: 0 };
+        return {
+          ...d,
+          likes: platData.likes,
+          comments: platData.comments,
+          shares: platData.shares,
+          views: platData.views,
+          engagement: platData.likes + platData.comments + platData.shares,
+        };
+      }).filter((d) => d.engagement > 0 || d.likes > 0 || d.comments > 0 || d.shares > 0);
+    }
+
+    return result;
+  }, [data, platformFilter, dateRange]);
+
+  const filterControls = (
+    <Group gap="xs" wrap="wrap">
+      <Select
+        size="xs"
+        data={platformOptions}
+        value={platformFilter}
+        onChange={setPlatformFilter}
+        style={{ width: 150 }}
+        allowDeselect={false}
+      />
+      <Select
+        size="xs"
+        data={DATE_RANGES}
+        value={dateRange}
+        onChange={setDateRange}
+        style={{ width: 130 }}
+        allowDeselect={false}
+      />
+      <SegmentedControl
+        size="xs"
+        value={metric}
+        onChange={setMetric}
+        data={[
+          { value: "all", label: "All" },
+          { value: "likes", label: "Likes" },
+          { value: "comments", label: "Comments" },
+          { value: "shares", label: "Shares" },
+        ]}
+      />
+    </Group>
+  );
+
+  return (
+    <SectionCard
+      title="Engagement Over Time"
+      subtitle="Daily likes, comments & shares from collected posts"
+      icon={IconChartLine}
+      onViewData={() => navigate("/reports")}
+      right={filterControls}
+      tourId="dashboard-timeline"
+    >
+      {filteredData.length > 0 ? (
+        <div className={classes.chartBox}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={filteredData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gradLikes" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#339AF0" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#339AF0" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradComments" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#51CF66" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#51CF66" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradShares" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#FF6B6B" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#FF6B6B" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+              <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} />
+              <RechartsTooltip
+                contentStyle={{ borderRadius: 10, border: "1px solid rgba(100,116,139,0.2)" }}
+                labelFormatter={fmtDate}
+                formatter={(v) => fmtK(v)}
+              />
+              <Legend />
+              {(metric === "all" || metric === "likes") && (
+                <Area type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#gradLikes)" strokeWidth={2} name="Likes" />
+              )}
+              {(metric === "all" || metric === "comments") && (
+                <Area type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#gradComments)" strokeWidth={2} name="Comments" />
+              )}
+              {(metric === "all" || metric === "shares") && (
+                <Area type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#gradShares)" strokeWidth={2} name="Shares" />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <EmptyState msg={platformFilter !== "all" ? "No data for this platform in the selected time range." : "No timeline data yet. Start collecting posts from Competitor Lookup."} />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Platform Breakdown                                                 */
+/* ------------------------------------------------------------------ */
+function PlatformBreakdown({ data }) {
+  const navigate = useNavigate();
+  return (
+    <SectionCard
+      title="Engagement by Platform"
+      subtitle="How each social platform is performing"
+      icon={IconChartBar}
+      onViewData={() => navigate("/reports")}
+      tourId="dashboard-platforms"
+    >
+      {data.length > 0 ? (
+        <div className={classes.chartBox}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+              <XAxis dataKey="platform" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} />
+              <RechartsTooltip
+                contentStyle={{ borderRadius: 10, border: "1px solid rgba(100,116,139,0.2)" }}
+                formatter={(v) => fmtK(v)}
+              />
+              <Legend />
+              <Bar dataKey="likes" fill="#339AF0" name="Likes" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="comments" fill="#51CF66" name="Comments" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="shares" fill="#FF6B6B" name="Shares" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <EmptyState msg="No platform data yet." />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Top Posts                                                          */
+/* ------------------------------------------------------------------ */
+function TopPostsList({ posts }) {
+  const navigate = useNavigate();
+  return (
+    <SectionCard
+      title="Top Performing Posts"
+      subtitle="Highest engagement posts collected so far"
+      icon={IconTrendingUp}
+      onViewData={() => navigate("/savedPosts")}
+      tourId="dashboard-top-posts"
+    >
+      {posts.length > 0 ? (
+        <Stack gap="sm">
+          {posts.map((p, i) => {
+            const PlatIcon = PLATFORM_ICONS[p.platformName] || IconChartDots;
+            const platformColor = PLATFORM_COLORS[p.platformName] || "#868e96";
+            return (
+              <Paper key={p.id || i} withBorder p="sm" radius="md" className={classes.postRow}>
+                <Group justify="space-between" wrap="nowrap">
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                    <Text fw={800} c="dimmed" size="sm" style={{ width: 24, textAlign: "center" }}>
+                      {i + 1}
+                    </Text>
+                    <ThemeIcon variant="light" radius="md" size={30} color={platformColor}>
+                      <PlatIcon size={16} />
+                    </ThemeIcon>
+                    <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
+                      <Text fw={600} size="sm" lineClamp={1}>
+                        {p.content || p.extra?.title || p.extra?.description || "Untitled post"}
+                      </Text>
+                      <Group gap="xs">
+                        <Text size="xs" c="dimmed">
+                          @{p.username || p.extra?.author_handle || "unknown"}
+                        </Text>
+                        <Badge size="xs" variant="light" color={platformColor}>
+                          {p.platformName}
+                        </Badge>
+                      </Group>
+                    </Stack>
+                  </Group>
+                  <Group gap="lg" wrap="nowrap">
+                    <Tooltip label="Likes">
+                      <Group gap={4}>
+                        <IconHeart size={14} color="#FF6B6B" />
+                        <Text size="sm" fw={600}>{fmtK(p.likes || 0)}</Text>
+                      </Group>
+                    </Tooltip>
+                    <Tooltip label="Comments">
+                      <Group gap={4}>
+                        <IconMessage size={14} color="#51CF66" />
+                        <Text size="sm" fw={600}>{fmtK(p.comments || 0)}</Text>
+                      </Group>
+                    </Tooltip>
+                    <Tooltip label="Views">
+                      <Group gap={4}>
+                        <IconEye size={14} color="#845EF7" />
+                        <Text size="sm" fw={600}>{fmtK(p.views || p.extra?.views || 0)}</Text>
+                      </Group>
+                    </Tooltip>
+                    {p.url && (
+                      <Tooltip label="Open original">
+                        <ActionIcon variant="subtle" size="sm" component="a" href={p.url} target="_blank" rel="noopener">
+                          <IconExternalLink size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                  </Group>
+                </Group>
+              </Paper>
+            );
+          })}
+        </Stack>
+      ) : (
+        <EmptyState msg="No posts collected yet. Use Competitor Lookup to gather data." />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Competitor Comparison                                               */
+/* ------------------------------------------------------------------ */
+function CompetitorComparison({ competitors }) {
+  const navigate = useNavigate();
+  return (
+    <SectionCard
+      title="Top Competitors"
+      subtitle="Engagement breakdown by account"
+      icon={IconUsers}
+      onViewData={() => navigate("/competitors")}
+      tourId="dashboard-competitors"
+    >
+      {competitors.length > 0 ? (
+        <Stack gap="sm">
+          {competitors.map((c) => (
+            <Paper key={c.name} withBorder p="sm" radius="md" className={classes.postRow}>
+              <Group justify="space-between" wrap="nowrap">
+                <Group gap="sm" align="center">
+                  <Avatar size={32} radius="xl" color="teal">
+                    {c.name.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Stack gap={2}>
+                    <Text fw={700} size="sm">@{c.name}</Text>
+                    <Text size="xs" c="dimmed">{c.posts} posts collected</Text>
+                  </Stack>
+                </Group>
+                <Group gap="lg" wrap="nowrap">
+                  <Tooltip label="Likes">
+                    <Group gap={4}>
+                      <IconHeart size={14} color="#FF6B6B" />
+                      <Text size="sm" fw={600}>{fmtK(c.likes)}</Text>
+                    </Group>
+                  </Tooltip>
+                  <Tooltip label="Comments">
+                    <Group gap={4}>
+                      <IconMessage size={14} color="#51CF66" />
+                      <Text size="sm" fw={600}>{fmtK(c.comments)}</Text>
+                    </Group>
+                  </Tooltip>
+                  <Tooltip label="Views">
+                    <Group gap={4}>
+                      <IconEye size={14} color="#845EF7" />
+                      <Text size="sm" fw={600}>{fmtK(c.views)}</Text>
+                    </Group>
+                  </Tooltip>
+                </Group>
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      ) : (
+        <EmptyState msg="No competitor data yet. Look up competitors to start tracking." />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Keyword Performance                                                */
+/* ------------------------------------------------------------------ */
+function KeywordPerformance({ keywords }) {
+  const navigate = useNavigate();
+  return (
+    <SectionCard
+      title="Keyword Rankings"
+      subtitle="Performance index from all collected posts"
+      icon={IconTargetArrow}
+      onViewData={() => navigate("/keywords")}
+      tourId="dashboard-keywords"
+    >
+      {keywords.length > 0 ? (
+        <Stack gap="sm">
+          {keywords.map((kw, i) => {
+            const trendColor = kw.trendDir === "rising" ? "teal" : kw.trendDir === "falling" ? "red" : "gray";
+            const TrendIcon = kw.trendDir === "rising" ? IconArrowUpRight : kw.trendDir === "falling" ? IconArrowDownRight : IconTrendingUp;
+            return (
+              <Paper key={kw.term} withBorder p="sm" radius="md" className={classes.postRow}>
+                <Group justify="space-between" wrap="nowrap">
+                  <Group gap="sm" align="center" style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={800} c="dimmed" size="sm" style={{ width: 24, textAlign: "center" }}>{i + 1}</Text>
+                    <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                      <Text fw={700} size="sm">{kw.term}</Text>
+                      <Group gap={6}>
+                        {kw.platforms?.map((pl) => (
+                          <Badge key={pl.label} size="xs" variant="light" color={pl.color}>{pl.label}</Badge>
+                        ))}
+                      </Group>
+                    </Stack>
+                  </Group>
+                  <Group gap="md" wrap="nowrap">
+                    <Tooltip label="Performance Index (0-100)">
+                      <div className={classes.kpiBarWrap}>
+                        <div className={classes.kpiBarBg}>
+                          <div className={classes.kpiBarFill} style={{ width: (kw.kpi || 0) + "%" }} />
+                        </div>
+                        <Text size="xs" fw={700} ml={6}>{Math.round(kw.kpi || 0)}</Text>
+                      </div>
+                    </Tooltip>
+                    <Tooltip label={"Avg engagement: " + (kw.avgEngagement || 0)}>
+                      <Badge variant="light" color="blue" size="sm">{fmtK(kw.avgEngagement || 0)} avg</Badge>
+                    </Tooltip>
+                    <Tooltip label={"Trend: " + (kw.trendDir || "stable")}>
+                      <Badge variant="light" color={trendColor} size="sm" leftSection={<TrendIcon size={12} />}>
+                        {kw.trendDir || "stable"}
+                      </Badge>
+                    </Tooltip>
+                  </Group>
+                </Group>
+              </Paper>
+            );
+          })}
+          <Button variant="light" fullWidth mt="xs" onClick={() => navigate("/keywords")} rightSection={<IconExternalLink size={16} />}>
+            View all keywords
+          </Button>
+        </Stack>
+      ) : (
+        <EmptyState msg="No keyword data yet. Collect posts to see keyword performance." />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tone Distribution                                                  */
+/* ------------------------------------------------------------------ */
+function ToneBreakdown({ data }) {
+  const navigate = useNavigate();
+  return (
+    <SectionCard
+      title="Content Tone"
+      subtitle="Tone distribution across collected posts"
+      icon={IconMoodSmile}
+      onViewData={() => navigate("/reports")}
+      tourId="dashboard-tone"
+    >
+      {data.length > 0 ? (
+        <Group justify="center" align="center" gap="xl" style={{ minHeight: 240 }}>
+          <ResponsiveContainer width={220} height={220}>
+            <PieChart>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={85}
+                paddingAngle={3}
+                dataKey="value"
+                nameKey="name"
+                label={false}
+                labelLine={false}
+              >
+                {data.map((_, idx) => (
+                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <RechartsTooltip />
+            </PieChart>
+          </ResponsiveContainer>
+          <Stack gap="xs">
+            {data.map((t, idx) => (
+              <Group key={t.name} gap="xs">
+                <div style={{ width: 12, height: 12, borderRadius: 3, background: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                <Text size="sm" fw={600}>{t.name}</Text>
+                <Text size="xs" c="dimmed">({t.value} posts)</Text>
+              </Group>
+            ))}
+          </Stack>
+        </Group>
+      ) : (
+        <EmptyState msg="No tone data yet. Run tone analysis from the Reports page." />
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  AI Summary                                                         */
+/* ------------------------------------------------------------------ */
+function AISummary({ analytics, userId }) {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
+
+  const generate = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const topPlatforms = analytics.platformBreakdown
+        .slice(0, 3)
+        .map((p) => p.platform + ": " + p.engagement + " engagement across " + p.posts + " posts")
+        .join("; ");
+      const topCompetitors = analytics.competitors
+        .slice(0, 3)
+        .map((c) => "@" + c.name + ": " + c.engagement + " engagement, " + c.views + " views")
+        .join("; ");
+      const topKws = analytics.topKeywords
+        .slice(0, 5)
+        .map((k) => '"' + k.term + '" (KPI: ' + Math.round(k.kpi || 0) + ", trend: " + (k.trendDir || "stable") + ")")
+        .join("; ");
+
+      const prompt = "You are a social media analytics assistant for Chibitek. Analyze this data and provide a concise, actionable summary with 3-4 key insights and recommended next steps.\n\nData overview:\n- Total posts analyzed: " + analytics.totalPosts + "\n- Total engagement: " + analytics.totalEngagement + " (" + analytics.totalLikes + " likes, " + analytics.totalComments + " comments, " + analytics.totalShares + " shares)\n- Total views: " + analytics.totalViews + "\n- Average engagement per post: " + analytics.avgEngagement + "\n- Top platforms: " + (topPlatforms || "N/A") + "\n- Top competitors: " + (topCompetitors || "N/A") + "\n- Top keywords: " + (topKws || "N/A") + "\n\nFormat your response with clear headings using **bold** for emphasis. Keep it under 200 words.";
+
+      const res = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: prompt, user_id: userId, conversation: [] }),
+      });
+      const json = await res.json();
+      setSummary(json.reply || json.message || "No summary generated.");
+    } catch (e) {
+      setError("Could not generate summary. Check that the AI service is running.");
+    } finally {
+      setLoading(false);
+    }
+  }, [analytics, userId]);
+
+  return (
+    <SectionCard title="AI-Powered Insights" subtitle="Automated analysis of your engagement data" icon={IconSparkles} tourId="dashboard-ai">
+      {summary ? (
+        <Stack gap="md">
+          <Paper withBorder p="md" radius="md" className={classes.summaryBox}>
+            <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{summary}</Text>
+          </Paper>
+          <Group>
+            <Button variant="light" size="sm" onClick={generate} loading={loading}>Regenerate</Button>
+            <Button variant="light" size="sm" onClick={() => navigate("/chat")} rightSection={<IconMessageChatbot size={16} />}>
+              Continue in Chat
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        <Stack align="center" gap="md" py="lg">
+          {error && <Text size="sm" c="red">{error}</Text>}
+          <Text size="sm" c="dimmed">Generate an AI summary of trends, engagement patterns, and recommended actions.</Text>
+          <Button variant="light" leftSection={<IconSparkles size={16} />} onClick={generate} loading={loading}>
+            Generate AI Summary
+          </Button>
+        </Stack>
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Empty State                                                        */
+/* ------------------------------------------------------------------ */
+function EmptyState({ msg }) {
+  return (
+    <Stack align="center" py="xl" gap="sm">
+      <IconChartDots size={40} opacity={0.3} />
+      <Text size="sm" c="dimmed" ta="center" maw={360}>{msg}</Text>
+    </Stack>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Loading Skeleton                                                   */
+/* ------------------------------------------------------------------ */
+function DashboardSkeleton() {
+  return (
+    <Stack gap="lg">
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} height={100} radius="lg" />
+        ))}
+      </SimpleGrid>
+      <Skeleton height={380} radius="lg" />
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+        <Skeleton height={380} radius="lg" />
+        <Skeleton height={380} radius="lg" />
+      </SimpleGrid>
+    </Stack>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Page                                                          */
+/* ------------------------------------------------------------------ */
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const [page, setPage] = React.useState(0);
-  const [dir, setDir] = React.useState(1);
+  const { posts, keywords, platformIdMap, loading, userId } = useDashboardData();
+  const analytics = useAnalytics(posts, keywords, platformIdMap);
 
-  const go = React.useCallback((next) => {
-    setPage((prev) => {
-      const clamped = Math.max(0, Math.min(1, next));
-      setDir(clamped > prev ? 1 : -1);
-      return clamped;
-    });
-  }, []);
-
-  React.useEffect(() => {
+  useEffect(() => {
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
   }, []);
-
-  React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent("chibitek:dashboard", { detail: { page } }));
-  }, [page]);
-
-  React.useEffect(() => {
-    const onTour = (e) => {
-      const d = e?.detail;
-      if (!d) return;
-      if (d.type === "setDashboardSlide") go(d.page);
-    };
-    window.addEventListener("chibitek:tour", onTour);
-    return () => window.removeEventListener("chibitek:tour", onTour);
-  }, [go]);
 
   return (
     <div className={classes.page}>
       <div className={classes.shell}>
         <header className={classes.header}>
-          <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
+          <Group justify="space-between" align="center">
+            <Stack gap={4}>
+              <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
+              <Text size="sm" c="dimmed">
+                {analytics
+                  ? analytics.totalPosts + " posts tracked across " + analytics.platformNames.length + " platforms"
+                  : "Loading your engagement data..."}
+              </Text>
+            </Stack>
+          </Group>
         </header>
 
-        <div className={classes.sliderWrap}>
-          <Box className={classes.viewport}>
-            <Transition
-              mounted={page === 0}
-              transition={dir === 1 ? "slide-up" : "slide-down"}
-              duration={260}
-              timingFunction="ease"
-            >
-              {(styles) => (
-                <Box style={styles} className={classes.slide}>
-                  <div className={classes.grid}>
-                    <div className={`${classes.col} ${classes.span12}`}><KPIStrip /></div>
-                    <div className={`${classes.col} ${classes.span5}`}><OpportunityAlerts /></div>
-                    <div className={`${classes.col} ${classes.span7}`}><EffectivenessScatter /></div>
-                  </div>
-                </Box>
-              )}
-            </Transition>
-
-            <Transition
-              mounted={page === 1}
-              transition={dir === 1 ? "slide-up" : "slide-down"}
-              duration={260}
-              timingFunction="ease"
-            >
-              {(styles) => (
-                <Box style={styles} className={classes.slide}>
-                  {/* CENTERED SLIDE 2 CONTENT */}
-                  <div
-                    style={{
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: 16,
-                    }}
-                  >
-                    {/* Tight wrapper so spotlight hugs the card, no gutters */}
-                    <div
-                      data-tour="dashboard-slide-2"
-                      style={{
-                        width: "min(920px, 96%)",
-                        borderRadius: 16,
-                      }}
-                    >
-                      <CardSection title={t("dashboard.competitorMoves")} subtitle={t("dashboard.competitorMovesDesc")}>
-                        <Stack gap="md">
-                          {COMP_FEED.map((p, idx) => (
-                            <Group key={idx} justify="space-between" align="center" className={classes.rowPad}>
-                              <Group gap="sm" wrap="nowrap" align="center" className={classes.feedLeft}>
-                                <Avatar size={22} radius="xl" className={classes.brandDot} />
-                                <Text fw={700}>{p.who}</Text>
-                                <Badge variant="light">{p.platform}</Badge>
-                                <Text c="dimmed">—</Text>
-                                <Text className={classes.linkText}>{t(`dashboard.${p.titleKey}`)}</Text>
-                              </Group>
-                              <Badge variant="light">{fmtK(p.eng)} 👍</Badge>
-                            </Group>
-                          ))}
-                        </Stack>
-                      </CardSection>
-                    </div>
-                  </div>
-                </Box>
-              )}
-            </Transition>
-          </Box>
-
-          <div className={classes.sideNav}>
-            <Tooltip label={t("dashboard.previous")}>
-              <ActionIcon
-                variant="light"
-                radius="xl"
-                size="lg"
-                onClick={() => go(page - 1)}
-                disabled={page === 0}
-                className={classes.navBtn}
-              >
-                <IconArrowUp size={18} />
-              </ActionIcon>
-            </Tooltip>
-
-            <div className={classes.vDots}>
-              <span className={`${classes.dot} ${page === 0 ? classes.dotActive : ""}`} />
-              <span className={`${classes.dot} ${page === 1 ? classes.dotActive : ""}`} />
-            </div>
-
-            <Tooltip label={t("dashboard.next")}>
-              <ActionIcon
-                variant="light"
-                radius="xl"
-                size="lg"
-                onClick={() => go(page + 1)}
-                disabled={page === 1}
-                className={classes.navBtn}
-              >
-                <IconArrowDown size={18} />
-              </ActionIcon>
-            </Tooltip>
-          </div>
-        </div>
+        {loading || !analytics ? (
+          <DashboardSkeleton />
+        ) : (
+          <Stack gap="lg">
+            <KPIStrip analytics={analytics} />
+            <EngagementTimeline data={analytics.engagementOverTime} platformNames={analytics.platformNames} />
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+              <PlatformBreakdown data={analytics.platformBreakdown} />
+              <ToneBreakdown data={analytics.toneDistribution} />
+            </SimpleGrid>
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+              <TopPostsList posts={analytics.topPosts} />
+              <CompetitorComparison competitors={analytics.competitors} />
+            </SimpleGrid>
+            <KeywordPerformance keywords={analytics.topKeywords} />
+            <AISummary analytics={analytics} userId={userId} />
+          </Stack>
+        )}
       </div>
     </div>
   );
