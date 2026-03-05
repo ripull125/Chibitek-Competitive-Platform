@@ -150,12 +150,9 @@ function LinkedinProfileCard({ profile, onSave }) {
               {profile.location && <Text size="sm" c="dimmed">{profile.location}</Text>}
             </div>
           </Group>
-          <Group gap="xs">
-            <Badge color="blue" variant="light" size="lg">
-              <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
-            </Badge>
-            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => onSave("profile", profile)} />
-          </Group>
+          <Badge color="blue" variant="light" size="lg">
+            <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
+          </Badge>
         </Group>
 
         {/* Key Metrics */}
@@ -403,12 +400,9 @@ function LinkedinCompanyCard({ company, onSave }) {
               {company.slogan && <Text size="sm" c="dimmed">{company.slogan}</Text>}
             </div>
           </Group>
-          <Group gap="xs">
-            <Badge color="blue" variant="light">
-              <IconBrandLinkedin size={12} style={{ marginRight: 4 }} /> {t("competitorLookup.company")}
-            </Badge>
-            <SaveButton label={t("competitorLookup.saveCompany")} onSave={() => onSave("company", company)} />
-          </Group>
+          <Badge color="blue" variant="light">
+            <IconBrandLinkedin size={12} style={{ marginRight: 4 }} /> {t("competitorLookup.company")}
+          </Badge>
         </Group>
 
         <Group gap="lg" wrap="wrap">
@@ -704,9 +698,6 @@ function XUserCard({ user, onSave }) {
           <Badge color="dark" variant="light" size="lg">
             <IconBrandX size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
           </Badge>
-          {onSave && (
-            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => onSave("profile", user)} />
-          )}
         </Group>
 
         <Card withBorder radius="sm" p="sm" bg="gray.0">
@@ -816,9 +807,6 @@ function XUserListCard({ users, title, onSaveUser }) {
     <div>
       <Group justify="space-between" align="center" my="xs">
         <Divider label={`${title} (${users.length})`} style={{ flex: 1 }} />
-        {onSaveUser && users.length > 1 && (
-          <SaveAllButton items={users} onSave={(_type, u) => onSaveUser(u)} type="user" />
-        )}
       </Group>
       <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
         {users.slice(0, 12).map((u, i) => (
@@ -836,9 +824,6 @@ function XUserListCard({ users, title, onSaveUser }) {
                   </Text>
                 )}
               </div>
-              {onSaveUser && (
-                <SaveButton label={t("competitorLookup.save")} onSave={() => onSaveUser(u)} />
-              )}
             </Group>
           </Card>
         ))}
@@ -1399,14 +1384,6 @@ export default function CompetitorLookup() {
       }
       return resp.json();
     }
-    // Save X profile
-    if (type === "profile" && data) {
-      return saveXProfile(data);
-    }
-    // Save X user (follower/following)
-    if (type === "user" && data) {
-      return saveXUser(data);
-    }
   }
 
   async function handleYoutubeSubmit() {
@@ -1724,49 +1701,6 @@ export default function CompetitorLookup() {
     return resp.json();
   }
 
-  // X profile save
-  function saveXProfile(user) {
-    const m = user.public_metrics || {};
-    return handleGenericSave("x", {
-      platformUserId: user.id || user.username,
-      username: user.username,
-      postId: `profile_${user.username}_${Date.now()}`,
-      content: `${user.name}\n@${user.username}\n${user.description || ""}`,
-      publishedAt: user.created_at || null,
-      likes: m.followers_count ?? 0,
-      comments: m.tweet_count ?? 0,
-      authorName: user.name,
-      authorHandle: user.username,
-    });
-  }
-
-  // X user (follower/following) save
-  function saveXUser(user) {
-    return handleGenericSave("x", {
-      platformUserId: user.id || user.username,
-      username: user.username,
-      postId: `user_${user.username}_${Date.now()}`,
-      content: `${user.name} (@${user.username})${user.description ? "\n" + user.description : ""}`,
-      likes: user.public_metrics?.followers_count ?? 0,
-      authorName: user.name,
-      authorHandle: user.username,
-    });
-  }
-
-  // YouTube channel save
-  function saveYoutubeChannel(data) {
-    return handleGenericSave("youtube", {
-      platformUserId: data.customUrl || data.title,
-      username: data.title,
-      postId: `channel_${data.customUrl || data.title}_${Date.now()}`,
-      content: `${data.title}\n${data.description || ""}`,
-      likes: data.subscribers ?? 0,
-      comments: data.videoCount ?? 0,
-      authorName: data.title,
-      authorHandle: data.customUrl || data.title,
-    });
-  }
-
   // YouTube transcript save
   function saveYoutubeTranscript(data) {
     return handleGenericSave("youtube", {
@@ -1775,51 +1709,6 @@ export default function CompetitorLookup() {
       postId: `transcript_${Date.now()}`,
       content: `[Transcript] ${data.videoTitle || ""}\n\n${data.text || ""}`,
       authorName: data.videoTitle || "Transcript",
-    });
-  }
-
-  // Instagram profile save
-  function saveInstagramProfile(profile) {
-    const p = profile.data?.user || profile.data || profile.user || profile;
-    return handleGenericSave("instagram", {
-      platformUserId: p.pk || p.id || p.username,
-      username: p.username,
-      postId: `profile_${p.username}_${Date.now()}`,
-      content: `${p.full_name || p.username}\n@${p.username}\n${p.biography || p.bio || ""}`,
-      likes: p.follower_count ?? p.edge_followed_by?.count ?? 0,
-      comments: p.media_count ?? 0,
-      authorName: p.full_name || p.username,
-      authorHandle: p.username,
-    });
-  }
-
-  // TikTok profile save
-  function saveTiktokProfile(profile) {
-    const u = profile.user || profile.data?.user || profile;
-    const stats = profile.stats || profile.statsV2 || u.stats || {};
-    return handleGenericSave("tiktok", {
-      platformUserId: u.id || u.uniqueId,
-      username: u.uniqueId,
-      postId: `profile_${u.uniqueId}_${Date.now()}`,
-      content: `${u.nickname || u.uniqueId}\n@${u.uniqueId}\n${u.signature || ""}`,
-      likes: stats.followerCount ?? u.followerCount ?? 0,
-      comments: stats.videoCount ?? u.videoCount ?? 0,
-      authorName: u.nickname || u.uniqueId,
-      authorHandle: u.uniqueId,
-    });
-  }
-
-  // TikTok user (follower/following/search) save
-  function saveTiktokUser(u) {
-    const user = u.user_info || u;
-    return handleGenericSave("tiktok", {
-      platformUserId: user.uid || user.id || user.unique_id,
-      username: user.unique_id || user.uniqueId,
-      postId: `user_${user.unique_id || user.uniqueId}_${Date.now()}`,
-      content: `${user.nickname || user.unique_id || user.uniqueId} (@${user.unique_id || user.uniqueId})`,
-      likes: user.follower_count ?? 0,
-      authorName: user.nickname || user.unique_id,
-      authorHandle: user.unique_id || user.uniqueId,
     });
   }
 
@@ -1832,20 +1721,6 @@ export default function CompetitorLookup() {
       postId: `transcript_${Date.now()}`,
       content: `[TikTok Transcript]\n\n${text}`,
       authorName: "TikTok Transcript",
-    });
-  }
-
-  // Reddit subreddit save
-  function saveRedditSubreddit(details) {
-    return handleGenericSave("reddit", {
-      platformUserId: details.display_name,
-      username: details.display_name,
-      postId: `subreddit_${details.display_name}_${Date.now()}`,
-      content: `r/${details.display_name}\n${details.description || ""}`,
-      likes: details.subscribers ?? 0,
-      comments: details.weekly_contributions ?? 0,
-      authorName: `r/${details.display_name}`,
-      authorHandle: details.display_name,
     });
   }
 
@@ -2220,10 +2095,6 @@ export default function CompetitorLookup() {
             ))}
           </Group>
 
-          <Group justify="flex-end">
-            <SaveButton label="Save Channel" onSave={() => saveYoutubeChannel(data)} />
-          </Group>
-
           {data.description && (
             <ScrollArea h={80}>
               <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.description}</Text>
@@ -2415,7 +2286,6 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="pink">
               <IconBrandInstagram size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
             </Badge>
-            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => saveInstagramProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
@@ -2630,7 +2500,6 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="dark">
               <IconBrandTiktok size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
             </Badge>
-            <SaveButton label={t("competitorLookup.saveProfile")} onSave={() => saveTiktokProfile(profile)} />
           </Group>
 
           <Group gap="lg" justify="center">
@@ -2699,9 +2568,6 @@ export default function CompetitorLookup() {
     if (!list.length) return <Text size="sm" c="dimmed">{t("competitorLookup.noUsersFound")}</Text>;
     return (
       <Stack gap="xs">
-        <Group justify="flex-end">
-          <SaveAllButton items={list} onSave={(_type, u) => saveTiktokUser(u)} type="user" />
-        </Group>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
           {list.slice(0, 30).map((u, i) => {
             const user = u.user_info || u;
@@ -2715,7 +2581,6 @@ export default function CompetitorLookup() {
                       {user.follower_count != null && <Badge size="xs" variant="light">{t("competitorLookup.followersCount", { count: fmtNum(user.follower_count) })}</Badge>}
                     </Group>
                   </div>
-                  <SaveButton label={t("competitorLookup.save")} onSave={() => saveTiktokUser(u)} />
                 </Group>
               </Card>
             );
@@ -2741,7 +2606,7 @@ export default function CompetitorLookup() {
     const transcript = results.transcript?.transcript;
     // Search results
     const searchUsersList = results.searchUsers?.user_list || [];
-    const searchHashtagList = results.searchHashtag?.aweme_list || [];
+    const searchHashtagList = results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || [];
     const searchKeywordList = results.searchKeyword?.search_item_list || [];
 
     const count =
@@ -2878,7 +2743,6 @@ export default function CompetitorLookup() {
             <Badge variant="light" color="orange">
               <IconBrandReddit size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.subreddit")}
             </Badge>
-            <SaveButton label={t("competitorLookup.saveSubreddit")} onSave={() => saveRedditSubreddit(details)} />
           </Group>
 
           <Group gap="lg" justify="center">

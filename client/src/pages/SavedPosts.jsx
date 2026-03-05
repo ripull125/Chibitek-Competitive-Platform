@@ -8,7 +8,8 @@ import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
   IconBrandTiktok, IconBrandX, IconBrandYoutube,
   IconChevronDown, IconChevronUp,
-  IconEye, IconHeart, IconMessage, IconRepeat, IconTrash,
+  IconExternalLink, IconEye, IconHeart, IconInfoCircle,
+  IconMessage, IconRepeat, IconTrash,
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
@@ -31,6 +32,30 @@ function Metric({ icon, value }) {
   );
 }
 
+/** Build URL to the original post on its platform */
+function getPostUrl(post) {
+  // Prefer stored url
+  if (post.url) return post.url;
+  const pid = post.platform_post_id;
+  if (!pid) return null;
+  const platformId = post.platform_id;
+  // X / Twitter
+  if (platformId === 1 || platformId === 4) return `https://x.com/i/web/status/${pid}`;
+  // Instagram
+  if (platformId === 3) return `https://www.instagram.com/p/${pid}`;
+  // TikTok
+  if (platformId === 5) {
+    const user = post.username || post.extra?.username || post.extra?.author_handle;
+    return user ? `https://www.tiktok.com/@${user}/video/${pid}` : `https://www.tiktok.com/video/${pid}`;
+  }
+  // YouTube
+  if (platformId === 8) {
+    const vid = post.extra?.videoId || pid;
+    return `https://www.youtube.com/watch?v=${vid}`;
+  }
+  return null;
+}
+
 /* ── X / Twitter card ────────────────────────────────────────────────────── */
 
 function XPostCard({ post, onDelete }) {
@@ -41,6 +66,7 @@ function XPostCard({ post, onDelete }) {
   const handle = post.extra?.author_handle || post.extra?.username || post.username || t("savedPosts.unknown");
   const name = post.extra?.author_name || handle;
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
@@ -62,6 +88,13 @@ function XPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandX size={18} style={{ opacity: 0.55 }} />
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
@@ -114,6 +147,7 @@ function YouTubePostCard({ post, onDelete }) {
   const transcript = post.content || "";
   const descLong = description.length > 200;
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
@@ -134,11 +168,20 @@ function YouTubePostCard({ post, onDelete }) {
               )}
             </div>
           </Group>
-          <Tooltip label={t("savedPosts.removeSavedPost")}>
-            <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
-              <IconTrash size={15} />
-            </ActionIcon>
-          </Tooltip>
+          <Group gap={6} wrap="nowrap">
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
+              <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
+                <IconTrash size={15} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
 
         <Text fw={600} size="md" lh={1.3}>{title}</Text>
@@ -201,6 +244,7 @@ function LinkedInPostCard({ post, onDelete }) {
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.extra?.author_name || post.username || t("savedPosts.unknown");
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #0A66C2" }}>
@@ -222,6 +266,13 @@ function LinkedInPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandLinkedin size={18} color="#0A66C2" style={{ opacity: 0.7 }} />
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
@@ -263,6 +314,7 @@ function InstagramPostCard({ post, onDelete }) {
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || t("savedPosts.unknown");
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
@@ -284,6 +336,13 @@ function InstagramPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandInstagram size={18} color="#E1306C" style={{ opacity: 0.7 }} />
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
@@ -326,6 +385,7 @@ function TikTokPostCard({ post, onDelete }) {
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const tone = post.tone;
   const name = post.username || post.extra?.username || t("savedPosts.unknown");
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #000" }}>
@@ -347,6 +407,13 @@ function TikTokPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandTiktok size={18} style={{ opacity: 0.7 }} />
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
@@ -390,6 +457,7 @@ function RedditPostCard({ post, onDelete }) {
   const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
   const name = post.username || post.extra?.username || t("savedPosts.unknown");
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
@@ -411,6 +479,13 @@ function RedditPostCard({ post, onDelete }) {
           </Group>
           <Group gap={6} wrap="nowrap">
             <IconBrandReddit size={18} color="#FF4500" style={{ opacity: 0.7 }} />
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
             <Tooltip label={t("savedPosts.removeSavedPost")}>
               <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
                 <IconTrash size={15} />
@@ -448,16 +523,26 @@ function RedditPostCard({ post, onDelete }) {
 function GenericPostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const tone = post.tone;
+  const postUrl = getPostUrl(post);
   return (
     <Card withBorder radius="md" p="lg">
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap" }}>{post.content}</Text>
-          <Tooltip label={t("savedPosts.removeSavedPost")}>
-            <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
-              <IconTrash size={15} />
-            </ActionIcon>
-          </Tooltip>
+          <Group gap={6} wrap="nowrap">
+            {postUrl && (
+              <Tooltip label={t("savedPosts.viewPost", "View Post")}>
+                <ActionIcon variant="subtle" color="blue" size="sm" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  <IconExternalLink size={15} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            <Tooltip label={t("savedPosts.removeSavedPost")}>
+              <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
+                <IconTrash size={15} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
         {post.published_at && <Text size="xs" c="dimmed">{formatDate(post.published_at)}</Text>}
         {tone && (
@@ -612,6 +697,10 @@ export default function SavedPosts() {
           {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
         </Badge>
       </Group>
+
+      <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
+        Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform’s API.
+      </Alert>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
