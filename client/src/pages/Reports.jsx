@@ -1,92 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import KeywordTracking from "./KeywordTracking";
-import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Badge, Button, Card, Checkbox, Container, Group, Title, Paper, LoadingOverlay, Stack, Text, Select, Switch } from "@mantine/core";
-import { IconDownload } from "@tabler/icons-react";
-import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { Button, Checkbox, Container, Title, Paper } from "@mantine/core";
 import "../utils/ui.css";
-import { apiUrl } from "../utils/api";
-import { supabase } from "../supabaseClient";
-
-// holds posts already converted to universal format
-// previous version used a global var; switched to component state instead
 
 export default function Reports() {
   const chartRef = useRef(null);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
-  const [postLimit, setPostLimit] = useState(10); // number of recent posts to analyze
-  const [convertedData, setConvertedData] = useState([]);
-  const [analysisStarted, setAnalysisStarted] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [toneEngagementData, setToneEngagementData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState(null);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUser = async () => {
-      if (!supabase) return;
-      const { data, error } = await supabase.auth.getUser();
-      if (error) return;
-      if (mounted) setCurrentUserId(data?.user?.id || null);
-    };
-    loadUser();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Fetch saved posts once when component mounts. analysis is triggered manually.
-  useEffect(() => {
-    if (!currentUserId) {
-      setToneEngagementData([]);
-      setLoading(false);
-      setConvertedData([]);
-      return;
-    }
-
-    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
-      .then((r) => r.json())
-      .then((data) => {
-        const posts = data.posts || [];
-        const converted = convertSavedPosts(posts);
-
-        setConvertedData(converted);
-
-        // Create chart data with index for each post
-        const chartData = converted.map((post, index) => ({
-          index: index + 1,
-          engagement: post.Engagement,
-          source: post['Name/Source'],
-          message: post.Message,
-          tone: post.tone,
-        }));
-
-        setToneEngagementData(chartData);
-      })
-      .catch((error) => console.error("Error fetching posts:", error))
-      .finally(() => setLoading(false));
-  }, [currentUserId]);
-
+  // Page ready event for tour system
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("chibitek:pageReady", { detail: { page: "reports" } })
     );
   }, []);
+
+
 
   const generatePDF = async () => {
     if (!includeKeywordTracking) return;
@@ -120,25 +51,10 @@ export default function Reports() {
     }
   };
 
-  const TONES = [
-    'Professional', 'Promotional', 'Informative', 'Persuasive', 'Confident',
-    'Approachable', 'Authoritative', 'Inspirational', 'Conversational', 'Assertive',
-    'Casual', 'Customer-centric', 'Urgent', 'Optimistic', 'Polished'
-  ];
-
-  const PALETTE = [
-    '#2f6fdb','#ff7a59','#51cf66','#ffd43b','#845ef7',
-    '#20c997','#0ca678','#f783ac','#15aabf','#d9480f',
-    '#868e96','#364fc7','#fa5252','#12b886','#495057'
-  ];
-
-  const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
-
   return (
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
-      <LoadingOverlay visible={loading} />
       <Title order={1} mb="lg">
-        Analysis Reports
+        Keyword Tracking Reports
       </Title>
       
       <Button onClick={generatePDF} mb="lg">
@@ -152,149 +68,7 @@ export default function Reports() {
         mb="lg"
       />
 
-      <Button
-        onClick={async () => {
-          // perform analysis once per click
-          setLoading(true);
-          setAnalysisStarted(true);
-          try {
-            // slice according to limit for display purposes
-            let displayPosts = convertedData.slice();
-            if (postLimit > 0 && displayPosts.length > postLimit) {
-              displayPosts = displayPosts.slice(-postLimit);
-            }
-
-            // only send items without a tone for analysis
-            const missing = displayPosts.filter((p) => !p.tone);
-            let analyzed = [];
-            if (missing.length) {
-              try {
-                analyzed = await analyzeUniversalPosts(missing, currentUserId);
-              } catch (err) {
-                console.error('Tone analysis failed:', err);
-              }
-            }
-
-            // merge results back into displayPosts, keeping existing tones
-            let aiIndex = 0;
-            const merged = displayPosts.map((post) => {
-              if (post.tone) return post;
-              const result = analyzed[aiIndex++] || {};
-              return { ...post, tone: result.tone || null };
-            });
-
-            // update convertedData cache with any new tone values
-            if (analyzed.length) {
-              const updateMap = new Map();
-              merged.forEach((p) => {
-                if (p.tone) {
-                  updateMap.set(`${p.Message}###${p.Engagement}`, p.tone);
-                }
-              });
-              const updatedAll = convertedData.map((p) => {
-                const key = `${p.Message}###${p.Engagement}`;
-                if (!p.tone && updateMap.has(key)) {
-                  return { ...p, tone: updateMap.get(key) };
-                }
-                return p;
-              });
-              setConvertedData(updatedAll);
-            }
-
-            const chartData = merged.map((post, index) => ({
-              index: index + 1,
-              engagement: post.Engagement,
-              source: post['Name/Source'],
-              message: post.Message,
-              tone: post.tone || null,
-            }));
-            setToneEngagementData(chartData);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        mb="sm"
-        disabled={loading}
-      >
-        {analysisStarted ? 'Re-run Analysis' : 'Start Analysis'}
-      </Button>
-
-      <Select
-        label="Analyze last"
-        data={[
-          { value: '5', label: '5 posts' },
-          { value: '10', label: '10 posts' },
-          { value: '15', label: '15 posts' },
-          { value: '20', label: '20 posts' },
-          { value: '50', label: '50 posts' },
-        ]}
-        value={String(postLimit)}
-        onChange={(val) => setPostLimit(Number(val) || 0)}
-        mb="lg"
-        disabled={analysisStarted}
-      />
-
       {includeKeywordTracking && <KeywordTracking ref={chartRef} />}
-
-      {/* Saved Posts Source-Based Engagement Chart */}
-      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
-        <Title order={2} size="h3" mb="md">
-          Saved Posts - Engagement by Post Index
-        </Title>
-        {toneEngagementData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={400}>
-            <ScatterChart>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="index" name="Post Index" />
-              <YAxis dataKey="engagement" name="Engagement" />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-              <Legend />
-              {TONES.map((tone) => {
-                const pts = toneEngagementData.filter((d) => d.tone === tone);
-                if (!pts || !pts.length) return null;
-                return (
-                  <Scatter
-                    key={tone}
-                    name={tone}
-                    data={pts}
-                    dataKey="engagement"
-                    fill={TONE_COLOR[tone]}
-                  />
-                );
-              })}
-              {/* Fallback for unlabelled posts */}
-              {toneEngagementData.some((d) => !d.tone) && (
-                <Scatter
-                  name="Unlabeled"
-                  data={toneEngagementData.filter((d) => !d.tone)}
-                  dataKey="engagement"
-                  fill="#adb5bd"
-                />
-              )}
-            </ScatterChart>
-          </ResponsiveContainer>
-        ) : (
-          <Title order={4} c="dimmed">No saved posts to display</Title>
-        )}
-      </Paper>
-
-      {/* Source Distribution Pie Chart */}
-      <Paper p="lg" radius="md" style={{ marginTop: "2rem" }} withBorder>
-        <Title order={2} size="h3" mb="md">
-          Post Statistics
-        </Title>
-        {toneEngagementData.length > 0 ? (
-          <div style={{ display: "flex", gap: "1rem" }}>
-            <div style={{ flex: 1 }}>
-              <Text><strong>Total Posts:</strong> {toneEngagementData.length}</Text>
-              <Text><strong>Average Engagement:</strong> {(toneEngagementData.reduce((sum, p) => sum + p.engagement, 0) / toneEngagementData.length).toFixed(2)}</Text>
-              <Text><strong>Total Engagement:</strong> {toneEngagementData.reduce((sum, p) => sum + p.engagement, 0)}</Text>
-            </div>
-          </div>
-        ) : (
-          <Title order={4} c="dimmed">No saved posts to display</Title>
-        )}
-      </Paper>
     </Container>
   );
 }

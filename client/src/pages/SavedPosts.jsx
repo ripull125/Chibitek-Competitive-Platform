@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActionIcon, Alert, Badge, Button, Card, Collapse, Divider,
-  Group, LoadingOverlay, Modal, Paper, Stack, Text, Title, Tooltip,
+  Group, LoadingOverlay, Modal, Paper, Select, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
@@ -68,7 +68,7 @@ function XPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, fontStyle: preview ? "normal" : "italic" }} c={preview ? "inherit" : "dimmed"}>{preview || "no message"}</Text>
 
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
@@ -144,7 +144,7 @@ function YouTubePostCard({ post, onDelete }) {
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
 
-        {description && (
+        {description ? (
           <div>
             <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
               {descLong && !showDesc ? description.slice(0, 200) + "…" : description}
@@ -158,6 +158,8 @@ function YouTubePostCard({ post, onDelete }) {
               </Button>
             )}
           </div>
+        ) : (
+          <Text size="sm" c="dimmed" style={{ fontStyle: "italic" }}>no message</Text>
         )}
 
         {transcript && transcript !== description && (
@@ -226,7 +228,7 @@ function LinkedInPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, fontStyle: preview ? "normal" : "italic" }} c={preview ? "inherit" : "dimmed"}>{preview || "no message"}</Text>
         {isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
@@ -287,7 +289,7 @@ function InstagramPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, fontStyle: preview ? "normal" : "italic" }} c={preview ? "inherit" : "dimmed"}>{preview || "no message"}</Text>
         {isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
@@ -349,7 +351,7 @@ function TikTokPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, fontStyle: preview ? "normal" : "italic" }} c={preview ? "inherit" : "dimmed"}>{preview || "no message"}</Text>
         {isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
@@ -412,7 +414,7 @@ function RedditPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55, fontStyle: preview ? "normal" : "italic" }} c={preview ? "inherit" : "dimmed"}>{preview || "no message"}</Text>
         {isLong && (
           <Button variant="subtle" size="xs" p={0} h="auto"
             leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
@@ -444,7 +446,7 @@ function GenericPostCard({ post, onDelete }) {
     <Card withBorder radius="md" p="lg">
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
-          <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap" }}>{post.content}</Text>
+          <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap", fontStyle: post.content ? "normal" : "italic" }} c={post.content ? "inherit" : "dimmed"}>{post.content || "no message"}</Text>
           <Tooltip label="Remove saved post">
             <ActionIcon variant="subtle" color="red" size="sm" onClick={onDelete}>
               <IconTrash size={15} />
@@ -496,6 +498,7 @@ export default function SavedPosts() {
   const [notice, setNotice] = useState("");
   const [platformMap, setPlatformMap] = useState(DEFAULT_PLATFORM_MAP);
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [sortBy, setSortBy] = useState("engagement");
 
   /* Fetch platform IDs from server to keep in sync with DB */
   useEffect(() => {
@@ -569,9 +572,37 @@ export default function SavedPosts() {
     }
   }
 
-  /* Group posts by platform */
+  /* Calculate engagement score or get specific metric value */
+  function getMetricValue(post, metric) {
+    const likes = post.likes || 0;
+    const shares = post.shares || post.retweets || 0;
+    const comments = post.comments || post.replies || 0;
+    const views = post.views || 0;
+
+    switch (metric) {
+      case "likes":
+        return likes;
+      case "shares":
+        return shares;
+      case "comments":
+        return comments;
+      case "views":
+        return views;
+      case "engagement":
+      default:
+        return likes + shares + comments + (views > 0 ? Math.round(views / 10) : 0);
+    }
+  }
+
+  /* Sort posts by selected metric and group by platform */
+  const sortedPosts = [...posts].sort((a, b) => {
+    const aVal = getMetricValue(a, sortBy);
+    const bVal = getMetricValue(b, sortBy);
+    return bVal - aVal; // descending order
+  });
+
   const grouped = {};
-  for (const p of posts) {
+  for (const p of sortedPosts) {
     const pid = p.platform_id ?? 0;
     if (!grouped[pid]) grouped[pid] = [];
     grouped[pid].push(p);
@@ -590,13 +621,34 @@ export default function SavedPosts() {
     <Stack gap="lg" style={{ position: "relative" }}>
       <LoadingOverlay visible={loading} />
 
-      {/* page header */}
-      <Group justify="space-between" align="center">
-        <Title order={2}>Saved Posts</Title>
-        <Badge variant="filled" size="lg" radius="sm" color="blue">
-          {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
-        </Badge>
-      </Group>
+      {/* page header with sort controls */}
+      <Stack gap="md">
+        <Group justify="space-between" align="center">
+          <Title order={2}>Saved Posts</Title>
+          <Badge variant="filled" size="lg" radius="sm" color="blue">
+            {posts.length} {posts.length === 1 ? "POST" : "POSTS"}
+          </Badge>
+        </Group>
+
+        {posts.length > 0 && (
+          <Select
+            label="Sort by"
+            placeholder="Select metric"
+            value={sortBy}
+            onChange={(val) => setSortBy(val || "engagement")}
+            data={[
+              { value: "engagement", label: "Engagement (Overall)" },
+              { value: "likes", label: "Likes" },
+              { value: "shares", label: "Shares/Retweets" },
+              { value: "comments", label: "Comments/Replies" },
+              { value: "views", label: "Views" },
+            ]}
+            searchable
+            maxDropdownHeight={200}
+            style={{ maxWidth: 300 }}
+          />
+        )}
+      </Stack>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 

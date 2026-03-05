@@ -10,6 +10,8 @@ import {
   Divider,
   Group,
   List,
+  LoadingOverlay,
+  MultiSelect,
   ScrollArea,
   Stack,
   Text,
@@ -17,6 +19,8 @@ import {
   Title,
   Tooltip,
   Transition,
+  Select,
+  Paper,
 } from "@mantine/core";
 import {
   IconArrowUp,
@@ -37,9 +41,14 @@ import {
   ZAxis,
   Tooltip as RechartsTooltip,
   CartesianGrid,
+  Legend,
+  Line,
+  ComposedChart,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
+import { apiUrl } from "../utils/api";
 import classes from "./DashboardPage.module.css";
 
 /* ---------- Utils & demo data ---------- */
@@ -135,24 +144,57 @@ function CardSection({ title, subtitle, right, children, className, pad = "xl" }
 
 /* ---------- Part 1 ---------- */
 function KPIStrip() {
+  const [keywords, setKeywords] = React.useState([]);
+  const [currentUserId, setCurrentUserId] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => { mounted = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!currentUserId) {
+      setKeywords([]);
+      setLoading(false);
+      return;
+    }
+
+    fetch(apiUrl(`/api/keywords?user_id=${encodeURIComponent(currentUserId)}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const kws = (data.keywords || []).sort((a, b) => (b.kpi || 0) - (a.kpi || 0)).slice(0, 3);
+        setKeywords(kws);
+      })
+      .catch((error) => console.error("Error fetching keywords:", error))
+      .finally(() => setLoading(false));
+  }, [currentUserId]);
+
   return (
     <div data-tour="dashboard-kpis">
       <CardSection title="Engagement snapshot" right={<IconBolt className={classes.cardIcon} />}>
-        <div className={classes.kpis}>
-          {KPI.map((k) => (
-            <div key={k.label} className={classes.kpi}>
-              <Text size="xs" c="dimmed" fw={700} className={classes.kpiLabel}>{k.label}</Text>
-              <Group gap="xs" align="end" wrap="nowrap">
-                <Title order={2} className={classes.kpiValue}>
-                  {typeof k.value === "number" ? fmtK(k.value) : k.value}
-                </Title>
-                <Badge radius="sm" variant="light" className={k.delta >= 0 ? classes.deltaUp : classes.deltaDown}>
-                  {k.delta >= 0 ? `+${k.delta}%` : `${k.delta}%`}
-                </Badge>
+        {!loading && keywords.length > 0 ? (
+          <Stack gap="xs">
+            {keywords.map((kw, idx) => (
+              <Group key={idx} justify="space-between" align="center" style={{ paddingY: 4 }}>
+                <Text fw={600} size="sm">{kw.term}</Text>
+                <Group gap={6} wrap="nowrap">
+                  <Badge size="xs" variant="light">KPI: {kw.kpi || 0}</Badge>
+                  <Badge size="xs" variant="light" color="blue">{fmtK(kw.avgEngagement || 0)}</Badge>
+                </Group>
               </Group>
-            </div>
-          ))}
-        </div>
+            ))}
+          </Stack>
+        ) : (
+          <Text size="sm" c="dimmed">Loading keywords...</Text>
+        )}
       </CardSection>
     </div>
   );
@@ -412,6 +454,513 @@ function RecentPosts() {
   );
 }
 
+function ToneAnalysisCompact() {
+  const [toneEngagementData, setToneEngagementData] = React.useState([]);
+  const [convertedData, setConvertedData] = React.useState([]);
+  const [analysisStarted, setAnalysisStarted] = React.useState(false);
+  const [postLimit, setPostLimit] = React.useState("10");
+  const [currentUserId, setCurrentUserId] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [filterUsername, setFilterUsername] = React.useState(null);
+  const [filterPlatform, setFilterPlatform] = React.useState(null);
+  const [filterTone, setFilterTone] = React.useState([]);
+  const [rawPosts, setRawPosts] = React.useState([]);
+
+  // Platform ID to name mapping
+  const PLATFORM_MAP = {
+    1: "X",
+    3: "Instagram",
+    4: "X",
+    5: "TikTok",
+    8: "YouTube",
+    9: "LinkedIn",
+    10: "Reddit",
+  };
+
+  const TONES = [
+    'Professional', 'Promotional', 'Informative', 'Persuasive', 'Confident',
+    'Approachable', 'Authoritative', 'Inspirational', 'Conversational', 'Assertive',
+    'Casual', 'Customer-centric', 'Urgent', 'Optimistic', 'Polished'
+  ];
+
+  const PALETTE = [
+    '#2f6fdb','#ff7a59','#51cf66','#ffd43b','#845ef7',
+    '#20c997','#0ca678','#f783ac','#15aabf','#d9480f',
+    '#868e96','#364fc7','#fa5252','#12b886','#495057'
+  ];
+
+  const TONE_COLOR = TONES.reduce((acc, t, i) => (acc[t] = PALETTE[i % PALETTE.length], acc), {});
+
+  React.useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => { mounted = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!currentUserId) {
+      setToneEngagementData([]);
+      setLoading(false);
+      setConvertedData([]);
+      return;
+    }
+
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const posts = data.posts || [];
+        setRawPosts(posts);
+        const converted = convertSavedPosts(posts);
+        setConvertedData(converted);
+
+        const chartData = converted.map((post, index) => {
+          const rawPost = posts[index] || {};
+          const platformId = rawPost.platform_id || 0;
+          const platformName = PLATFORM_MAP[platformId] || "Unknown";
+          const author = rawPost.author || rawPost.extra?.author_name || rawPost.username || "Unknown";
+          
+          return {
+            index: index + 1,
+            engagement: post.Engagement,
+            source: post['Name/Source'],
+            message: post.Message,
+            tone: post.tone,
+            platform: platformName,
+            author: author,
+          };
+        });
+
+        setToneEngagementData(chartData);
+      })
+      .catch((error) => console.error("Error fetching posts:", error))
+      .finally(() => setLoading(false));
+  }, [currentUserId]);
+
+  const handleAnalysis = async () => {
+    setLoading(true);
+    setAnalysisStarted(true);
+    try {
+      let displayPosts = convertedData.slice();
+      const limit = Number(postLimit) || 0;
+      if (limit > 0 && displayPosts.length > limit) {
+        displayPosts = displayPosts.slice(-limit);
+      }
+
+      const missing = displayPosts.filter((p) => !p.tone);
+      let analyzed = [];
+      if (missing.length) {
+        try {
+          analyzed = await analyzeUniversalPosts(missing, currentUserId);
+        } catch (err) {
+          console.error('Tone analysis failed:', err);
+        }
+      }
+
+      let aiIndex = 0;
+      const merged = displayPosts.map((post) => {
+        if (post.tone) return post;
+        const result = analyzed[aiIndex++] || {};
+        return { ...post, tone: result.tone || null };
+      });
+
+      if (analyzed.length) {
+        const updateMap = new Map();
+        merged.forEach((p) => {
+          if (p.tone) {
+            updateMap.set(`${p.Message}###${p.Engagement}`, p.tone);
+          }
+        });
+        const updatedAll = convertedData.map((p) => {
+          const key = `${p.Message}###${p.Engagement}`;
+          if (!p.tone && updateMap.has(key)) {
+            return { ...p, tone: updateMap.get(key) };
+          }
+          return p;
+        });
+        setConvertedData(updatedAll);
+      }
+
+      const chartData = merged.map((post, index) => {
+        const rawPost = rawPosts[index] || {};
+        const platformId = rawPost.platform_id || 0;
+        const platformName = PLATFORM_MAP[platformId] || "Unknown";
+        const author = rawPost.author || rawPost.extra?.author_name || rawPost.username || "Unknown";
+        
+        return {
+          index: index + 1,
+          engagement: post.Engagement,
+          source: post['Name/Source'],
+          message: post.Message,
+          tone: post.tone || null,
+          platform: platformName,
+          author: author,
+        };
+      });
+      setToneEngagementData(chartData);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get unique values for filters
+  const uniqueUsernames = Array.from(new Set(toneEngagementData.map((p) => p.author))).sort();
+  const uniquePlatforms = Array.from(new Set(toneEngagementData.map((p) => p.platform))).sort();
+  const uniqueTones = Array.from(new Set(toneEngagementData.filter((p) => p.tone).map((p) => p.tone))).sort();
+
+  // Filter data based on selected filters
+  const filteredData = toneEngagementData.filter((post) => {
+    if (filterUsername && filterUsername !== "" && post.author !== filterUsername) return false;
+    if (filterPlatform && filterPlatform !== "" && post.platform !== filterPlatform) return false;
+    if (filterTone.length > 0 && !filterTone.includes(post.tone)) return false;
+    return true;
+  });
+
+  // Calculate linear regression trendline for a dataset
+  const calculateTrendline = (data) => {
+    if (data.length < 2) return [];
+    
+    const n = data.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    
+    data.forEach((point) => {
+      const x = point.index;
+      const y = point.engagement;
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumX2 += x * x;
+    });
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
+    // Return trendline points for each data point
+    return data.map((point) => ({
+      index: point.index,
+      trendline: slope * point.index + intercept,
+    }));
+  };
+
+  return (
+    <CardSection
+      title="Tone Analysis"
+      subtitle="Analyze saved posts for content tone"
+    >
+      <Stack gap="md">
+        <Group gap="md" align="flex-end">
+          <Button
+            onClick={handleAnalysis}
+            disabled={loading}
+            size="sm"
+          >
+            {analysisStarted ? 'Re-run' : 'Analyze'}
+          </Button>
+        </Group>
+
+        {toneEngagementData.length > 0 && (
+          <Group grow>
+            <Select
+              label="Username"
+              placeholder="All users"
+              searchable
+              clearable
+              data={[
+                { value: "", label: "All Users" },
+                ...uniqueUsernames.map((u) => ({ value: u, label: u })),
+              ]}
+              value={filterUsername}
+              onChange={setFilterUsername}
+              size="xs"
+            />
+            <Select
+              label="Platform"
+              placeholder="All platforms"
+              searchable
+              clearable
+              data={[
+                { value: "", label: "All Platforms" },
+                ...uniquePlatforms.map((p) => ({ value: p, label: p })),
+              ]}
+              value={filterPlatform}
+              onChange={setFilterPlatform}
+              size="xs"
+            />
+            <MultiSelect
+              label="Tone"
+              placeholder="All tones"
+              searchable
+              clearable
+              data={uniqueTones}
+              value={filterTone}
+              onChange={setFilterTone}
+              size="xs"
+            />
+          </Group>
+        )}
+
+        {toneEngagementData.length > 0 ? (
+          <>
+            <div className={classes.chartBox} style={{ height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="index" name="Post Index" />
+                  <YAxis dataKey="engagement" name="Engagement" />
+                  <RechartsTooltip cursor={{ strokeDasharray: '3 3' }} />
+                  {TONES.map((tone) => {
+                    const pts = filteredData.filter((d) => d.tone === tone);
+                    if (!pts || !pts.length) return null;
+                    const trendlineData = calculateTrendline(pts);
+                    return (
+                      <React.Fragment key={tone}>
+                        <Scatter
+                          name={tone}
+                          data={pts}
+                          dataKey="engagement"
+                          fill={TONE_COLOR[tone]}
+                        />
+                        <Line
+                          name={`${tone} Trend`}
+                          data={trendlineData}
+                          dataKey="trendline"
+                          stroke={TONE_COLOR[tone]}
+                          strokeWidth={2}
+                          dot={false}
+                          type="monotone"
+                          isAnimationActive={false}
+                          strokeOpacity={0.7}
+                        />
+                      </React.Fragment>
+                    );
+                  })}
+                  {toneEngagementData.some((d) => !d.tone) && (
+                    <Scatter
+                      name="Unlabeled"
+                      data={filteredData.filter((d) => !d.tone)}
+                      dataKey="engagement"
+                      fill="#adb5bd"
+                    />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <Group grow>
+              <div>
+                <Text size="xs" c="dimmed">Total Posts</Text>
+                <Text fw={700}>{filteredData.length}</Text>
+              </div>
+              <div>
+                <Text size="xs" c="dimmed">Avg Engagement</Text>
+                <Text fw={700}>{filteredData.length > 0 ? (filteredData.reduce((sum, p) => sum + p.engagement, 0) / filteredData.length).toFixed(0) : 0}</Text>
+              </div>
+            </Group>
+          </>
+        ) : (
+          <Text size="sm" c="dimmed">No saved posts available</Text>
+        )}
+      </Stack>
+    </CardSection>
+  );
+}
+
+function SavedPostsList() {
+  const [allPosts, setAllPosts] = React.useState([]);
+  const [currentUserId, setCurrentUserId] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [filterUsername, setFilterUsername] = React.useState(null);
+  const [filterPlatform, setFilterPlatform] = React.useState(null);
+  const [sortBy, setSortBy] = React.useState("engagement");
+
+  // Platform ID to name mapping
+  const PLATFORM_MAP = {
+    1: "X",
+    3: "Instagram",
+    4: "X",
+    5: "TikTok",
+    8: "YouTube",
+    9: "LinkedIn",
+    10: "Reddit",
+  };
+
+  React.useEffect(() => {
+    let mounted = true;
+    const loadUser = async () => {
+      if (!supabase) return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) return;
+      if (mounted) setCurrentUserId(data?.user?.id || null);
+    };
+    loadUser();
+    return () => { mounted = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!currentUserId) {
+      setAllPosts([]);
+      setLoading(false);
+      return;
+    }
+
+    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+      .then((r) => r.json())
+      .then((data) => {
+        const posts = data.posts || [];
+        // Keep all posts with full metrics for flexible sorting
+        const allPostsData = posts.map((post, idx) => {
+            const platformId = post.platform_id || 0;
+            const platformName = PLATFORM_MAP[platformId] || "Unknown";
+            const author = post.author || post.extra?.author_name || post.username || "Unknown";
+            const likes = post.likes || 0;
+            const shares = post.shares || post.retweets || 0;
+            const comments = post.comments || post.replies || 0;
+            const views = post.views || 0;
+            
+            return {
+              id: idx,
+              author: author,
+              platform: platformName,
+              message: post.content?.substring(0, 50) + (post.content?.length > 50 ? '...' : ''),
+              likes: likes,
+              shares: shares,
+              comments: comments,
+              views: views,
+              engagement: likes + shares + comments + (views > 0 ? Math.round(views / 10) : 0),
+            };
+          });
+        setAllPosts(allPostsData);
+      })
+      .catch((error) => console.error("Error fetching posts:", error))
+      .finally(() => setLoading(false));
+  }, [currentUserId]);
+
+  // Calculate metric value for sorting
+  const getMetricValue = (post, metric) => {
+    switch (metric) {
+      case "likes":
+        return post.likes;
+      case "shares":
+        return post.shares;
+      case "comments":
+        return post.comments;
+      case "views":
+        return post.views;
+      case "engagement":
+      default:
+        return post.engagement;
+    }
+  };
+
+  // Get unique usernames and platforms for filters
+  const uniqueUsernames = Array.from(new Set(allPosts.map((p) => p.author))).sort();
+  const uniquePlatforms = Array.from(new Set(allPosts.map((p) => p.platform))).sort();
+
+  // Filter posts based on selected filters and sort by metric
+  const filteredPosts = allPosts
+    .filter((post) => {
+      if (filterUsername && filterUsername !== "" && post.author !== filterUsername) return false;
+      if (filterPlatform && filterPlatform !== "" && post.platform !== filterPlatform) return false;
+      return true;
+    })
+    .sort((a, b) => getMetricValue(b, sortBy) - getMetricValue(a, sortBy))
+    .slice(0, 5); // Show top 5 filtered posts
+
+  return (
+    <CardSection title="Top Saved Posts" subtitle="By engagement">
+      <Stack gap="md">
+        {/* Filters and Sort */}
+        <Group grow>
+          <Select
+            label="Username"
+            placeholder="All users"
+            searchable
+            clearable
+            data={[
+              { value: "", label: "All Users" },
+              ...uniqueUsernames.map((u) => ({ value: u, label: u })),
+            ]}
+            value={filterUsername}
+            onChange={setFilterUsername}
+            size="xs"
+          />
+          <Select
+            label="Platform"
+            placeholder="All platforms"
+            searchable
+            clearable
+            data={[
+              { value: "", label: "All Platforms" },
+              ...uniquePlatforms.map((p) => ({ value: p, label: p })),
+            ]}
+            value={filterPlatform}
+            onChange={setFilterPlatform}
+            size="xs"
+          />
+          <Select
+            label="Sort by"
+            placeholder="Engagement"
+            data={[
+              { value: "engagement", label: "Engagement (Overall)" },
+              { value: "likes", label: "Likes" },
+              { value: "shares", label: "Shares/Retweets" },
+              { value: "comments", label: "Comments/Replies" },
+              { value: "views", label: "Views" },
+            ]}
+            value={sortBy}
+            onChange={(val) => setSortBy(val || "engagement")}
+            size="xs"
+          />
+        </Group>
+
+        {/* Posts List */}
+        {filteredPosts.length > 0 ? (
+          <Stack gap="xs">
+            {filteredPosts.map((post) => (
+              <Group key={post.id} justify="space-between" align="flex-start" style={{ paddingY: 4 }}>
+                <Stack gap={1} style={{ flex: 1 }}>
+                  <Group gap={6} wrap="nowrap">
+                    <Badge size="xs" variant="light">{post.platform}</Badge>
+                    <Text size="xs" c="dimmed">{post.author}</Text>
+                  </Group>
+                  <Text size="sm" fw={500} lineClamp={1} fs={!post.message ? "italic" : "normal"} c={!post.message ? "dimmed" : "inherit"}>{post.message || "no message"}</Text>
+                </Stack>
+                <Badge variant="light">{fmtK(getMetricValue(post, sortBy))}</Badge>
+              </Group>
+            ))}
+          </Stack>
+        ) : (
+          <Text size="sm" c="dimmed">No saved posts match your filters</Text>
+        )}
+      </Stack>
+    </CardSection>
+  );
+}
+
+
+
+function MainDashboard() {
+  return (
+    <div style={{ position: "relative" }}>
+      <Stack gap="md">
+        {/* Engagement snapshot with Top Keywords */}
+        <KPIStrip />
+
+        {/* Two column layout */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+          <SavedPostsList />
+          <ToneAnalysisCompact />
+        </div>
+      </Stack>
+    </div>
+  );
+}
+
 /* ---------- Page ---------- */
 export default function DashboardPage() {
   const [page, setPage] = React.useState(0);
@@ -419,7 +968,7 @@ export default function DashboardPage() {
 
   const go = React.useCallback((next) => {
     setPage((prev) => {
-      const clamped = Math.max(0, Math.min(1, next));
+      const clamped = Math.max(0, Math.min(2, next));
       setDir(clamped > prev ? 1 : -1);
       return clamped;
     });
@@ -460,10 +1009,10 @@ export default function DashboardPage() {
             >
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
-                  <div className={classes.grid}>
-                    <div className={`${classes.col} ${classes.span12}`}><KPIStrip /></div>
-                    <div className={`${classes.col} ${classes.span5}`}><OpportunityAlerts /></div>
-                    <div className={`${classes.col} ${classes.span7}`}><EffectivenessScatter /></div>
+                  <div style={{ height: "100%", padding: 16, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 32 }}>
+                    <div style={{ width: "min(1200px, 96%)" }}>
+                      <MainDashboard />
+                    </div>
                   </div>
                 </Box>
               )}
@@ -477,7 +1026,24 @@ export default function DashboardPage() {
             >
               {(styles) => (
                 <Box style={styles} className={classes.slide}>
-                  {/* CENTERED SLIDE 2 CONTENT */}
+                  <div className={classes.grid}>
+                    <div className={`${classes.col} ${classes.span12}`}><KPIStrip /></div>
+                    <div className={`${classes.col} ${classes.span5}`}><OpportunityAlerts /></div>
+                    <div className={`${classes.col} ${classes.span7}`}><EffectivenessScatter /></div>
+                  </div>
+                </Box>
+              )}
+            </Transition>
+
+            <Transition
+              mounted={page === 2}
+              transition={dir === 1 ? "slide-up" : "slide-down"}
+              duration={260}
+              timingFunction="ease"
+            >
+              {(styles) => (
+                <Box style={styles} className={classes.slide}>
+                  {/* CENTERED SLIDE 3 CONTENT */}
                   <div
                     style={{
                       height: "100%",
@@ -535,6 +1101,7 @@ export default function DashboardPage() {
             <div className={classes.vDots}>
               <span className={`${classes.dot} ${page === 0 ? classes.dotActive : ""}`} />
               <span className={`${classes.dot} ${page === 1 ? classes.dotActive : ""}`} />
+              <span className={`${classes.dot} ${page === 2 ? classes.dotActive : ""}`} />
             </div>
 
             <Tooltip label="Next">
@@ -543,7 +1110,7 @@ export default function DashboardPage() {
                 radius="xl"
                 size="lg"
                 onClick={() => go(page + 1)}
-                disabled={page === 1}
+                disabled={page === 2}
                 className={classes.navBtn}
               >
                 <IconArrowDown size={18} />
