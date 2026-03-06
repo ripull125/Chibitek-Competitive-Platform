@@ -50,6 +50,7 @@ export default function Reports() {
   const [engRange, setEngRange] = useState([0, 100]);       // percentile range
   const [chartView, setChartView] = useState("scatter");    // scatter | bar
   const [showUnlabeled, setShowUnlabeled] = useState(true);
+  const [competitorFilter, setCompetitorFilter] = useState(null);  // null = show all
   const { t } = useTranslation();
 
   // Persist & restore keyword summary from localStorage
@@ -301,6 +302,13 @@ export default function Reports() {
     return TONES.filter(t => set.has(t));
   }, [toneEngagementData]);
 
+  // ── Derived: which competitors exist in the data
+  const competitors = useMemo(() => {
+    const set = new Set();
+    toneEngagementData.forEach(d => { if (d.source) set.add(d.source); });
+    return Array.from(set).sort();
+  }, [toneEngagementData]);
+
   // ── Derived: engagement min/max for the slider
   const engMinMax = useMemo(() => {
     if (!toneEngagementData.length) return [0, 1];
@@ -313,6 +321,8 @@ export default function Reports() {
     const [lo, hi] = engMinMax;
     const range = hi - lo || 1;
     return toneEngagementData.filter(d => {
+      // Competitor filter
+      if (competitorFilter && d.source !== competitorFilter) return false;
       // Tone filter
       if (toneFilter.length > 0) {
         if (d.tone && !toneFilter.includes(d.tone)) return false;
@@ -324,7 +334,7 @@ export default function Reports() {
       if (pct < engRange[0] || pct > engRange[1]) return false;
       return true;
     });
-  }, [toneEngagementData, toneFilter, engRange, engMinMax, showUnlabeled]);
+  }, [toneEngagementData, toneFilter, engRange, engMinMax, showUnlabeled, competitorFilter]);
 
   // ── Derived: bar chart aggregation by tone
   const barData = useMemo(() => {
@@ -517,6 +527,22 @@ export default function Reports() {
         {/* ── Filter bar ── */}
         {toneEngagementData.length > 0 && (
           <Stack gap="xs" mb="md">
+            {/* Competitor dropdown filter */}
+            {competitors.length > 0 && (
+              <Group gap="sm" align="center">
+                <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 90 }}>Competitor:</Text>
+                <Select
+                  data={competitors.map(c => ({ value: c, label: c }))}
+                  value={competitorFilter}
+                  onChange={setCompetitorFilter}
+                  clearable
+                  placeholder="All competitors"
+                  searchable
+                  style={{ minWidth: 200 }}
+                />
+              </Group>
+            )}
+            
             {/* Tone chip filters */}
             <Group gap={6} wrap="wrap">
               <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Tones:</Text>

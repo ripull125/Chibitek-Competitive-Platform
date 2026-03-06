@@ -151,9 +151,12 @@ function convertSavedPosts(posts) {
     // preserve any tone value that may already exist in the saved post
     const toneValue = post.tone !== undefined ? post.tone : null;
     
+    // Get competitor display name from the API response, fallback to username or 'Unknown'
+    const competitorName = post.competitors?.display_name || post.username || 'Unknown';
+    
     return {
       id: post.id,
-      'Name/Source': 'Saved Posts',
+      'Name/Source': competitorName,
       'Engagement': engagement,
       'Message': messageText,
       tone: toneValue,
