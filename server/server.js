@@ -979,6 +979,23 @@ app.get("/api/posts", async (req, res) => {
   }
 });
 
+app.delete("/api/posts", async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  try {
+    const { error: deleteError } = await supabase
+      .from("posts")
+      .delete()
+      .eq("user_id", userId);
+    if (deleteError) throw deleteError;
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error("Delete all posts failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete("/api/posts/:id", async (req, res) => {
   const postId = req.params.id;
 
