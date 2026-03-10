@@ -725,7 +725,7 @@ export default function ChatInput() {
               >
                 <Box>
                   <Text size="sm" fw={500}>
-                    {item.title || "Untitled chat"}
+                    {item.title || t("chat.untitledChat")}
                   </Text>
                   <Text size="xs" c="dimmed">
                     {item.created_at ? new Date(item.created_at).toLocaleString() : ""}
@@ -733,14 +733,14 @@ export default function ChatInput() {
                 </Box>
                 <Group spacing="xs">
                   <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                    Open
+                    {t("chat.open")}
                   </Button>
                   <ActionIcon
                     size="xs"
                     color="red"
                     variant="subtle"
                     onClick={() => handleDeleteConversation(item.id)}
-                    title="Delete saved conversation"
+                    title={t("chat.deleteSavedConversation")}
                   >
                     <IconTrash size={14} />
                   </ActionIcon>
@@ -750,24 +750,24 @@ export default function ChatInput() {
           </Box>
         ) : (
           <Text c="dimmed" size="sm">
-            No saved conversations yet.
+            {t("chat.noSavedConversationsYet")}
           </Text>
         )}
       </Modal>
 
-      <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title="Name this chat" centered>
+      <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title={t("chat.nameThisChat")} centered>
         <TextInput
-          label="Chat name"
-          placeholder="e.g. Acme competitor research"
+          label={t("chat.chatName")}
+          placeholder={t("chat.chatNamePlaceholder")}
           value={saveTitle}
           onChange={(event) => setSaveTitle(event.currentTarget.value)}
         />
         <Group justify="flex-end" mt="md">
           <Button variant="subtle" onClick={() => setSaveModalOpen(false)}>
-            Cancel
+            {t("chat.cancel")}
           </Button>
           <Button onClick={handleConfirmSave} loading={isSaving}>
-            Save
+            {t("chat.save")}
           </Button>
         </Group>
       </Modal>
