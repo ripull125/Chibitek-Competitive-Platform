@@ -974,11 +974,22 @@ function LinkedinResults({ data, onSave }) {
   );
 }
 
-/* ─── End LinkedIn Results ───────────────────────────────────────────────── */
+const LOOKUP_CACHE_KEY = 'competitorLookup_cache';
+function loadLookupCache() {
+  try {
+    const raw = sessionStorage.getItem(LOOKUP_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function saveLookupCache(data) {
+  try { sessionStorage.setItem(LOOKUP_CACHE_KEY, JSON.stringify(data)); } catch { }
+}
 
 export default function CompetitorLookup() {
   const [connectedPlatforms, setConnectedPlatforms] = useState(getConnectedPlatforms);
   const { t } = useTranslation();
+
+  const [cached] = useState(loadLookupCache);
 
   useEffect(() => {
     // Listen for toggle changes from ConnectedIntegrations (or other tabs)
@@ -997,11 +1008,11 @@ export default function CompetitorLookup() {
     );
   }, []);
 
-  const [username, setUsername] = useState("");
-  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [username, setUsername] = useState(cached.username || "");
+  const [youtubeUrl, setYoutubeUrl] = useState(cached.youtubeUrl || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(cached.result || null);
   const [convertedData, setConvertedData] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [linkedinOptions, setLinkedinOptions] = useState({
@@ -1009,41 +1020,56 @@ export default function CompetitorLookup() {
     company: false,
     post: false,
   });
-  const [linkedinInputs, setLinkedinInputs] = useState({
-    profile: "",
-    company: "",
-    post: "",
-  });
+  const [linkedinInputs, setLinkedinInputs] = useState(
+    cached.linkedinInputs || { profile: "", company: "", post: "" }
+  );
   const [instagramOptions, setInstagramOptions] = useState({});
-  const [instagramInputs, setInstagramInputs] = useState({});
+  const [instagramInputs, setInstagramInputs] = useState(cached.instagramInputs || {});
   const [tiktokOptions, setTiktokOptions] = useState({});
-  const [tiktokInputs, setTiktokInputs] = useState({});
+  const [tiktokInputs, setTiktokInputs] = useState(cached.tiktokInputs || {});
   const [xOptions, setXOptions] = useState({});
-  const [xInputs, setXInputs] = useState({});
+  const [xInputs, setXInputs] = useState(cached.xInputs || {});
   const [youtubeOptions, setYoutubeOptions] = useState({});
-  const [youtubeInputs, setYoutubeInputs] = useState({});
+  const [youtubeInputs, setYoutubeInputs] = useState(cached.youtubeInputs || {});
   const [redditOptions, setRedditOptions] = useState({});
-  const [redditInputs, setRedditInputs] = useState({});
+  const [redditInputs, setRedditInputs] = useState(cached.redditInputs || {});
   const [scrapePostCount, setScrapePostCount] = useState(10);
-  const [linkedinResult, setLinkedinResult] = useState(null);
+  const [linkedinResult, setLinkedinResult] = useState(cached.linkedinResult || null);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
   const [linkedinError, setLinkedinError] = useState(null);
-  const [xResult, setXResult] = useState(null);
+  const [xResult, setXResult] = useState(cached.xResult || null);
   const [xLoading, setXLoading] = useState(false);
   const [xError, setXError] = useState(null);
-  const [youtubeResult, setYoutubeResult] = useState(null);
+  const [youtubeResult, setYoutubeResult] = useState(cached.youtubeResult || null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [youtubeError, setYoutubeError] = useState(null);
-  const [instagramResult, setInstagramResult] = useState(null);
+  const [instagramResult, setInstagramResult] = useState(cached.instagramResult || null);
   const [instagramLoading, setInstagramLoading] = useState(false);
   const [instagramError, setInstagramError] = useState(null);
-  const [tiktokResult, setTiktokResult] = useState(null);
+  const [tiktokResult, setTiktokResult] = useState(cached.tiktokResult || null);
   const [tiktokLoading, setTiktokLoading] = useState(false);
   const [tiktokError, setTiktokError] = useState(null);
-  const [redditResult, setRedditResult] = useState(null);
+  const [redditResult, setRedditResult] = useState(cached.redditResult || null);
   const [redditLoading, setRedditLoading] = useState(false);
   const [redditError, setRedditError] = useState(null);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
+
+  // Persist results + inputs to sessionStorage so they survive tab navigation
+  useEffect(() => {
+    saveLookupCache({
+      result, linkedinResult, xResult, youtubeResult,
+      instagramResult, tiktokResult, redditResult,
+      username, youtubeUrl,
+      linkedinInputs, instagramInputs, tiktokInputs,
+      xInputs, youtubeInputs, redditInputs,
+    });
+  }, [
+    result, linkedinResult, xResult, youtubeResult,
+    instagramResult, tiktokResult, redditResult,
+    username, youtubeUrl,
+    linkedinInputs, instagramInputs, tiktokInputs,
+    xInputs, youtubeInputs, redditInputs,
+  ]);
 
   // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
   const [platformIds, setPlatformIds] = useState({
