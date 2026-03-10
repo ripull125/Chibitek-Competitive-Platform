@@ -699,7 +699,9 @@ export default function SavedPosts() {
       </Group>
 
       <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
-        Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform’s API.
+        {t("savedPosts.metricsMayBeUnavailable", {
+          defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+        })}
       </Alert>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}

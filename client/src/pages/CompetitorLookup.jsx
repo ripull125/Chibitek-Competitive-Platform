@@ -2176,8 +2176,8 @@ export default function CompetitorLookup() {
     if (!data) return null;
     if (!data.available) {
       return (
-        <Alert color="yellow" title="Transcript unavailable">
-          {data.reason || "No transcript available for this video."}
+        <Alert color="yellow" title={t("competitorLookup.transcriptUnavailable")}>
+          {data.reason || t("competitorLookup.noTranscriptAvailable")}
           {data.videoTitle && <Text size="sm" mt={4}>Video: {data.videoTitle}</Text>}
         </Alert>
       );
@@ -2218,7 +2218,7 @@ export default function CompetitorLookup() {
         </Group>
 
         {errors.length > 0 && (
-          <Alert color="orange" title="Some requests failed">
+          <Alert color="orange" title={t("competitorLookup.someRequestsFailed")}>
             {errors.map((e, i) => (
               <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
             ))}
@@ -2435,7 +2435,7 @@ export default function CompetitorLookup() {
         </Group>
 
         {errors.length > 0 && (
-          <Alert color="orange" title="Some requests failed">
+          <Alert color="orange" title={t("competitorLookup.someRequestsFailed")}>
             {errors.map((e, i) => (
               <Text key={i} size="sm">{e.endpoint}: {e.error}</Text>
             ))}
@@ -3858,9 +3858,15 @@ export default function CompetitorLookup() {
               )}
             </Group>
 
+            <Alert variant="light" color="blue" icon={<IconInfoCircle size={16} />}>
+              {t("competitorLookup.metricsMayBeUnavailable", {
+                defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+              })}
+            </Alert>
+
             {posts.length === 0 ? (
-              <Alert variant="light" color="gray" title="No posts returned">
-                The API did not return any tweets for this user.
+              <Alert variant="light" color="gray" title={t("watchlist.noPostsReturned")}>
+                {t("competitorLookup.noDataReturnedInputs")}
               </Alert>
             ) : (
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md" verticalSpacing="md">
