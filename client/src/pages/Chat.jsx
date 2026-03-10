@@ -11,6 +11,7 @@ import {
   Paper,
   ScrollArea,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -465,7 +466,7 @@ export default function ChatInput() {
       let response = await fetch(
         apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`),
         {
-        method: 'DELETE',
+          method: 'DELETE',
         }
       );
 
@@ -625,10 +626,10 @@ export default function ChatInput() {
               py={8}
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-end",
                 gap: 12,
                 backgroundColor: "white",
-                borderRadius: 50,
+                borderRadius: 24,
                 boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
                 border: "1px solid #e9ecef",
               }}
@@ -651,7 +652,7 @@ export default function ChatInput() {
                 onChange={handleFileChange}
               />
 
-              <TextInput
+              <Textarea
                 placeholder={t("chat.askAnything")}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -659,6 +660,9 @@ export default function ChatInput() {
                 variant="unstyled"
                 size="md"
                 disabled={isSending}
+                autosize
+                minRows={1}
+                maxRows={6}
                 style={{ flex: 1 }}
                 styles={{
                   input: {
@@ -666,6 +670,7 @@ export default function ChatInput() {
                     padding: "8px 0",
                     border: "none",
                     outline: "none",
+                    resize: "none",
                   },
                 }}
               />

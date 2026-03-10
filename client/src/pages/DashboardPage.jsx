@@ -402,11 +402,11 @@ function EngagementTimeline({ data, platformNames }) {
           views: platData.views,
           engagement: platData.likes + platData.comments + platData.shares,
         };
-      }).filter((d) => d.engagement > 0 || d.likes > 0 || d.comments > 0 || d.shares > 0);
+      }).filter((d) => d.engagement > 0 || d.likes > 0 || d.comments > 0 || d.shares > 0 || d.views > 0);
     }
 
     return result;
-  }, [data, platformFilter, dateRange]);
+  }, [data, platformFilter, dateRange, metric]);
 
   const filterControls = (
     <Group gap="xs" wrap="wrap">
@@ -556,7 +556,18 @@ function TopPostsList({ posts }) {
             const PlatIcon = PLATFORM_ICONS[p.platformName] || IconChartDots;
             const platformColor = PLATFORM_COLORS[p.platformName] || "#868e96";
             return (
-              <Paper key={p.id || i} withBorder p="sm" radius="md" className={classes.postRow}>
+              <Paper
+                key={p.id || i}
+                withBorder
+                p="sm"
+                radius="md"
+                className={classes.postRow}
+                component={p.url ? "a" : "div"}
+                href={p.url || undefined}
+                target={p.url ? "_blank" : undefined}
+                rel={p.url ? "noopener noreferrer" : undefined}
+                style={{ textDecoration: "none", color: "inherit", cursor: p.url ? "pointer" : "default" }}
+              >
                 <Group justify="space-between" wrap="nowrap">
                   <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
                     <Text fw={800} c="dimmed" size="sm" style={{ width: 24, textAlign: "center" }}>
@@ -916,6 +927,8 @@ export default function DashboardPage() {
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
   }, []);
 
+  const navigate = useNavigate();
+
   return (
     <div className={classes.page}>
       <div className={classes.shell}>
@@ -924,20 +937,38 @@ export default function DashboardPage() {
             <Stack gap={4}>
               <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
               <Text size="sm" c="dimmed">
-                {analytics
-                  ? t("dashboard.postsTrackedAcrossPlatforms", {
-                    count: analytics.totalPosts,
-                    platformCount: analytics.platformNames.length,
-                    defaultValue: "{{count}} posts tracked across {{platformCount}} platforms",
-                  })
-                  : t("dashboard.loadingEngagementData", { defaultValue: "Loading your engagement data..." })}
+                {loading
+                  ? "Loading your engagement data..."
+                  : analytics
+                    ? analytics.totalPosts + " posts tracked across " + analytics.platformNames.length + " platforms"
+                    : "No data yet — start by looking up a competitor"}
               </Text>
             </Stack>
           </Group>
         </header>
 
-        {loading || !analytics ? (
+        {loading ? (
           <DashboardSkeleton />
+        ) : !analytics ? (
+          <Card withBorder shadow="sm" radius="lg" p="xl">
+            <Stack align="center" py={60} gap="md">
+              <ThemeIcon variant="light" radius="xl" size={72} color="gray">
+                <IconChartBar size={36} />
+              </ThemeIcon>
+              <Title order={3} ta="center">No data to display yet</Title>
+              <Text size="sm" c="dimmed" ta="center" maw={420}>
+                Look up competitors or track keywords to start seeing analytics here.
+              </Text>
+              <Group gap="sm" mt="xs">
+                <Button variant="filled" onClick={() => navigate('/competitor-lookup')}>
+                  Competitor Lookup
+                </Button>
+                <Button variant="light" onClick={() => navigate('/keywords')}>
+                  Keyword Tracking
+                </Button>
+              </Group>
+            </Stack>
+          </Card>
         ) : (
           <Stack gap="lg">
             <KPIStrip analytics={analytics} />

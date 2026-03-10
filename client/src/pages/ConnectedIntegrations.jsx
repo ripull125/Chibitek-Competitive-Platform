@@ -124,12 +124,12 @@ export default function ConnectedIntegrations() {
 
               return (
                 <Card key={prov.key} withBorder radius="md" p="lg">
-                  <Group justify="space-between" align="center">
-                    <Group align="center">
-                      <Box>
+                  <Group justify="space-between" align="center" wrap="nowrap">
+                    <Group align="center" gap="md" style={{ flex: 1, minWidth: 0 }}>
+                      <Box style={{ flexShrink: 0 }}>
                         <Icon size={28} color={prov.color} />
                       </Box>
-                      <Box>
+                      <Box style={{ minWidth: 0 }}>
                         <Group gap="xs">
                           <Text fw={600}>{platName}</Text>
                           {isOn ? (
@@ -148,25 +148,27 @@ export default function ConnectedIntegrations() {
                       </Box>
                     </Group>
 
-                    {isOn ? (
-                      <Button
-                        color="red"
-                        variant="light"
-                        leftSection={<IconPlugConnectedX size={16} />}
-                        onClick={() => handleToggle(prov.key)}
-                      >
-                        {t("connectedIntegrations.buttonDisconnect")}
-                      </Button>
-                    ) : (
-                      <Button
-                        color="blue"
-                        variant="light"
-                        leftSection={<IconPlugConnected size={16} />}
-                        onClick={() => handleToggle(prov.key)}
-                      >
-                        {t("connectedIntegrations.buttonConnect")}
-                      </Button>
-                    )}
+                    <Box style={{ flexShrink: 0 }}>
+                      {isOn ? (
+                        <Button
+                          color="red"
+                          variant="light"
+                          leftSection={<IconPlugConnectedX size={16} />}
+                          onClick={() => handleToggle(prov.key)}
+                        >
+                          {t("connectedIntegrations.buttonDisconnect")}
+                        </Button>
+                      ) : (
+                        <Button
+                          color="blue"
+                          variant="light"
+                          leftSection={<IconPlugConnected size={16} />}
+                          onClick={() => handleToggle(prov.key)}
+                        >
+                          {t("connectedIntegrations.buttonConnect")}
+                        </Button>
+                      )}
+                    </Box>
                   </Group>
                 </Card>
               );

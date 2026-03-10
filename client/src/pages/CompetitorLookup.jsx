@@ -1418,7 +1418,7 @@ export default function CompetitorLookup() {
 
     const hasInput =
       ((youtubeOptions.channelDetails || youtubeOptions.channelVideos) && youtubeInputs.channelUrl?.trim()) ||
-      ((youtubeOptions.videoDetails || youtubeOptions.transcript) && youtubeInputs.videoUrl?.trim()) ||
+      ((youtubeOptions.videoDetails) && youtubeInputs.videoUrl?.trim()) ||
       (youtubeOptions.search && youtubeInputs.searchQuery?.trim());
 
     if (!hasInput) {
@@ -1727,7 +1727,7 @@ export default function CompetitorLookup() {
     return resp.json();
   }
 
-  // YouTube transcript save
+  // YouTube transcript save (kept for TikTok compatibility)
   function saveYoutubeTranscript(data) {
     return handleGenericSave("youtube", {
       platformUserId: "transcript",
@@ -1939,7 +1939,6 @@ export default function CompetitorLookup() {
 
     const [saving, setSaving] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
-    const [showTranscript, setShowTranscript] = useState(false);
     const [showDesc, setShowDesc] = useState(false);
     const descLong = (data.video?.description || "").length > 200;
     const date = data.video?.publishedAt
@@ -1958,7 +1957,7 @@ export default function CompetitorLookup() {
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
             platform_post_id: data.videoId,
-            content: data.transcript || data.video.description,
+            content: data.video.description,
             published_at: data.video.publishedAt,
             likes: data.video.stats.likes || 0,
             shares: 0,
@@ -2025,29 +2024,6 @@ export default function CompetitorLookup() {
                 </Button>
               )}
             </div>
-          )}
-
-          {/* transcript */}
-          {data.transcriptAvailable && data.transcript ? (
-            <div>
-              <Button variant="subtle" size="xs" p={0} h="auto"
-                leftSection={showTranscript ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-                onClick={() => setShowTranscript(!showTranscript)}
-              >
-                {showTranscript ? t("competitorLookup.hideTranscript") : t("competitorLookup.showTranscript")}
-              </Button>
-              {showTranscript && (
-                <ScrollArea h={250} mt="xs">
-                  <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>{data.transcript}</Text>
-                </ScrollArea>
-              )}
-            </div>
-          ) : (
-            !data.transcriptAvailable && (
-              <Alert color="yellow" variant="light" title={t("competitorLookup.transcriptUnavailable")}>
-                {t("competitorLookup.youtubeNotAllowCaptions")}
-              </Alert>
-            )
           )}
 
           <Divider my={0} />
@@ -2207,7 +2183,6 @@ export default function CompetitorLookup() {
       (results.channelDetails ? 1 : 0) +
       (results.channelVideos?.length || 0) +
       (results.videoDetails ? 1 : 0) +
-      (results.transcript ? 1 : 0) +
       (results.search?.length || 0);
 
     return (
@@ -2259,16 +2234,7 @@ export default function CompetitorLookup() {
                 },
               },
               videoId: results.videoDetails.id,
-              transcript: results.transcript?.available ? results.transcript.text : null,
-              transcriptAvailable: results.transcript?.available ?? true,
             }} t={t} />
-          </>
-        )}
-
-        {results.transcript && !results.videoDetails && (
-          <>
-            <Divider label={t("competitorLookup.transcript")} labelPosition="center" />
-            <YTTranscript data={results.transcript} />
           </>
         )}
 
@@ -3244,13 +3210,7 @@ export default function CompetitorLookup() {
                         onChange={(e) => setYoutubeOptions(prev => ({ ...prev, videoDetails: e.target.checked }))}
                       />
 
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.transcript")} info={t("competitorLookup.transcriptDesc")} />}
-                        checked={youtubeOptions.transcript || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, transcript: e.target.checked }))}
-                      />
-
-                      {(youtubeOptions.videoDetails || youtubeOptions.transcript) && (
+                      {youtubeOptions.videoDetails && (
                         <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
                           onChange={(e) => setYoutubeInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
                       )}

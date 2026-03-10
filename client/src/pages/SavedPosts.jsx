@@ -590,6 +590,8 @@ export default function SavedPosts() {
   const [notice, setNotice] = useState("");
   const [platformMap, setPlatformMap] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [deleteAllModal, setDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   useEffect(() => {
     const newMap = {};
@@ -693,9 +695,22 @@ export default function SavedPosts() {
       {/* page header */}
       <Group justify="space-between" align="center">
         <Title order={2}>{t("savedPosts.title")}</Title>
-        <Badge variant="filled" size="lg" radius="sm" color="blue">
-          {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
-        </Badge>
+        <Group gap="sm">
+          {posts.length > 0 && (
+            <Button
+              color="red"
+              variant="light"
+              size="xs"
+              leftSection={<IconTrash size={14} />}
+              onClick={() => setDeleteAllModal(true)}
+            >
+              Delete All
+            </Button>
+          )}
+          <Badge variant="filled" size="lg" radius="sm" color="blue">
+            {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
+          </Badge>
+        </Group>
       </Group>
 
       <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
@@ -763,6 +778,51 @@ export default function SavedPosts() {
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>{t("savedPosts.cancel")}</Button>
             <Button color="red" onClick={handleDelete}>{t("savedPosts.delete")}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* delete all modal */}
+      <Modal
+        opened={deleteAllModal}
+        onClose={() => setDeleteAllModal(false)}
+        title="Delete All Saved Posts"
+        centered
+      >
+        <Stack gap="lg">
+          <Text>Are you sure you want to delete all {posts.length} saved posts? This cannot be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeleteAllModal(false)}>Cancel</Button>
+            <Button
+              color="red"
+              loading={deletingAll}
+              onClick={async () => {
+                if (!currentUserId) return;
+                setDeletingAll(true);
+                try {
+                  const resp = await fetch(
+                    apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`),
+                    { method: "DELETE" }
+                  );
+                  const ct = resp.headers.get("content-type") || "";
+                  if (!resp.ok) {
+                    const errMsg = ct.includes("application/json")
+                      ? (await resp.json()).error
+                      : `Server error (${resp.status})`;
+                    throw new Error(errMsg || "Failed to delete all posts");
+                  }
+                  setPosts([]);
+                  setDeleteAllModal(false);
+                } catch (err) {
+                  console.error("Delete all failed:", err);
+                  alert(err.message);
+                } finally {
+                  setDeletingAll(false);
+                }
+              }}
+            >
+              Delete All
+            </Button>
           </Group>
         </Stack>
       </Modal>
