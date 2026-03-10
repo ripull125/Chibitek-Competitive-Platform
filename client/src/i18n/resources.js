@@ -203,7 +203,12 @@ const resources = {
         generateSummaryHint: "Generate an AI summary of trends, engagement patterns, and recommended actions.",
         generateAiSummary: "Generate AI Summary",
         postsTrackedAcrossPlatforms: "{{count}} posts tracked across {{platformCount}} platforms",
-        loadingEngagementData: "Loading your engagement data..."
+        loadingEngagementData: "Loading your engagement data...",
+        noDataStartCompetitor: "No data yet - start by looking up a competitor",
+        noDataToDisplayYet: "No data to display yet",
+        noDataHint: "Look up competitors or track keywords to start seeing analytics here.",
+        goToCompetitorLookup: "Competitor Lookup",
+        goToKeywordTracking: "Keyword Tracking"
       },
       competitorLookup: {
         title: "Competitor Lookup",
@@ -987,7 +992,12 @@ const resources = {
         generateSummaryHint: "トレンドや反応パターン、次アクションをAIで要約します。",
         generateAiSummary: "AI要約を生成",
         postsTrackedAcrossPlatforms: "{{platformCount}} プラットフォームで {{count}} 件の投稿を追跡中",
-        loadingEngagementData: "エンゲージメントデータを読み込み中..."
+        loadingEngagementData: "エンゲージメントデータを読み込み中...",
+        noDataStartCompetitor: "まだデータがありません。まず競合を検索してみましょう",
+        noDataToDisplayYet: "表示するデータがまだありません",
+        noDataHint: "競合を検索するかキーワード追跡を行うと、ここに分析結果が表示されます。",
+        goToCompetitorLookup: "競合検索",
+        goToKeywordTracking: "キーワード追跡"
       },
       competitorLookup: {
         title: "競合検索",
@@ -1770,7 +1780,12 @@ const resources = {
         generateSummaryHint: "Générez un résumé IA des tendances, schémas d'engagement et actions recommandées.",
         generateAiSummary: "Générer un résumé IA",
         postsTrackedAcrossPlatforms: "{{count}} publications suivies sur {{platformCount}} plateformes",
-        loadingEngagementData: "Chargement de vos données d'engagement..."
+        loadingEngagementData: "Chargement de vos données d'engagement...",
+        noDataStartCompetitor: "Aucune donnée pour le moment - commencez par rechercher un concurrent",
+        noDataToDisplayYet: "Aucune donnée à afficher pour le moment",
+        noDataHint: "Recherchez des concurrents ou suivez des mots-clés pour commencer à voir des analyses ici.",
+        goToCompetitorLookup: "Recherche concurrents",
+        goToKeywordTracking: "Suivi des mots-clés"
       },
       competitorLookup: {
         title: "Recherche de concurrents",
@@ -2553,7 +2568,12 @@ const resources = {
         generateSummaryHint: "Generieren Sie eine KI-Zusammenfassung zu Trends, Engagement-Mustern und empfohlenen Maßnahmen.",
         generateAiSummary: "KI-Zusammenfassung erzeugen",
         postsTrackedAcrossPlatforms: "{{count}} Beiträge über {{platformCount}} Plattformen verfolgt",
-        loadingEngagementData: "Ihre Engagement-Daten werden geladen..."
+        loadingEngagementData: "Ihre Engagement-Daten werden geladen...",
+        noDataStartCompetitor: "Noch keine Daten - starten Sie mit einer Wettbewerber-Suche",
+        noDataToDisplayYet: "Noch keine Daten zur Anzeige",
+        noDataHint: "Suchen Sie Wettbewerber oder verfolgen Sie Keywords, um hier erste Analysen zu sehen.",
+        goToCompetitorLookup: "Wettbewerber-Suche",
+        goToKeywordTracking: "Keyword-Tracking"
       },
       competitorLookup: {
         title: "Wettbewerber-Suche",
@@ -3337,7 +3357,12 @@ const resources = {
         generateSummaryHint: "Genera un resumen de IA sobre tendencias, patrones de interacción y próximas acciones recomendadas.",
         generateAiSummary: "Generar resumen de IA",
         postsTrackedAcrossPlatforms: "{{count}} publicaciones rastreadas en {{platformCount}} plataformas",
-        loadingEngagementData: "Cargando tus datos de interacción..."
+        loadingEngagementData: "Cargando tus datos de interacción...",
+        noDataStartCompetitor: "Aún no hay datos - comienza buscando un competidor",
+        noDataToDisplayYet: "Aún no hay datos para mostrar",
+        noDataHint: "Busca competidores o haz seguimiento de palabras clave para empezar a ver analíticas aquí.",
+        goToCompetitorLookup: "Búsqueda de competidores",
+        goToKeywordTracking: "Seguimiento de palabras clave"
       },
       competitorLookup: {
         title: "Búsqueda de competidores",

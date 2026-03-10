@@ -938,10 +938,16 @@ export default function DashboardPage() {
               <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
               <Text size="sm" c="dimmed">
                 {loading
-                  ? "Loading your engagement data..."
+                  ? t("dashboard.loadingEngagementData", { defaultValue: "Loading your engagement data..." })
                   : analytics
-                    ? analytics.totalPosts + " posts tracked across " + analytics.platformNames.length + " platforms"
-                    : "No data yet — start by looking up a competitor"}
+                    ? t("dashboard.postsTrackedAcrossPlatforms", {
+                      count: analytics.totalPosts,
+                      platformCount: analytics.platformNames.length,
+                      defaultValue: "{{count}} posts tracked across {{platformCount}} platforms",
+                    })
+                    : t("dashboard.noDataStartCompetitor", {
+                      defaultValue: "No data yet — start by looking up a competitor",
+                    })}
               </Text>
             </Stack>
           </Group>
@@ -955,16 +961,18 @@ export default function DashboardPage() {
               <ThemeIcon variant="light" radius="xl" size={72} color="gray">
                 <IconChartBar size={36} />
               </ThemeIcon>
-              <Title order={3} ta="center">No data to display yet</Title>
+              <Title order={3} ta="center">{t("dashboard.noDataToDisplayYet", { defaultValue: "No data to display yet" })}</Title>
               <Text size="sm" c="dimmed" ta="center" maw={420}>
-                Look up competitors or track keywords to start seeing analytics here.
+                {t("dashboard.noDataHint", {
+                  defaultValue: "Look up competitors or track keywords to start seeing analytics here.",
+                })}
               </Text>
               <Group gap="sm" mt="xs">
                 <Button variant="filled" onClick={() => navigate('/competitor-lookup')}>
-                  Competitor Lookup
+                  {t("dashboard.goToCompetitorLookup", { defaultValue: "Competitor Lookup" })}
                 </Button>
                 <Button variant="light" onClick={() => navigate('/keywords')}>
-                  Keyword Tracking
+                  {t("dashboard.goToKeywordTracking", { defaultValue: "Keyword Tracking" })}
                 </Button>
               </Group>
             </Stack>
