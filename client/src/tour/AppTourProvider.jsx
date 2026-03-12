@@ -1,6 +1,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { IconArrowRight, IconX, IconChevronRight, IconCheck } from "@tabler/icons-react";
+import { useTranslation } from "react-i18next";
 
 const TourContext = React.createContext(null);
 
@@ -13,26 +14,26 @@ export function useAppTour() {
 // Tutorial flow is deliberately screen based.
 // Each screen can contain multiple "tips". The Next button advances tips.
 // The arrow button advances to the next screen.
-const TOUR_FLOW = [
+const getTourFlow = (t) => [
   {
     key: "dashboard",
     path: "/",
     tips: [
       {
-        title: "Dashboard",
-        body: "Your high level snapshot. Scan performance, spot changes, then decide where to dig deeper.",
+        title: t("tutorial.dashboard.title", { defaultValue: "Dashboard" }),
+        body: t("tutorial.dashboard.body", { defaultValue: "Your high level snapshot. Scan performance, spot changes, then decide where to dig deeper." }),
       },
       {
-        title: "Engagement snapshot",
-        body: "Top tiles summarize what is happening right now so you can orient yourself in seconds.",
+        title: t("tutorial.engagementSnapshot.title", { defaultValue: "Engagement snapshot" }),
+        body: t("tutorial.engagementSnapshot.body", { defaultValue: "Top tiles summarize what is happening right now so you can orient yourself in seconds." }),
       },
       {
-        title: "Opportunity alerts",
-        body: "Watchouts and fast movers that are worth acting on early.",
+        title: t("tutorial.opportunityAlerts.title", { defaultValue: "Opportunity alerts" }),
+        body: t("tutorial.opportunityAlerts.body", { defaultValue: "Watchouts and fast movers that are worth acting on early." }),
       },
       {
-        title: "What works now",
-        body: "Charts and tables highlight the topics driving the strongest engagement at the moment.",
+        title: t("tutorial.whatWorksNow.title", { defaultValue: "What works now" }),
+        body: t("tutorial.whatWorksNow.body", { defaultValue: "Charts and tables highlight the topics driving the strongest engagement at the moment." }),
       },
     ],
   },
@@ -41,16 +42,16 @@ const TOUR_FLOW = [
     path: "/competitor-lookup",
     tips: [
       {
-        title: "Competitor Lookup",
-        body: "Search any competitor and pull recent posts so you can compare positioning and momentum.",
+        title: t("tutorial.competitorLookup.title", { defaultValue: "Competitor Lookup" }),
+        body: t("tutorial.competitorLookup.body", { defaultValue: "Search any competitor and pull recent posts so you can compare positioning and momentum." }),
       },
       {
-        title: "Search and filters",
-        body: "Use the search bar and filters to narrow results by platform, time window, or topic.",
+        title: t("tutorial.searchAndFilters.title", { defaultValue: "Search and filters" }),
+        body: t("tutorial.searchAndFilters.body", { defaultValue: "Use the search bar and filters to narrow results by platform, time window, or topic." }),
       },
       {
-        title: "Post feed",
-        body: "Open items for detail, then save the best examples for later.",
+        title: t("tutorial.postFeed.title", { defaultValue: "Post feed" }),
+        body: t("tutorial.postFeed.body", { defaultValue: "Open items for detail, then save the best examples for later." }),
       },
     ],
   },
@@ -59,16 +60,16 @@ const TOUR_FLOW = [
     path: "/savedPosts",
     tips: [
       {
-        title: "Saved Posts",
-        body: "Everything you saved lives here so you can reference it later and build your evidence library.",
+        title: t("tutorial.savedPosts.title", { defaultValue: "Saved Posts" }),
+        body: t("tutorial.savedPosts.body", { defaultValue: "Everything you saved lives here so you can reference it later and build your evidence library." }),
       },
       {
-        title: "Tagging and notes",
-        body: "Add tags or quick notes so you can find examples by theme, competitor, or campaign style.",
+        title: t("tutorial.taggingAndNotes.title", { defaultValue: "Tagging and notes" }),
+        body: t("tutorial.taggingAndNotes.body", { defaultValue: "Add tags or quick notes so you can find examples by theme, competitor, or campaign style." }),
       },
       {
-        title: "Export",
-        body: "Download your saved set when you need to share findings or move work into a deck.",
+        title: t("tutorial.export.title", { defaultValue: "Export" }),
+        body: t("tutorial.export.body", { defaultValue: "Download your saved set when you need to share findings or move work into a deck." }),
       },
     ],
   },
@@ -77,12 +78,12 @@ const TOUR_FLOW = [
     path: "/keywords",
     tips: [
       {
-        title: "Keyword Tracking",
-        body: "Track what topics are rising and cooling off, then connect them to performance.",
+        title: t("tutorial.keywordTracking.title", { defaultValue: "Keyword Tracking" }),
+        body: t("tutorial.keywordTracking.body", { defaultValue: "Track what topics are rising and cooling off, then connect them to performance." }),
       },
       {
-        title: "Trending keywords",
-        body: "This table shows what is trending right now, including volume and rank movement.",
+        title: t("tutorial.trendingKeywords.title", { defaultValue: "Trending keywords" }),
+        body: t("tutorial.trendingKeywords.body", { defaultValue: "This table shows what is trending right now, including volume and rank movement." }),
       },
       
     ],
@@ -92,12 +93,12 @@ const TOUR_FLOW = [
     path: "/watchlist",
     tips: [
       {
-        title: "Autoscraper",
-        body: "Automatically pull posts from your watchlist so you can focus on analysis.",
+        title: t("tutorial.autoscraper.title", { defaultValue: "Autoscraper" }),
+        body: t("tutorial.autoscraper.body", { defaultValue: "Automatically pull posts from your watchlist so you can focus on analysis." }),
       },
       {
-        title: "Configure and run",
-        body: "Add targets, set schedules, and execute scrapes with a click to keep data fresh.",
+        title: t("tutorial.configureAndRun.title", { defaultValue: "Configure and run" }),
+        body: t("tutorial.configureAndRun.body", { defaultValue: "Add targets, set schedules, and execute scrapes with a click to keep data fresh." }),
       },
     ],
   },
@@ -106,12 +107,12 @@ const TOUR_FLOW = [
     path: "/reports",
     tips: [
       {
-        title: "Reports",
-        body: "Generate shareable summaries so your insights can travel beyond the dashboard.",
+        title: t("tutorial.reports.title", { defaultValue: "Reports" }),
+        body: t("tutorial.reports.body", { defaultValue: "Generate shareable summaries so your insights can travel beyond the dashboard." }),
       },
       {
-        title: "Build and download",
-        body: "Create a report, review it quickly, then download for distribution or archiving.",
+        title: t("tutorial.buildAndDownload.title", { defaultValue: "Build and download" }),
+        body: t("tutorial.buildAndDownload.body", { defaultValue: "Create a report, review it quickly, then download for distribution or archiving." }),
       },
     ],
   },
@@ -120,12 +121,12 @@ const TOUR_FLOW = [
     path: "/chat",
     tips: [
       {
-        title: "ChibitekAI Chat",
-        body: "Ask questions, attach files, and save conversations so research stays organized.",
+        title: t("tutorial.chibitekChat.title", { defaultValue: "ChibitekAI Chat" }),
+        body: t("tutorial.chibitekChat.body", { defaultValue: "Ask questions, attach files, and save conversations so research stays organized." }),
       },
       {
-        title: "Save your work",
-        body: "Keep threads you want to reuse, and return to them when you build reports or briefs.",
+        title: t("tutorial.saveYourWork.title", { defaultValue: "Save your work" }),
+        body: t("tutorial.saveYourWork.body", { defaultValue: "Keep threads you want to reuse, and return to them when you build reports or briefs." }),
       },
     ],
   },
@@ -134,20 +135,20 @@ const TOUR_FLOW = [
     path: "/settings",
     tips: [
       {
-        title: "Settings",
-        body: "Manage your account preferences and integrations. You can restart this tutorial any time.",
+        title: t("tutorial.settings.title", { defaultValue: "Settings" }),
+        body: t("tutorial.settings.body", { defaultValue: "Manage your account preferences and integrations. You can restart this tutorial any time." }),
       },
       {
-        title: "Language",
-        body: "Switch the app language here. Changes apply instantly across the interface.",
+        title: t("tutorial.language.title", { defaultValue: "Language" }),
+        body: t("tutorial.language.body", { defaultValue: "Switch the app language here. Changes apply instantly across the interface." }),
       },
       {
-        title: "Integrations",
-        body: "Connect data sources so Chibitek can pull competitive content and updates automatically.",
+        title: t("tutorial.integrations.title", { defaultValue: "Integrations" }),
+        body: t("tutorial.integrations.body", { defaultValue: "Connect data sources so Chibitek can pull competitive content and updates automatically." }),
       },
       {
-        title: "Tutorial",
-        body: "Press Start whenever you want a quick refresher of the key screens.",
+        title: t("tutorial.tutorial.title", { defaultValue: "Tutorial" }),
+        body: t("tutorial.tutorial.body", { defaultValue: "Press Start whenever you want a quick refresher of the key screens." }),
       },
     ],
   },
@@ -165,6 +166,7 @@ function TourBox({
   onExit,
   fadeState,
 }) {
+  const { t } = useTranslation();
   const isOut = fadeState === "out";
   const fadeStyle = {
     opacity: isOut ? 0 : 1,
@@ -210,13 +212,13 @@ function TourBox({
                   textTransform: "uppercase",
                 }}
               >
-                Tutorial
+                {t("tutorial.label", { defaultValue: "Tutorial" })}
               </div>
 
               <button
                 onClick={onExit}
                 type="button"
-                aria-label="Exit tutorial"
+                aria-label={t("tutorial.exit", { defaultValue: "Exit tutorial" })}
                 style={{
                   appearance: "none",
                   border: "1px solid rgba(255,255,255,0.28)",
@@ -261,13 +263,15 @@ function TourBox({
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 850, color: "rgba(255,255,255,0.86)" }}>
-                Tip {Math.min(tipIndex + 1, tipCount)} of {tipCount}
+                {t("tutorial.tipOf", { current: Math.min(tipIndex + 1, tipCount), total: tipCount, defaultValue: "Tip {{current}} of {{total}}" })}
               </div>
 
               <button
                 onClick={onNextScreen}
                 type="button"
-                aria-label={isLastScreen ? "Finish tutorial" : "Next screen"}
+                aria-label={isLastScreen
+                  ? t("tutorial.finish", { defaultValue: "Finish tutorial" })
+                  : t("tutorial.nextScreen", { defaultValue: "Next screen" })}
                 style={{
                   appearance: "none",
                   border: "1px solid rgba(255,255,255,0.50)",
@@ -317,7 +321,7 @@ function TourBox({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    Next
+                    {t("tutorial.next", { defaultValue: "Next" })}
                     <IconChevronRight size={16} />
                   </button>
                 ) : (
@@ -355,15 +359,20 @@ function TourBox({
           ...fadeStyle,
         }}
       >
-        Exit tutorial
+        {t("tutorial.exit", { defaultValue: "Exit tutorial" })}
       </button>
     </>
   );
 }
 
 export default function AppTourProvider({ children }) {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  const TOUR_FLOW = React.useMemo(
+    () => getTourFlow(t),
+    [i18n.resolvedLanguage, i18n.language, t]
+  );
 
   const ANIM_MS = 180;
 
@@ -405,7 +414,7 @@ export default function AppTourProvider({ children }) {
       setScreenIndex(idx);
       setTipIndex(0);
     }
-  }, [isRunning, location.pathname, screenIndex]);
+  }, [isRunning, location.pathname, screenIndex, TOUR_FLOW]);
 
   const fadeOutThen = React.useCallback(
     (fn) => {
@@ -472,7 +481,7 @@ export default function AppTourProvider({ children }) {
         return isRunning;
       },
     }),
-    [ANIM_MS, clearTimers, fadeOutThen, isRunning, navigate, schedule]
+    [ANIM_MS, clearTimers, fadeOutThen, isRunning, navigate, schedule, TOUR_FLOW]
   );
 
   const onNextTip = React.useCallback(() => {
@@ -500,7 +509,7 @@ export default function AppTourProvider({ children }) {
       setTipIndex(0);
       navigate(TOUR_FLOW[next].path);
     });
-  }, [fadeOutThen, fadeSwap, navigate, screenIndex]);
+  }, [fadeOutThen, fadeSwap, navigate, screenIndex, TOUR_FLOW]);
 
   const hasMoreTips = tips.length > 1 && tipIndex < tips.length - 1;
   const isLastScreen = screenIndex >= TOUR_FLOW.length - 1;

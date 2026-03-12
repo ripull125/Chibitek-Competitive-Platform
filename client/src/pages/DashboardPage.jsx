@@ -323,13 +323,14 @@ function SectionCard({ title, subtitle, icon: Icon, children, onViewData, right,
 /*  KPI Strip                                                          */
 /* ------------------------------------------------------------------ */
 function KPIStrip({ analytics }) {
+  const { t } = useTranslation();
   const kpis = [
-    { label: "Total Posts", value: analytics.totalPosts, icon: IconChartDots, color: "blue" },
-    { label: "Total Engagement", value: fmtK(analytics.totalEngagement), icon: IconHeart, color: "pink" },
-    { label: "Avg Engagement", value: fmtK(analytics.avgEngagement), icon: IconTrendingUp, color: "teal" },
-    { label: "Total Views", value: fmtK(analytics.totalViews), icon: IconEye, color: "violet" },
-    { label: "Total Comments", value: fmtK(analytics.totalComments), icon: IconMessage, color: "orange" },
-    { label: "Platforms", value: analytics.platformNames.length, icon: IconUsers, color: "cyan" },
+    { label: t("dashboard.kpiTotalPosts", { defaultValue: "Total Posts" }), value: analytics.totalPosts, icon: IconChartDots, color: "blue" },
+    { label: t("dashboard.kpiTotalEngagement", { defaultValue: "Total Engagement" }), value: fmtK(analytics.totalEngagement), icon: IconHeart, color: "pink" },
+    { label: t("dashboard.kpiAvgEngagement", { defaultValue: "Avg Engagement" }), value: fmtK(analytics.avgEngagement), icon: IconTrendingUp, color: "teal" },
+    { label: t("dashboard.kpiTotalViews", { defaultValue: "Total Views" }), value: fmtK(analytics.totalViews), icon: IconEye, color: "violet" },
+    { label: t("dashboard.kpiTotalComments", { defaultValue: "Total Comments" }), value: fmtK(analytics.totalComments), icon: IconMessage, color: "orange" },
+    { label: t("dashboard.kpiPlatforms", { defaultValue: "Platforms" }), value: analytics.platformNames.length, icon: IconUsers, color: "cyan" },
   ];
 
   return (
@@ -357,23 +358,24 @@ function KPIStrip({ analytics }) {
 /* ------------------------------------------------------------------ */
 /*  Engagement Over Time (with filters)                                */
 /* ------------------------------------------------------------------ */
-const DATE_RANGES = [
-  { value: "all", label: "All time" },
-  { value: "7", label: "Last 7 days" },
-  { value: "30", label: "Last 30 days" },
-  { value: "90", label: "Last 90 days" },
-];
-
 function EngagementTimeline({ data, platformNames }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [platformFilter, setPlatformFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
   const [metric, setMetric] = useState("all");
 
+  const DATE_RANGES = [
+    { value: "all", label: t("dashboard.dateAllTime", { defaultValue: "All time" }) },
+    { value: "7", label: t("dashboard.dateLast7", { defaultValue: "Last 7 days" }) },
+    { value: "30", label: t("dashboard.dateLast30", { defaultValue: "Last 30 days" }) },
+    { value: "90", label: t("dashboard.dateLast90", { defaultValue: "Last 90 days" }) },
+  ];
+
   const platformOptions = useMemo(() => [
-    { value: "all", label: "All platforms" },
+    { value: "all", label: t("dashboard.allPlatforms", { defaultValue: "All platforms" }) },
     ...platformNames.map((p) => ({ value: p, label: p.charAt(0).toUpperCase() + p.slice(1) })),
-  ], [platformNames]);
+  ], [platformNames, t]);
 
   const filteredData = useMemo(() => {
     let result = data;
@@ -429,10 +431,10 @@ function EngagementTimeline({ data, platformNames }) {
         value={metric}
         onChange={setMetric}
         data={[
-          { value: "all", label: "All" },
-          { value: "likes", label: "Likes" },
-          { value: "comments", label: "Comments" },
-          { value: "shares", label: "Shares" },
+          { value: "all", label: t("dashboard.filterAll", { defaultValue: "All" }) },
+          { value: "likes", label: t("dashboard.likes", { defaultValue: "Likes" }) },
+          { value: "comments", label: t("dashboard.comments", { defaultValue: "Comments" }) },
+          { value: "shares", label: t("dashboard.shares", { defaultValue: "Shares" }) },
         ]}
       />
     </Group>
@@ -440,8 +442,8 @@ function EngagementTimeline({ data, platformNames }) {
 
   return (
     <SectionCard
-      title="Engagement Over Time"
-      subtitle="Daily likes, comments & shares from collected posts"
+      title={t("dashboard.engagementOverTime", { defaultValue: "Engagement Over Time" })}
+      subtitle={t("dashboard.engagementOverTimeDesc", { defaultValue: "Daily likes, comments & shares from collected posts" })}
       icon={IconChartLine}
       onViewData={() => navigate("/reports")}
       right={filterControls}
@@ -475,19 +477,21 @@ function EngagementTimeline({ data, platformNames }) {
               />
               <Legend />
               {(metric === "all" || metric === "likes") && (
-                <Area type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#gradLikes)" strokeWidth={2} name="Likes" />
+                <Area type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#gradLikes)" strokeWidth={2} name={t("dashboard.likes", { defaultValue: "Likes" })} />
               )}
               {(metric === "all" || metric === "comments") && (
-                <Area type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#gradComments)" strokeWidth={2} name="Comments" />
+                <Area type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#gradComments)" strokeWidth={2} name={t("dashboard.comments", { defaultValue: "Comments" })} />
               )}
               {(metric === "all" || metric === "shares") && (
-                <Area type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#gradShares)" strokeWidth={2} name="Shares" />
+                <Area type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#gradShares)" strokeWidth={2} name={t("dashboard.shares", { defaultValue: "Shares" })} />
               )}
             </AreaChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <EmptyState msg={platformFilter !== "all" ? "No data for this platform in the selected time range." : "No timeline data yet. Start collecting posts from Competitor Lookup."} />
+        <EmptyState msg={platformFilter !== "all"
+          ? t("dashboard.noTimelineForPlatform", { defaultValue: "No data for this platform in the selected time range." })
+          : t("dashboard.noTimelineData", { defaultValue: "No timeline data yet. Start collecting posts from Competitor Lookup." })} />
       )}
     </SectionCard>
   );
@@ -497,11 +501,12 @@ function EngagementTimeline({ data, platformNames }) {
 /*  Platform Breakdown                                                 */
 /* ------------------------------------------------------------------ */
 function PlatformBreakdown({ data }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <SectionCard
-      title="Engagement by Platform"
-      subtitle="How each social platform is performing"
+      title={t("dashboard.engagementByPlatform", { defaultValue: "Engagement by Platform" })}
+      subtitle={t("dashboard.engagementByPlatformDesc", { defaultValue: "How each social platform is performing" })}
       icon={IconChartBar}
       onViewData={() => navigate("/reports")}
       tourId="dashboard-platforms"
@@ -518,14 +523,14 @@ function PlatformBreakdown({ data }) {
                 formatter={(v) => fmtK(v)}
               />
               <Legend />
-              <Bar dataKey="likes" fill="#339AF0" name="Likes" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="comments" fill="#51CF66" name="Comments" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="shares" fill="#FF6B6B" name="Shares" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="likes" fill="#339AF0" name={t("dashboard.likes", { defaultValue: "Likes" })} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="comments" fill="#51CF66" name={t("dashboard.comments", { defaultValue: "Comments" })} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="shares" fill="#FF6B6B" name={t("dashboard.shares", { defaultValue: "Shares" })} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <EmptyState msg="No platform data yet." />
+        <EmptyState msg={t("dashboard.noPlatformData", { defaultValue: "No platform data yet." })} />
       )}
     </SectionCard>
   );
@@ -535,11 +540,12 @@ function PlatformBreakdown({ data }) {
 /*  Top Posts                                                          */
 /* ------------------------------------------------------------------ */
 function TopPostsList({ posts }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <SectionCard
-      title="Top Performing Posts"
-      subtitle="Highest engagement posts collected so far"
+      title={t("dashboard.topPerformingPosts", { defaultValue: "Top Performing Posts" })}
+      subtitle={t("dashboard.topPerformingPostsDesc", { defaultValue: "Highest engagement posts collected so far" })}
       icon={IconTrendingUp}
       onViewData={() => navigate("/savedPosts")}
       tourId="dashboard-top-posts"
@@ -572,11 +578,11 @@ function TopPostsList({ posts }) {
                     </ThemeIcon>
                     <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
                       <Text fw={600} size="sm" lineClamp={1}>
-                        {p.content || p.extra?.title || p.extra?.description || "Untitled post"}
+                        {p.content || p.extra?.title || p.extra?.description || t("dashboard.untitledPost", { defaultValue: "Untitled post" })}
                       </Text>
                       <Group gap="xs">
                         <Text size="xs" c="dimmed">
-                          @{p.username || p.extra?.author_handle || "unknown"}
+                          @{p.username || p.extra?.author_handle || t("dashboard.unknown", { defaultValue: "unknown" })}
                         </Text>
                         <Badge size="xs" variant="light" color={platformColor}>
                           {p.platformName}
@@ -585,26 +591,26 @@ function TopPostsList({ posts }) {
                     </Stack>
                   </Group>
                   <Group gap="lg" wrap="nowrap">
-                    <Tooltip label="Likes">
+                    <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
                       <Group gap={4}>
                         <IconHeart size={14} color="#FF6B6B" />
                         <Text size="sm" fw={600}>{fmtK(p.likes || 0)}</Text>
                       </Group>
                     </Tooltip>
-                    <Tooltip label="Comments">
+                    <Tooltip label={t("dashboard.comments", { defaultValue: "Comments" })}>
                       <Group gap={4}>
                         <IconMessage size={14} color="#51CF66" />
                         <Text size="sm" fw={600}>{fmtK(p.comments || 0)}</Text>
                       </Group>
                     </Tooltip>
-                    <Tooltip label="Views">
+                    <Tooltip label={t("dashboard.views", { defaultValue: "Views" })}>
                       <Group gap={4}>
                         <IconEye size={14} color="#845EF7" />
                         <Text size="sm" fw={600}>{fmtK(p.views || p.extra?.views || 0)}</Text>
                       </Group>
                     </Tooltip>
                     {p.url && (
-                      <Tooltip label="Open original">
+                      <Tooltip label={t("dashboard.openOriginal", { defaultValue: "Open original" })}>
                         <ActionIcon variant="subtle" size="sm" component="a" href={p.url} target="_blank" rel="noopener">
                           <IconExternalLink size={14} />
                         </ActionIcon>
@@ -617,7 +623,7 @@ function TopPostsList({ posts }) {
           })}
         </Stack>
       ) : (
-        <EmptyState msg="No posts collected yet. Use Competitor Lookup to gather data." />
+        <EmptyState msg={t("dashboard.noPostsCollected", { defaultValue: "No posts collected yet. Use Competitor Lookup to gather data." })} />
       )}
     </SectionCard>
   );
@@ -627,11 +633,12 @@ function TopPostsList({ posts }) {
 /*  Competitor Comparison                                               */
 /* ------------------------------------------------------------------ */
 function CompetitorComparison({ competitors }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <SectionCard
-      title="Top Competitors"
-      subtitle="Engagement breakdown by account"
+      title={t("dashboard.topCompetitors", { defaultValue: "Top Competitors" })}
+      subtitle={t("dashboard.topCompetitorsDesc", { defaultValue: "Engagement breakdown by account" })}
       icon={IconUsers}
       onViewData={() => navigate("/competitors")}
       tourId="dashboard-competitors"
@@ -647,23 +654,23 @@ function CompetitorComparison({ competitors }) {
                   </Avatar>
                   <Stack gap={2}>
                     <Text fw={700} size="sm">@{c.name}</Text>
-                    <Text size="xs" c="dimmed">{c.posts} posts collected</Text>
+                    <Text size="xs" c="dimmed">{t("dashboard.postsCollected", { count: c.posts, defaultValue: "{{count}} posts collected" })}</Text>
                   </Stack>
                 </Group>
                 <Group gap="lg" wrap="nowrap">
-                  <Tooltip label="Likes">
+                  <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
                     <Group gap={4}>
                       <IconHeart size={14} color="#FF6B6B" />
                       <Text size="sm" fw={600}>{fmtK(c.likes)}</Text>
                     </Group>
                   </Tooltip>
-                  <Tooltip label="Comments">
+                  <Tooltip label={t("dashboard.comments", { defaultValue: "Comments" })}>
                     <Group gap={4}>
                       <IconMessage size={14} color="#51CF66" />
                       <Text size="sm" fw={600}>{fmtK(c.comments)}</Text>
                     </Group>
                   </Tooltip>
-                  <Tooltip label="Views">
+                  <Tooltip label={t("dashboard.views", { defaultValue: "Views" })}>
                     <Group gap={4}>
                       <IconEye size={14} color="#845EF7" />
                       <Text size="sm" fw={600}>{fmtK(c.views)}</Text>
@@ -675,7 +682,7 @@ function CompetitorComparison({ competitors }) {
           ))}
         </Stack>
       ) : (
-        <EmptyState msg="No competitor data yet. Look up competitors to start tracking." />
+        <EmptyState msg={t("dashboard.noCompetitorData", { defaultValue: "No competitor data yet. Look up competitors to start tracking." })} />
       )}
     </SectionCard>
   );
@@ -685,11 +692,12 @@ function CompetitorComparison({ competitors }) {
 /*  Keyword Performance                                                */
 /* ------------------------------------------------------------------ */
 function KeywordPerformance({ keywords }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <SectionCard
-      title="Keyword Rankings"
-      subtitle="Performance index from all collected posts"
+      title={t("dashboard.keywordRankings", { defaultValue: "Keyword Rankings" })}
+      subtitle={t("dashboard.keywordRankingsDesc", { defaultValue: "Performance index from all collected posts" })}
       icon={IconTargetArrow}
       onViewData={() => navigate("/keywords")}
       tourId="dashboard-keywords"
@@ -714,7 +722,7 @@ function KeywordPerformance({ keywords }) {
                     </Stack>
                   </Group>
                   <Group gap="md" wrap="nowrap">
-                    <Tooltip label="Performance Index (0-100)">
+                    <Tooltip label={t("dashboard.performanceIndexTooltip", { defaultValue: "Performance Index (0-100)" })}>
                       <div className={classes.kpiBarWrap}>
                         <div className={classes.kpiBarBg}>
                           <div className={classes.kpiBarFill} style={{ width: (kw.kpi || 0) + "%" }} />
@@ -722,12 +730,12 @@ function KeywordPerformance({ keywords }) {
                         <Text size="xs" fw={700} ml={6}>{Math.round(kw.kpi || 0)}</Text>
                       </div>
                     </Tooltip>
-                    <Tooltip label={"Avg engagement: " + (kw.avgEngagement || 0)}>
-                      <Badge variant="light" color="blue" size="sm">{fmtK(kw.avgEngagement || 0)} avg</Badge>
+                    <Tooltip label={t("dashboard.avgEngagementTooltip", { value: kw.avgEngagement || 0, defaultValue: "Avg engagement: {{value}}" })}>
+                      <Badge variant="light" color="blue" size="sm">{fmtK(kw.avgEngagement || 0)} {t("dashboard.avgShort", { defaultValue: "avg" })}</Badge>
                     </Tooltip>
-                    <Tooltip label={"Trend: " + (kw.trendDir || "stable")}>
+                    <Tooltip label={t("dashboard.trendTooltip", { value: kw.trendDir || t("dashboard.stable", { defaultValue: "stable" }), defaultValue: "Trend: {{value}}" })}>
                       <Badge variant="light" color={trendColor} size="sm" leftSection={<TrendIcon size={12} />}>
-                        {kw.trendDir || "stable"}
+                        {kw.trendDir || t("dashboard.stable", { defaultValue: "stable" })}
                       </Badge>
                     </Tooltip>
                   </Group>
@@ -736,11 +744,11 @@ function KeywordPerformance({ keywords }) {
             );
           })}
           <Button variant="light" fullWidth mt="xs" onClick={() => navigate("/keywords")} rightSection={<IconExternalLink size={16} />}>
-            View all keywords
+            {t("dashboard.viewAllKeywords", { defaultValue: "View all keywords" })}
           </Button>
         </Stack>
       ) : (
-        <EmptyState msg="No keyword data yet. Collect posts to see keyword performance." />
+        <EmptyState msg={t("dashboard.noKeywordData", { defaultValue: "No keyword data yet. Collect posts to see keyword performance." })} />
       )}
     </SectionCard>
   );
@@ -750,11 +758,12 @@ function KeywordPerformance({ keywords }) {
 /*  Tone Distribution                                                  */
 /* ------------------------------------------------------------------ */
 function ToneBreakdown({ data }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <SectionCard
-      title="Content Tone"
-      subtitle="Tone distribution across collected posts"
+      title={t("dashboard.contentTone", { defaultValue: "Content Tone" })}
+      subtitle={t("dashboard.contentToneDesc", { defaultValue: "Tone distribution across collected posts" })}
       icon={IconMoodSmile}
       onViewData={() => navigate("/reports")}
       tourId="dashboard-tone"
@@ -783,17 +792,17 @@ function ToneBreakdown({ data }) {
             </PieChart>
           </ResponsiveContainer>
           <Stack gap="xs">
-            {data.map((t, idx) => (
-              <Group key={t.name} gap="xs">
+            {data.map((toneItem, idx) => (
+              <Group key={toneItem.name} gap="xs">
                 <div style={{ width: 12, height: 12, borderRadius: 3, background: PIE_COLORS[idx % PIE_COLORS.length] }} />
-                <Text size="sm" fw={600}>{t.name}</Text>
-                <Text size="xs" c="dimmed">({t.value} posts)</Text>
+                <Text size="sm" fw={600}>{toneItem.name}</Text>
+                <Text size="xs" c="dimmed">({t("dashboard.postsCount", { count: toneItem.value, defaultValue: "{{count}} posts" })})</Text>
               </Group>
             ))}
           </Stack>
         </Group>
       ) : (
-        <EmptyState msg="No tone data yet. Run tone analysis from the Reports page." />
+        <EmptyState msg={t("dashboard.noToneData", { defaultValue: "No tone data yet. Run tone analysis from the Reports page." })} />
       )}
     </SectionCard>
   );
@@ -803,6 +812,7 @@ function ToneBreakdown({ data }) {
 /*  AI Summary                                                         */
 /* ------------------------------------------------------------------ */
 function AISummary({ analytics, userId }) {
+  const { t } = useTranslation();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -833,34 +843,39 @@ function AISummary({ analytics, userId }) {
         body: JSON.stringify({ message: prompt, user_id: userId, conversation: [] }),
       });
       const json = await res.json();
-      setSummary(json.reply || json.message || "No summary generated.");
+      setSummary(json.reply || json.message || t("dashboard.noSummaryGenerated", { defaultValue: "No summary generated." }));
     } catch (e) {
-      setError("Could not generate summary. Check that the AI service is running.");
+      setError(t("dashboard.summaryError", { defaultValue: "Could not generate summary. Check that the AI service is running." }));
     } finally {
       setLoading(false);
     }
-  }, [analytics, userId]);
+  }, [analytics, userId, t]);
 
   return (
-    <SectionCard title="AI-Powered Insights" subtitle="Automated analysis of your engagement data" icon={IconSparkles} tourId="dashboard-ai">
+    <SectionCard
+      title={t("dashboard.aiPoweredInsights", { defaultValue: "AI-Powered Insights" })}
+      subtitle={t("dashboard.aiPoweredInsightsDesc", { defaultValue: "Automated analysis of your engagement data" })}
+      icon={IconSparkles}
+      tourId="dashboard-ai"
+    >
       {summary ? (
         <Stack gap="md">
           <Paper withBorder p="md" radius="md" className={classes.summaryBox}>
             <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{summary}</Text>
           </Paper>
           <Group>
-            <Button variant="light" size="sm" onClick={generate} loading={loading}>Regenerate</Button>
+            <Button variant="light" size="sm" onClick={generate} loading={loading}>{t("dashboard.regenerate", { defaultValue: "Regenerate" })}</Button>
             <Button variant="light" size="sm" onClick={() => navigate("/chat")} rightSection={<IconMessageChatbot size={16} />}>
-              Continue in Chat
+              {t("dashboard.continueInChat", { defaultValue: "Continue in Chat" })}
             </Button>
           </Group>
         </Stack>
       ) : (
         <Stack align="center" gap="md" py="lg">
           {error && <Text size="sm" c="red">{error}</Text>}
-          <Text size="sm" c="dimmed">Generate an AI summary of trends, engagement patterns, and recommended actions.</Text>
+          <Text size="sm" c="dimmed">{t("dashboard.generateSummaryHint", { defaultValue: "Generate an AI summary of trends, engagement patterns, and recommended actions." })}</Text>
           <Button variant="light" leftSection={<IconSparkles size={16} />} onClick={generate} loading={loading}>
-            Generate AI Summary
+            {t("dashboard.generateAiSummary", { defaultValue: "Generate AI Summary" })}
           </Button>
         </Stack>
       )}
@@ -923,10 +938,16 @@ export default function DashboardPage() {
               <Title order={2} className={classes.title}>{t("dashboard.title")}</Title>
               <Text size="sm" c="dimmed">
                 {loading
-                  ? "Loading your engagement data..."
+                  ? t("dashboard.loadingEngagementData", { defaultValue: "Loading your engagement data..." })
                   : analytics
-                    ? analytics.totalPosts + " posts tracked across " + analytics.platformNames.length + " platforms"
-                    : "No data yet — start by looking up a competitor"}
+                    ? t("dashboard.postsTrackedAcrossPlatforms", {
+                      count: analytics.totalPosts,
+                      platformCount: analytics.platformNames.length,
+                      defaultValue: "{{count}} posts tracked across {{platformCount}} platforms",
+                    })
+                    : t("dashboard.noDataStartCompetitor", {
+                      defaultValue: "No data yet — start by looking up a competitor",
+                    })}
               </Text>
             </Stack>
           </Group>
@@ -940,16 +961,18 @@ export default function DashboardPage() {
               <ThemeIcon variant="light" radius="xl" size={72} color="gray">
                 <IconChartBar size={36} />
               </ThemeIcon>
-              <Title order={3} ta="center">No data to display yet</Title>
+              <Title order={3} ta="center">{t("dashboard.noDataToDisplayYet", { defaultValue: "No data to display yet" })}</Title>
               <Text size="sm" c="dimmed" ta="center" maw={420}>
-                Look up competitors or track keywords to start seeing analytics here.
+                {t("dashboard.noDataHint", {
+                  defaultValue: "Look up competitors or track keywords to start seeing analytics here.",
+                })}
               </Text>
               <Group gap="sm" mt="xs">
                 <Button variant="filled" onClick={() => navigate('/competitor-lookup')}>
-                  Competitor Lookup
+                  {t("dashboard.goToCompetitorLookup", { defaultValue: "Competitor Lookup" })}
                 </Button>
                 <Button variant="light" onClick={() => navigate('/keywords')}>
-                  Keyword Tracking
+                  {t("dashboard.goToKeywordTracking", { defaultValue: "Keyword Tracking" })}
                 </Button>
               </Group>
             </Stack>
