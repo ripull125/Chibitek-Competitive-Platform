@@ -3,19 +3,16 @@ import ReactDOM from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n/i18n";
 import AppTourProvider from "./tour/AppTourProvider.jsx";
-
 import {
   MantineProvider,
   ScrollArea,
-  ColorSchemeScript
+  ColorSchemeScript,
+  localStorageColorSchemeManager,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
-
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-
 import RequireAuth from "./auth/RequireAuth.jsx";
 import Login from "./pages/Login.jsx";
-
 import DashboardPage from "./pages/DashboardPage.jsx";
 import Placeholder from "./pages/Placeholder.jsx";
 import KeywordTracking from "./pages/KeywordTracking.jsx";
@@ -28,9 +25,11 @@ import Profile from "./pages/Profile.jsx";
 import ConnectedIntegrations from "./pages/ConnectedIntegrations.jsx";
 import SavedPosts from "./pages/SavedPosts.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
-
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
+import "./App.css";
+
+const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color-scheme" });
 
 function AppLayout() {
   return (
@@ -38,7 +37,6 @@ function AppLayout() {
       <aside className="app-sidebar">
         <NavbarSimple />
       </aside>
-
       <main className="app-main">
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
@@ -63,11 +61,10 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="light" />
+    <ColorSchemeScript colorSchemeManager={colorSchemeManager} defaultColorScheme="light" />
     <I18nextProvider i18n={i18n}>
-      <MantineProvider defaultColorScheme="light">
+      <MantineProvider colorSchemeManager={colorSchemeManager} defaultColorScheme="light">
         <BrowserRouter>
-          {/* IMPORTANT: provider must wrap BOTH login and app */}
           <AppTourProvider>
             <Routes>
               <Route path="/login" element={<Login />} />

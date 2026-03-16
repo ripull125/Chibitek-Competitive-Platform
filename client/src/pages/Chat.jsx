@@ -574,7 +574,9 @@ export default function ChatInput() {
                       withBorder
                       style={{
                         maxWidth: "76%",
-                        backgroundColor: entry.role === "user" ? "#e7f5ff" : "white",
+                        backgroundColor: entry.role === "user"
+                          ? "var(--chat-bubble-user)"
+                          : "var(--chat-bubble-ai)",
                       }}
                     >
                       <Text size="xs" c="dimmed" mb={4}>
@@ -628,10 +630,10 @@ export default function ChatInput() {
                 display: "flex",
                 alignItems: "flex-end",
                 gap: 12,
-                backgroundColor: "white",
+                backgroundColor: "var(--chat-input-bg)",
                 borderRadius: 24,
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
-                border: "1px solid #e9ecef",
+                boxShadow: "0 2px 8px var(--shadow)",
+                border: "1px solid var(--chat-input-border)",
               }}
             >
               <ActionIcon
@@ -671,6 +673,8 @@ export default function ChatInput() {
                     border: "none",
                     outline: "none",
                     resize: "none",
+                    backgroundColor: "transparent",
+                    color: "var(--text-primary)",
                   },
                 }}
               />

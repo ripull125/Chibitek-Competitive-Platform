@@ -1,139 +1,73 @@
-/* Theme Variables */
 :root {
-  /* Light Mode Colors (Default) */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #e0e0e0;
-  
-  --text-primary: #1a1a1a;
-  --text-secondary: #4a4a4a;
-  --text-tertiary: #6a6a6a;
-  
-  --nav-bg: #ffffff;
-  --nav-text: #1a1a1a;
-  --nav-hover: #f0f0f0;
-  --nav-active: #e0e0e0;
-  
-  --border-color: #d0d0d0;
-  --shadow: rgba(0, 0, 0, 0.1);
-  
-  --accent-primary: #2563eb;
-  --accent-secondary: #3b82f6;
-  
-  --button-bg: #2563eb;
-  --button-text: #ffffff;
-  --button-hover: #1d4ed8;
-  
-  --card-bg: #ffffff;
-  --card-border: #e0e0e0;
+  --bg-primary:     #ffffff;
+  --bg-secondary:   #f5f7fa;
+  --bg-tertiary:    #eaecf0;
+  --text-primary:   #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary:  #6b7280;
+  --nav-bg:         #ffffff;
+  --nav-text:       #111827;
+  --nav-hover:      #f3f4f6;
+  --nav-active:     #e5e7eb;
+  --border-color:   #d1d5db;
+  --shadow:         rgba(0, 0, 0, 0.08);
+  --accent-primary: #0284c7;
+  --accent-secondary: #38bdf8;
+  --button-bg:      #0284c7;
+  --button-text:    #ffffff;
+  --button-hover:   #0369a1;
+  --card-bg:        #ffffff;
+  --card-border:    #e5e7eb;
+  --chat-bubble-ai: #f1f5f9;
+  --chat-bubble-user: #dbeafe;
+  --chat-input-bg:  #ffffff;
+  --chat-input-border: #e2e8f0;
 }
 
-.dark-mode {
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #2a2a2a;
-  --bg-tertiary: #3a3a3a;
-  
-  --text-primary: #f0f0f0;
-  --text-secondary: #d0d0d0;
-  --text-tertiary: #b0b0b0;
-  
-  --nav-bg: #1f1f1f;
-  --nav-text: #f0f0f0;
-  --nav-hover: #2a2a2a;
-  --nav-active: #3a3a3a;
-  
-  --border-color: #404040;
-  --shadow: rgba(0, 0, 0, 0.3);
-  
-  --accent-primary: #3b82f6;
-  --accent-secondary: #60a5fa;
-  
-  --button-bg: #3b82f6;
-  --button-text: #ffffff;
-  --button-hover: #2563eb;
-  
-  --card-bg: #2a2a2a;
-  --card-border: #404040;
+[data-mantine-color-scheme="dark"] {
+  --bg-primary:     #0f1117;
+  --bg-secondary:   #171b26;
+  --bg-tertiary:    #1e2536;
+  --text-primary:   #e8eef6;
+  --text-secondary: #a8b4c8;
+  --text-tertiary:  #6b7a99;
+  --nav-bg:         #0b0e16;
+  --nav-text:       #e8eef6;
+  --nav-hover:      rgba(255, 255, 255, 0.06);
+  --nav-active:     rgba(2, 175, 176, 0.15);
+  --border-color:   rgba(255, 255, 255, 0.08);
+  --shadow:         rgba(0, 0, 0, 0.5);
+  --accent-primary: #38d6d4;
+  --accent-secondary: #02afb0;
+  --button-bg:      #02afb0;
+  --button-text:    #ffffff;
+  --button-hover:   #027e7f;
+  --card-bg:        #171b26;
+  --card-border:    rgba(255, 255, 255, 0.07);
+  --chat-bubble-ai:   #1e2536;
+  --chat-bubble-user: rgba(2, 175, 176, 0.18);
+  --chat-input-bg:    #171b26;
+  --chat-input-border: rgba(255, 255, 255, 0.10);
 }
 
-/* Apply theme to body and root */
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 .card {
   padding: 2em;
   background-color: var(--card-bg);
   border: 1px solid var(--card-border);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
-.read-the-docs {
-  color: var(--text-secondary);
-}
-
-/* Mantine Component Overrides for Theme */
-.mantine-Container-root {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-}
-
-.mantine-Box-root {
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
-.mantine-Text-root {
-  color: var(--text-primary);
-}
-
-.mantine-Title-root {
-  color: var(--text-primary);
+  transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
 .mantine-Input-input {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--border-color);
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
 }
 
 .mantine-Input-input:focus {
