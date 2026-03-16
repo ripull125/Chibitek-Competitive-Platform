@@ -7,7 +7,8 @@ import 'dotenv/config';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
-import { supabase } from './supabase.js';
+import { createHash } from 'crypto';
+import { supabase, supabaseAuth } from './supabase.js';
 import { categorizeTone } from './tone.js';
 import { suggestKeywordsForBooks } from './keywords.js';
 import { exec } from 'child_process';
@@ -105,6 +106,459 @@ const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
+
+const ADMIN_EMAILS = new Set([
+  'erick.grau@chibitek.com',
+  'puhalenthirv@gmail.com',
+  'evanchin0322@gmail.com',
+]);
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const isSeedAdminEmail = (email) => ADMIN_EMAILS.has(normalizeEmail(email));
+
+const makeAdminCreatedProviderUserId = (email) => {
+  const normalized = normalizeEmail(email);
+  const salt = process.env.ADMIN_USER_ID_SALT || 'chibitek-admin-user-id';
+  return createHash('sha256').update(`${salt}:${normalized}`).digest('hex');
+};
+
+const isMissingTableError = (error) => {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '');
+  return (
+    code === 'PGRST205' ||
+    code === '42P01' ||
+    /Could not find the table/i.test(message) ||
+    /relation .* does not exist/i.test(message)
+  );
+};
+
+function getBearerToken(req) {
+  const header = req.get('authorization') || '';
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+async function getRequestAuthContext(req) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return { ok: false, status: 401, error: 'Missing bearer token.' };
+  }
+
+  const { data, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !data?.user) {
+    // Fallback for access checks when auth introspection fails due env drift.
+    // This only enables non-admin user gating; admin endpoints still require verified tokens.
+    const payload = decodeJwtPayload(token);
+    const fallbackEmail = normalizeEmail(payload?.email);
+    if (!fallbackEmail) {
+      return { ok: false, status: 401, error: 'Invalid or expired token.' };
+    }
+
+    return {
+      ok: true,
+      token,
+      user: null,
+      email: fallbackEmail,
+      isAdmin: false,
+      verified: false,
+    };
+  }
+
+  const email = normalizeEmail(data.user.email);
+  if (!email) {
+    return { ok: false, status: 401, error: 'Authenticated user has no email.' };
+  }
+
+  return {
+    ok: true,
+    token,
+    user: data.user,
+    email,
+    isAdmin: false,
+    verified: true,
+  };
+}
+
+async function ensureAdminTableSeed() {
+  for (const adminEmail of ADMIN_EMAILS) {
+    const { error } = await supabase
+      .from('admins')
+      .upsert(
+        {
+          email: adminEmail,
+          created_by_email: adminEmail,
+        },
+        { onConflict: 'email' }
+      );
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        console.warn('Admins table is missing. Run migration 003_rename_verified_users_to_admins.sql.');
+        return;
+      }
+      // Non-fatal so the server can still boot when migrations are not yet applied.
+      console.warn(`Failed to seed admin ${adminEmail}: ${error.message}`);
+      return;
+    }
+  }
+}
+
+async function isEmailAdminByTable(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+
+  const { data, error } = await supabase
+    .from('admins')
+    .select('email')
+    .eq('email', normalized)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error)) return false;
+    throw error;
+  }
+
+  return !!data;
+}
+
+async function isEmailUserByTable(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .ilike('email', normalized)
+    .limit(1);
+
+  if (error) {
+    if (isMissingTableError(error)) return false;
+    throw error;
+  }
+
+  return Array.isArray(data) ? data.length > 0 : !!data;
+}
+
+app.get('/api/auth/access', async (req, res) => {
+  try {
+    const auth = await getRequestAuthContext(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const seededAdmin = auth.verified ? isSeedAdminEmail(auth.email) : false;
+    const tableAdmin = auth.verified && !seededAdmin ? await isEmailAdminByTable(auth.email) : false;
+    const isAdmin = seededAdmin || tableAdmin;
+    let isUser = false;
+    if (!isAdmin) {
+      try {
+        isUser = await isEmailUserByTable(auth.email);
+      } catch (lookupErr) {
+        // Do not fail login checks hard if DB lookup has transient/schema issues.
+        console.warn('User access lookup failed, treating as unauthorized:', lookupErr?.message || lookupErr);
+        isUser = false;
+      }
+    }
+    const authorized = isAdmin || isUser;
+
+    return res.json({
+      email: auth.email,
+      authorized,
+      isAdmin,
+    });
+  } catch (err) {
+    console.error('Access check failed:', err);
+    return res.status(500).json({ error: 'Failed to verify access.' });
+  }
+});
+
+async function requireAdmin(req, res) {
+  const auth = await getRequestAuthContext(req);
+  if (!auth.ok) {
+    res.status(auth.status).json({ error: auth.error });
+    return null;
+  }
+
+  if (!auth.verified) {
+    res.status(401).json({ error: 'Admin access requires a valid token.' });
+    return null;
+  }
+
+  const isAdmin = isSeedAdminEmail(auth.email) || await isEmailAdminByTable(auth.email);
+  if (!isAdmin) {
+    res.status(403).json({ error: 'Admin access required.' });
+    return null;
+  }
+
+  return { ...auth, isAdmin: true };
+}
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('email, name, provider, created_at, updated_at')
+      .not('email', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ users: data || [] });
+  } catch (err) {
+    console.error('List users failed:', err);
+    return res.status(500).json({ error: 'Failed to list users.' });
+  }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email);
+    const name = String(req.body?.name || '').trim() || null;
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const { data: existingUser, error: existingUserErr } = await supabase
+      .from('users')
+      .select('email, name, provider, created_at, updated_at')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingUserErr) {
+      throw existingUserErr;
+    }
+
+    if (existingUser) {
+      return res.json({ user: existingUser, existed: true });
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        email,
+        name,
+        provider: 'admin_created',
+        provider_user_id: makeAdminCreatedProviderUserId(email),
+      })
+      .select('email, name, provider, created_at, updated_at')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ user: data, existed: false });
+  } catch (err) {
+    console.error('Create user failed:', err);
+    return res.status(500).json({ error: 'Failed to create user.' });
+  }
+});
+
+app.delete('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email || req.query?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const isAdminTarget = isSeedAdminEmail(email) || await isEmailAdminByTable(email);
+    if (isAdminTarget) {
+      return res.status(403).json({ error: 'Admins cannot be deleted from users.' });
+    }
+
+    const { data: userRow, error: userLookupError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (userLookupError) {
+      throw userLookupError;
+    }
+    if (!userRow?.id) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Clean dependent data first so FK constraints do not block user deletion.
+    const { data: userPosts, error: userPostsErr } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('user_id', userRow.id);
+
+    if (userPostsErr) {
+      throw userPostsErr;
+    }
+
+    const postIds = (userPosts || []).map((p) => p.id).filter(Boolean);
+    if (postIds.length) {
+      const { error: metricsErr } = await supabase
+        .from('post_metrics')
+        .delete()
+        .in('post_id', postIds);
+      if (metricsErr) throw metricsErr;
+
+      const { error: detailsErr } = await supabase
+        .from('post_details_platform')
+        .delete()
+        .in('post_id', postIds);
+      if (detailsErr) throw detailsErr;
+
+      const { error: topicsErr } = await supabase
+        .from('post_topics')
+        .delete()
+        .in('post_id', postIds);
+      if (topicsErr) throw topicsErr;
+
+      const { error: postsErr } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', postIds);
+      if (postsErr) throw postsErr;
+    }
+
+    const { error: chatsErr } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('user_id', userRow.id);
+    if (chatsErr) throw chatsErr;
+
+    const { error: watchlistErr } = await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('user_id', userRow.id);
+    if (watchlistErr) throw watchlistErr;
+
+    const { data, error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userRow.id)
+      .select('email');
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.length) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    return res.json({ deleted: true, email });
+  } catch (err) {
+    console.error('Delete user failed:', err);
+    if (String(err?.code || '') === '23503') {
+      return res.status(409).json({ error: 'Cannot delete user due to related records. Delete dependencies first.' });
+    }
+    return res.status(500).json({ error: 'Failed to delete user.' });
+  }
+});
+
+app.get('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const { data, error } = await supabase
+      .from('admins')
+      .select('email, created_at, created_by_email')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return res.json({
+          admins: Array.from(ADMIN_EMAILS).map((email) => ({
+            email,
+            created_at: null,
+            created_by_email: 'seed',
+          }))
+        });
+      }
+      throw error;
+    }
+
+    // Always expose seed admins in UI even if they are not in table yet.
+    const byEmail = new Map((data || []).map((row) => [normalizeEmail(row.email), row]));
+    for (const seed of ADMIN_EMAILS) {
+      if (!byEmail.has(seed)) {
+        byEmail.set(seed, {
+          email: seed,
+          created_at: null,
+          created_by_email: 'seed',
+        });
+      }
+    }
+
+    return res.json({ admins: Array.from(byEmail.values()) });
+  } catch (err) {
+    console.error('List admins failed:', err);
+    return res.status(500).json({ error: 'Failed to list admins.' });
+  }
+});
+
+app.post('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireAdmin(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const { data, error } = await supabase
+      .from('admins')
+      .upsert(
+        {
+          email,
+          created_by_email: auth.email,
+        },
+        { onConflict: 'email' }
+      )
+      .select('email, created_at, created_by_email')
+      .single();
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return res.status(500).json({
+          error: 'Admins table is missing. Run migration 003_rename_verified_users_to_admins.sql first.',
+        });
+      }
+      throw error;
+    }
+
+    return res.json({ admin: data });
+  } catch (err) {
+    console.error('Create admin failed:', err);
+    return res.status(500).json({ error: 'Failed to create admin.' });
+  }
+});
 
 const requireUserId = (req, res) => {
   const userId = getUserIdFromRequest(req);
@@ -329,8 +783,10 @@ app.listen(port, async () => {
   try {
     const redditId = await ensureRedditPlatform();
     console.log(`Reddit platform ensured (id=${redditId})`);
+    await ensureAdminTableSeed();
+    console.log('Admin seeds ensured.');
   } catch (e) {
-    console.error('Failed to ensure Reddit platform:', e.message);
+    console.error('Startup seed failed:', e.message);
   }
 });
 

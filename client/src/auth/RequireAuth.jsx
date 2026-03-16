@@ -5,10 +5,9 @@ import { supabase } from "../supabaseClient";
 import {
   getStoredSession,
   getSupabaseSession,
-  isAuthorizedEmail,
-  isSessionAuthorized,
   isSessionValid,
   onAuthStateChange,
+  resolveSessionAccess,
   storeSession,
 } from "./session";
 
@@ -22,32 +21,52 @@ export default function RequireAuth({ children }) {
 
     const stored = getStoredSession();
     if (isSessionValid(stored)) {
-      if (!isAuthorizedEmail(stored?.user?.email)) {
-        storeSession(null);
-        if (supabase?.auth?.signOut) supabase.auth.signOut();
+      const storedAccess = stored?.access;
+      if (storedAccess?.authorized) {
         setChecking(false);
-        navigate(`/login?unauthorized=1`, { replace: true });
-        return;
       }
-      setChecking(false);
 
-      // Still subscribe so we keep storage in sync (logout, expiry, etc.)
-      const sub = onAuthStateChange((_event, session) => {
-        if (session && !isSessionAuthorized(session)) {
+      (async () => {
+        const access = await resolveSessionAccess(stored);
+        if (!mounted) return;
+
+        if (!access.authorized) {
           storeSession(null);
           if (supabase?.auth?.signOut) supabase.auth.signOut();
+          setChecking(false);
           navigate(`/login?unauthorized=1`, { replace: true });
           return;
         }
-        storeSession(session);
+
+        storeSession({ ...stored, access });
+        setChecking(false);
+      })();
+
+      const sub = onAuthStateChange((_event, session) => {
         if (!session) {
+          storeSession(null);
           navigate(`/login?next=${encodeURIComponent(location.pathname)}`, {
             replace: true,
           });
+          return;
         }
+
+        (async () => {
+          const access = await resolveSessionAccess(session);
+          if (!access.authorized) {
+            storeSession(null);
+            if (supabase?.auth?.signOut) supabase.auth.signOut();
+            navigate(`/login?unauthorized=1`, { replace: true });
+            return;
+          }
+          storeSession({ ...session, access });
+        })();
       });
 
-      return () => sub?.unsubscribe?.();
+      return () => {
+        mounted = false;
+        sub?.unsubscribe?.();
+      };
     }
 
     (async () => {
@@ -55,14 +74,15 @@ export default function RequireAuth({ children }) {
       if (!mounted) return;
 
       if (sess) {
-        if (!isSessionAuthorized(sess)) {
+        const access = await resolveSessionAccess(sess);
+        if (!access.authorized) {
           storeSession(null);
           if (supabase?.auth?.signOut) supabase.auth.signOut();
           setChecking(false);
           navigate(`/login?unauthorized=1`, { replace: true });
           return;
         }
-        storeSession(sess);
+        storeSession({ ...sess, access });
         setChecking(false);
       } else {
         setChecking(false);
@@ -74,19 +94,27 @@ export default function RequireAuth({ children }) {
     })();
 
     const sub = onAuthStateChange((_event, session) => {
-      if (session && !isSessionAuthorized(session)) {
+      if (!session) {
         storeSession(null);
-        if (supabase?.auth?.signOut) supabase.auth.signOut();
-        navigate(`/login?unauthorized=1`, { replace: true });
+        if (mounted) {
+          navigate(`/login?next=${encodeURIComponent(location.pathname)}`, {
+            replace: true,
+            state: { from: location.pathname },
+          });
+        }
         return;
       }
-      storeSession(session);
-      if (!session && mounted) {
-        navigate(`/login?next=${encodeURIComponent(location.pathname)}`, {
-          replace: true,
-          state: { from: location.pathname },
-        });
-      }
+
+      (async () => {
+        const access = await resolveSessionAccess(session);
+        if (!access.authorized) {
+          storeSession(null);
+          if (supabase?.auth?.signOut) supabase.auth.signOut();
+          navigate(`/login?unauthorized=1`, { replace: true });
+          return;
+        }
+        storeSession({ ...session, access });
+      })();
     });
 
     return () => {

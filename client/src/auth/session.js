@@ -1,24 +1,25 @@
 import { supabase } from "../supabaseClient";
+import { apiUrl } from "../utils/api";
 
 const STORAGE_KEY = "chibitek.auth.session";
-const ALLOWED_DOMAIN = "chibitek.com";
-const ALLOWED_EMAILS = new Set([
+const ADMIN_EMAILS = new Set([
+  "erick.grau@chibitek.com",
   "puhalenthirv@gmail.com",
-  "matousposp8@gmail.com",
   "evanchin0322@gmail.com",
-  "ethan.j.cha@gmail.com",
-  "davidpaul.villarosa@gmail.com",
-  "andreasbratu26@gmail.com",
 ]);
 
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+export function isAdminEmail(email) {
+  return ADMIN_EMAILS.has(normalizeEmail(email));
+}
+
 export function isAuthorizedEmail(email) {
-  if (!email) return false;
-  const normalized = String(email).trim().toLowerCase();
-  if (ALLOWED_EMAILS.has(normalized)) return true;
-  const atIndex = normalized.lastIndexOf("@");
-  if (atIndex === -1) return false;
-  const domain = normalized.slice(atIndex + 1);
-  return domain === ALLOWED_DOMAIN;
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return isAdminEmail(normalized);
 }
 
 export function isSessionAuthorized(session) {
@@ -40,10 +41,11 @@ export function storeSession(session) {
   // The source of truth remains Supabase; this is just for page refresh + redirects.
   const snapshot = session
     ? {
-        access_token: session.access_token,
-        expires_at: session.expires_at,
-        user: session.user ? { id: session.user.id, email: session.user.email } : null,
-      }
+      access_token: session.access_token,
+      expires_at: session.expires_at,
+      user: session.user ? { id: session.user.id, email: session.user.email } : null,
+      access: session.access || null,
+    }
     : null;
 
   try {
@@ -68,8 +70,39 @@ export async function getSupabaseSession() {
   return data?.session ?? null;
 }
 
+export async function resolveSessionAccess(session) {
+  const email = normalizeEmail(session?.user?.email);
+  const localAccess = {
+    email,
+    authorized: isAuthorizedEmail(email),
+    isAdmin: isAdminEmail(email),
+  };
+
+  const token = session?.access_token;
+  if (!token) return localAccess;
+
+  try {
+    const response = await fetch(apiUrl("/api/auth/access"), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) return localAccess;
+
+    const payload = await response.json();
+    return {
+      email: normalizeEmail(payload?.email || email),
+      authorized: Boolean(payload?.authorized),
+      isAdmin: Boolean(payload?.isAdmin),
+    };
+  } catch {
+    return localAccess;
+  }
+}
+
 export function onAuthStateChange(handler) {
-  if (!supabase) return { unsubscribe: () => {} };
+  if (!supabase) return { unsubscribe: () => { } };
   const { data } = supabase.auth.onAuthStateChange(handler);
-  return data?.subscription ?? { unsubscribe: () => {} };
+  return data?.subscription ?? { unsubscribe: () => { } };
 }
