@@ -6,6 +6,10 @@ const ADMIN_EMAILS = new Set([
   "erick.grau@chibitek.com",
   "puhalenthirv@gmail.com",
   "evanchin0322@gmail.com",
+  "ethan.j.cha@gmail.com",
+  "davidpaul.villarosa@gmail.com",
+  "andreasbratu26@gmail.com",
+  "bergen.capstone.2025@gmail.com"
 ]);
 
 function normalizeEmail(email) {
