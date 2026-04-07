@@ -107,15 +107,27 @@ const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
 
-const ADMIN_EMAILS = new Set([
-  'erick.grau@chibitek.com',
-  'puhalenthirv@gmail.com',
-  'evanchin0322@gmail.com',
-]);
+const ROLE_OWNER = 'owner';
+const ROLE_ADMIN = 'admin';
+const ROLE_USER = 'user';
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
-const isSeedAdminEmail = (email) => ADMIN_EMAILS.has(normalizeEmail(email));
+const normalizeRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'regular') return ROLE_USER;
+  if (normalized === ROLE_OWNER || normalized === ROLE_ADMIN || normalized === ROLE_USER) {
+    return normalized;
+  }
+  return ROLE_USER;
+};
+
+const canManageRegularUsers = (role) => {
+  const normalized = normalizeRole(role);
+  return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
+};
+
+const canManageAdmins = (role) => normalizeRole(role) === ROLE_OWNER;
 
 const makeAdminCreatedProviderUserId = (email) => {
   const normalized = normalizeEmail(email);
@@ -196,64 +208,81 @@ async function getRequestAuthContext(req) {
   };
 }
 
-async function ensureAdminTableSeed() {
-  for (const adminEmail of ADMIN_EMAILS) {
-    const { error } = await supabase
-      .from('admins')
-      .upsert(
-        {
-          email: adminEmail,
-          created_by_email: adminEmail,
-        },
-        { onConflict: 'email' }
-      );
-
-    if (error) {
-      if (isMissingTableError(error)) {
-        console.warn('Admins table is missing. Run migration 003_rename_verified_users_to_admins.sql.');
-        return;
-      }
-      // Non-fatal so the server can still boot when migrations are not yet applied.
-      console.warn(`Failed to seed admin ${adminEmail}: ${error.message}`);
-      return;
-    }
-  }
-}
-
-async function isEmailAdminByTable(email) {
+async function getUserByEmail(email) {
   const normalized = normalizeEmail(email);
-  if (!normalized) return false;
-
-  const { data, error } = await supabase
-    .from('admins')
-    .select('email')
-    .eq('email', normalized)
-    .maybeSingle();
-
-  if (error) {
-    if (isMissingTableError(error)) return false;
-    throw error;
-  }
-
-  return !!data;
-}
-
-async function isEmailUserByTable(email) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return false;
+  if (!normalized) return null;
 
   const { data, error } = await supabase
     .from('users')
-    .select('id')
+    .select('id, email, role, name, provider, created_at, updated_at')
     .ilike('email', normalized)
-    .limit(1);
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
-    if (isMissingTableError(error)) return false;
+    if (isMissingTableError(error)) return null;
     throw error;
   }
 
-  return Array.isArray(data) ? data.length > 0 : !!data;
+  if (!data) return null;
+  return {
+    ...data,
+    role: normalizeRole(data.role),
+  };
+}
+
+async function ensureVerifiedUserRow(authCtx) {
+  if (!authCtx?.verified || !authCtx?.user || !authCtx?.email) return null;
+
+  const existing = await getUserByEmail(authCtx.email);
+  if (existing) return existing;
+
+  const meta = authCtx.user.user_metadata || {};
+  const displayName = String(meta.full_name || meta.name || '').trim() || null;
+  const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
+
+  const { data, error } = await supabase
+    .from('users')
+    .insert({
+      email: authCtx.email,
+      name: displayName,
+      provider,
+      provider_user_id: String(authCtx.user.id || makeAdminCreatedProviderUserId(authCtx.email)),
+      role: ROLE_USER,
+    })
+    .select('id, email, role, name, provider, created_at, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    ...data,
+    role: normalizeRole(data.role),
+  };
+}
+
+async function getAuthRoleByEmail(email) {
+  const user = await getUserByEmail(email);
+  if (!user) {
+    return {
+      authorized: false,
+      role: ROLE_USER,
+      canManageRegularUsers: false,
+      canManageAdmins: false,
+      user: null,
+    };
+  }
+
+  const role = normalizeRole(user.role);
+  return {
+    authorized: true,
+    role,
+    canManageRegularUsers: canManageRegularUsers(role),
+    canManageAdmins: canManageAdmins(role),
+    user,
+  };
 }
 
 app.get('/api/auth/access', async (req, res) => {
@@ -263,25 +292,33 @@ app.get('/api/auth/access', async (req, res) => {
       return res.status(auth.status).json({ error: auth.error });
     }
 
-    const seededAdmin = auth.verified ? isSeedAdminEmail(auth.email) : false;
-    const tableAdmin = auth.verified && !seededAdmin ? await isEmailAdminByTable(auth.email) : false;
-    const isAdmin = seededAdmin || tableAdmin;
-    let isUser = false;
-    if (!isAdmin) {
-      try {
-        isUser = await isEmailUserByTable(auth.email);
-      } catch (lookupErr) {
-        // Do not fail login checks hard if DB lookup has transient/schema issues.
-        console.warn('User access lookup failed, treating as unauthorized:', lookupErr?.message || lookupErr);
-        isUser = false;
-      }
+    try {
+      await ensureVerifiedUserRow(auth);
+    } catch (seedErr) {
+      console.warn('Failed to provision verified user row:', seedErr?.message || seedErr);
     }
-    const authorized = isAdmin || isUser;
+
+    let access = {
+      authorized: false,
+      role: ROLE_USER,
+      canManageRegularUsers: false,
+      canManageAdmins: false,
+    };
+
+    try {
+      access = await getAuthRoleByEmail(auth.email);
+    } catch (lookupErr) {
+      // Do not fail login checks hard if DB lookup has transient/schema issues.
+      console.warn('User access lookup failed, treating as unauthorized:', lookupErr?.message || lookupErr);
+    }
 
     return res.json({
       email: auth.email,
-      authorized,
-      isAdmin,
+      authorized: access.authorized,
+      role: access.role,
+      isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
+      canManageRegularUsers: access.canManageRegularUsers,
+      canManageAdmins: access.canManageAdmins,
     });
   } catch (err) {
     console.error('Access check failed:', err);
@@ -289,7 +326,7 @@ app.get('/api/auth/access', async (req, res) => {
   }
 });
 
-async function requireAdmin(req, res) {
+async function requireRoleAccess(req, res) {
   const auth = await getRequestAuthContext(req);
   if (!auth.ok) {
     res.status(auth.status).json({ error: auth.error });
@@ -297,27 +334,59 @@ async function requireAdmin(req, res) {
   }
 
   if (!auth.verified) {
-    res.status(401).json({ error: 'Admin access requires a valid token.' });
+    res.status(401).json({ error: 'Access requires a valid token.' });
     return null;
   }
 
-  const isAdmin = isSeedAdminEmail(auth.email) || await isEmailAdminByTable(auth.email);
-  if (!isAdmin) {
-    res.status(403).json({ error: 'Admin access required.' });
+  try {
+    await ensureVerifiedUserRow(auth);
+  } catch (seedErr) {
+    console.warn('Failed to provision verified user row for role access:', seedErr?.message || seedErr);
+  }
+
+  const access = await getAuthRoleByEmail(auth.email);
+  if (!access.authorized) {
+    res.status(403).json({ error: 'Access denied.' });
     return null;
   }
 
-  return { ...auth, isAdmin: true };
+  return {
+    ...auth,
+    role: access.role,
+    isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
+    canManageRegularUsers: access.canManageRegularUsers,
+    canManageAdmins: access.canManageAdmins,
+  };
+}
+
+async function requireRegularManager(req, res) {
+  const auth = await requireRoleAccess(req, res);
+  if (!auth) return null;
+  if (!auth.canManageRegularUsers) {
+    res.status(403).json({ error: 'Admin or owner access required.' });
+    return null;
+  }
+  return auth;
+}
+
+async function requireOwner(req, res) {
+  const auth = await requireRoleAccess(req, res);
+  if (!auth) return null;
+  if (!auth.canManageAdmins) {
+    res.status(403).json({ error: 'Owner access required.' });
+    return null;
+  }
+  return auth;
 }
 
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const auth = await requireAdmin(req, res);
+    const auth = await requireRegularManager(req, res);
     if (!auth) return;
 
     const { data, error } = await supabase
       .from('users')
-      .select('email, name, provider, created_at, updated_at')
+      .select('email, name, provider, role, created_at, updated_at')
       .not('email', 'is', null)
       .order('created_at', { ascending: false });
 
@@ -334,7 +403,7 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users', async (req, res) => {
   try {
-    const auth = await requireAdmin(req, res);
+    const auth = await requireRegularManager(req, res);
     if (!auth) return;
 
     const email = normalizeEmail(req.body?.email);
@@ -345,7 +414,7 @@ app.post('/api/admin/users', async (req, res) => {
 
     const { data: existingUser, error: existingUserErr } = await supabase
       .from('users')
-      .select('email, name, provider, created_at, updated_at')
+      .select('email, name, provider, role, created_at, updated_at')
       .eq('email', email)
       .maybeSingle();
 
@@ -364,8 +433,9 @@ app.post('/api/admin/users', async (req, res) => {
         name,
         provider: 'admin_created',
         provider_user_id: makeAdminCreatedProviderUserId(email),
+        role: ROLE_USER,
       })
-      .select('email, name, provider, created_at, updated_at')
+      .select('email, name, provider, role, created_at, updated_at')
       .single();
 
     if (error) {
@@ -381,7 +451,7 @@ app.post('/api/admin/users', async (req, res) => {
 
 app.delete('/api/admin/users', async (req, res) => {
   try {
-    const auth = await requireAdmin(req, res);
+    const auth = await requireRegularManager(req, res);
     if (!auth) return;
 
     const email = normalizeEmail(req.body?.email || req.query?.email);
@@ -389,15 +459,23 @@ app.delete('/api/admin/users', async (req, res) => {
       return res.status(400).json({ error: 'Valid email is required.' });
     }
 
-    const isAdminTarget = isSeedAdminEmail(email) || await isEmailAdminByTable(email);
-    if (isAdminTarget) {
-      return res.status(403).json({ error: 'Admins cannot be deleted from users.' });
+    const targetUser = await getUserByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const targetRole = normalizeRole(targetUser.role);
+    if (targetRole === ROLE_OWNER) {
+      return res.status(403).json({ error: 'Owner users cannot be deleted.' });
+    }
+    if (targetRole === ROLE_ADMIN) {
+      return res.status(403).json({ error: 'Admins cannot be deleted from users endpoint.' });
     }
 
     const { data: userRow, error: userLookupError } = await supabase
       .from('users')
       .select('id, email')
-      .eq('email', email)
+      .eq('id', targetUser.id)
       .maybeSingle();
 
     if (userLookupError) {
@@ -482,40 +560,21 @@ app.delete('/api/admin/users', async (req, res) => {
 
 app.get('/api/admin/admins', async (req, res) => {
   try {
-    const auth = await requireAdmin(req, res);
+    const auth = await requireRegularManager(req, res);
     if (!auth) return;
 
     const { data, error } = await supabase
-      .from('admins')
-      .select('email, created_at, created_by_email')
+      .from('users')
+      .select('email, role, created_at, updated_at')
+      .in('role', [ROLE_OWNER, ROLE_ADMIN])
+      .not('email', 'is', null)
       .order('created_at', { ascending: false });
 
     if (error) {
-      if (isMissingTableError(error)) {
-        return res.json({
-          admins: Array.from(ADMIN_EMAILS).map((email) => ({
-            email,
-            created_at: null,
-            created_by_email: 'seed',
-          }))
-        });
-      }
       throw error;
     }
 
-    // Always expose seed admins in UI even if they are not in table yet.
-    const byEmail = new Map((data || []).map((row) => [normalizeEmail(row.email), row]));
-    for (const seed of ADMIN_EMAILS) {
-      if (!byEmail.has(seed)) {
-        byEmail.set(seed, {
-          email: seed,
-          created_at: null,
-          created_by_email: 'seed',
-        });
-      }
-    }
-
-    return res.json({ admins: Array.from(byEmail.values()) });
+    return res.json({ admins: data || [] });
   } catch (err) {
     console.error('List admins failed:', err);
     return res.status(500).json({ error: 'Failed to list admins.' });
@@ -524,7 +583,7 @@ app.get('/api/admin/admins', async (req, res) => {
 
 app.post('/api/admin/admins', async (req, res) => {
   try {
-    const auth = await requireAdmin(req, res);
+    const auth = await requireOwner(req, res);
     if (!auth) return;
 
     const email = normalizeEmail(req.body?.email);
@@ -532,24 +591,31 @@ app.post('/api/admin/admins', async (req, res) => {
       return res.status(400).json({ error: 'Valid email is required.' });
     }
 
-    const { data, error } = await supabase
-      .from('admins')
-      .upsert(
-        {
+    const existing = await getUserByEmail(email);
+
+    let data = null;
+    let error = null;
+    if (existing) {
+      ({ data, error } = await supabase
+        .from('users')
+        .update({ role: ROLE_ADMIN })
+        .eq('id', existing.id)
+        .select('email, role, created_at, updated_at')
+        .single());
+    } else {
+      ({ data, error } = await supabase
+        .from('users')
+        .insert({
           email,
-          created_by_email: auth.email,
-        },
-        { onConflict: 'email' }
-      )
-      .select('email, created_at, created_by_email')
-      .single();
+          provider: 'admin_created',
+          provider_user_id: makeAdminCreatedProviderUserId(email),
+          role: ROLE_ADMIN,
+        })
+        .select('email, role, created_at, updated_at')
+        .single());
+    }
 
     if (error) {
-      if (isMissingTableError(error)) {
-        return res.status(500).json({
-          error: 'Admins table is missing. Run migration 003_rename_verified_users_to_admins.sql first.',
-        });
-      }
       throw error;
     }
 
@@ -557,6 +623,43 @@ app.post('/api/admin/admins', async (req, res) => {
   } catch (err) {
     console.error('Create admin failed:', err);
     return res.status(500).json({ error: 'Failed to create admin.' });
+  }
+});
+
+app.delete('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireOwner(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email || req.query?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const targetUser = await getUserByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Admin user not found.' });
+    }
+
+    if (normalizeRole(targetUser.role) !== ROLE_ADMIN) {
+      return res.status(400).json({ error: 'Target user is not an admin.' });
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ role: ROLE_USER })
+      .eq('id', targetUser.id)
+      .select('email, role, updated_at')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ admin: data, downgraded: true });
+  } catch (err) {
+    console.error('Delete admin failed:', err);
+    return res.status(500).json({ error: 'Failed to delete admin.' });
   }
 });
 
@@ -783,8 +886,6 @@ app.listen(port, async () => {
   try {
     const redditId = await ensureRedditPlatform();
     console.log(`Reddit platform ensured (id=${redditId})`);
-    await ensureAdminTableSeed();
-    console.log('Admin seeds ensured.');
   } catch (e) {
     console.error('Startup seed failed:', e.message);
   }

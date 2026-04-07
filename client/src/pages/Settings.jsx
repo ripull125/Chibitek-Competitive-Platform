@@ -46,7 +46,9 @@ export default function Settings() {
   const { language, setLanguage } = useAppLanguage();
   const navigate = useNavigate();
   const tour = useAppTour();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [accessRole, setAccessRole] = useState("user");
+  const [canManageRegularUsers, setCanManageRegularUsers] = useState(false);
+  const [canManageAdmins, setCanManageAdmins] = useState(false);
   const [loadingAdmin, setLoadingAdmin] = useState(true);
   const [users, setUsers] = useState([]);
   const [admins, setAdmins] = useState([]);
@@ -56,6 +58,7 @@ export default function Settings() {
   const [savingUser, setSavingUser] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [savingAdmin, setSavingAdmin] = useState(false);
+  const [deletingAdminEmail, setDeletingAdminEmail] = useState("");
   const [deletingEmail, setDeletingEmail] = useState("");
   const [adminBanner, setAdminBanner] = useState(null);
 
@@ -126,9 +129,20 @@ export default function Settings() {
           throw new Error(payload?.error || "Failed to check access.");
         }
         if (!mounted) return;
-        const admin = Boolean(payload?.isAdmin);
-        setIsAdmin(admin);
-        if (admin) {
+        const rawRole = String(payload?.role || "user").toLowerCase();
+        const role = rawRole === "regular" ? "user" : rawRole;
+        const manageUsers =
+          typeof payload?.canManageRegularUsers === "boolean"
+            ? payload.canManageRegularUsers
+            : role === "admin" || role === "owner";
+        const manageAdmins =
+          typeof payload?.canManageAdmins === "boolean"
+            ? payload.canManageAdmins
+            : role === "owner";
+        setAccessRole(role);
+        setCanManageRegularUsers(manageUsers);
+        setCanManageAdmins(manageAdmins);
+        if (manageUsers) {
           await loadAdminLists();
         }
       } catch (err) {
@@ -221,6 +235,40 @@ export default function Settings() {
       setAdminBanner({ color: "red", message: err?.message || "Failed to create admin." });
     } finally {
       setSavingAdmin(false);
+    }
+  }
+
+  async function handleDeleteAdmin(email) {
+    const normalized = String(email || "").trim().toLowerCase();
+    if (!normalized) return;
+
+    const confirmed = window.confirm(`Remove admin permissions from ${normalized}?`);
+    if (!confirmed) return;
+
+    setDeletingAdminEmail(normalized);
+    setAdminBanner(null);
+    try {
+      const headers = await getAuthHeader();
+      const response = await fetch(apiUrl("/api/admin/admins"), {
+        method: "DELETE",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: normalized }),
+      });
+
+      const payload = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to remove admin.");
+      }
+
+      setAdminBanner({ color: "green", message: `Removed admin permissions from ${normalized}.` });
+      await loadAdminLists();
+    } catch (err) {
+      setAdminBanner({ color: "red", message: err?.message || "Failed to remove admin." });
+    } finally {
+      setDeletingAdminEmail("");
     }
   }
 
@@ -370,12 +418,16 @@ export default function Settings() {
             </SettingsCard>
           ) : null}
 
-          {!loadingAdmin && isAdmin ? (
+          {!loadingAdmin && canManageRegularUsers ? (
             <SettingsCard
               className={classes.adminCard}
-              label="ADMIN"
-              title="Users & Admins"
-              description="Manage who can access the app and who can administer it."
+              label={accessRole === "owner" ? "OWNER" : "ADMIN"}
+              title={accessRole === "owner" ? "Users, Admins & Owners" : "Users"}
+              description={
+                canManageAdmins
+                  ? "Owners can manage regular users and admin users."
+                  : "Admins can manage regular users only."
+              }
             >
               <Stack w="100%" gap="md" className={classes.adminPanel}>
                 {adminBanner ? (
@@ -404,18 +456,20 @@ export default function Settings() {
                     </Stack>
                   </form>
 
-                  <form onSubmit={handleCreateAdmin} className={classes.inlineForm}>
-                    <Stack gap="xs">
-                      <Text fw={700}>Add Admin</Text>
-                      <TextInput
-                        value={newAdminEmail}
-                        onChange={(e) => setNewAdminEmail(e.currentTarget.value)}
-                        placeholder="new.admin@example.com"
-                        label="Admin email"
-                      />
-                      <Button type="submit" loading={savingAdmin}>Add Admin</Button>
-                    </Stack>
-                  </form>
+                  {canManageAdmins ? (
+                    <form onSubmit={handleCreateAdmin} className={classes.inlineForm}>
+                      <Stack gap="xs">
+                        <Text fw={700}>Add Admin</Text>
+                        <TextInput
+                          value={newAdminEmail}
+                          onChange={(e) => setNewAdminEmail(e.currentTarget.value)}
+                          placeholder="new.admin@example.com"
+                          label="Admin email"
+                        />
+                        <Button type="submit" loading={savingAdmin}>Add Admin</Button>
+                      </Stack>
+                    </form>
+                  ) : null}
                 </Group>
 
                 <Divider />
@@ -444,7 +498,9 @@ export default function Settings() {
                             <Text className={classes.colName}>{user.name || "-"}</Text>
                             <Text className={classes.colMeta}>{user.provider || "-"}</Text>
                             <Box className={classes.colAction}>
-                              {admins.some((a) => String(a.email || "").toLowerCase() === String(user.email || "").toLowerCase()) ? (
+                              {String(user.role || "").toLowerCase() === "owner" ? (
+                                <Badge size="sm" color="violet" variant="light">Owner</Badge>
+                              ) : String(user.role || "").toLowerCase() === "admin" ? (
                                 <Badge size="sm" color="gray" variant="light">Admin</Badge>
                               ) : (
                                 <Button
@@ -474,14 +530,29 @@ export default function Settings() {
                       <Box className={classes.listWrap}>
                         <Box className={classes.listHead}>
                           <Text className={classes.colEmail}>Email</Text>
-                          <Text className={classes.colName}>Created By</Text>
                           <Text className={classes.colMeta}>Status</Text>
+                          <Text className={classes.colAction}>Action</Text>
                         </Box>
                         {admins.length ? admins.map((admin) => (
                           <Box key={admin.email} className={classes.listRow}>
                             <Text className={classes.colEmail}>{admin.email}</Text>
-                            <Text className={classes.colName}>{admin.created_by_email || "-"}</Text>
-                            <Text className={classes.colMeta}>{admin.created_by_email === "seed" ? "Seed" : "Active"}</Text>
+                            <Text className={classes.colMeta}>{admin.role === "owner" ? "Owner" : "Admin"}</Text>
+                            {canManageAdmins && admin.role === "admin" ? (
+                              <Box className={classes.colAction}>
+                                <Button
+                                  color="red"
+                                  variant="light"
+                                  size="xs"
+                                  leftSection={<IconTrash size={14} />}
+                                  loading={deletingAdminEmail === String(admin.email || "").toLowerCase()}
+                                  onClick={() => handleDeleteAdmin(admin.email)}
+                                >
+                                  Remove Admin
+                                </Button>
+                              </Box>
+                            ) : (
+                              <Box className={classes.colAction}>-</Box>
+                            )}
                           </Box>
                         )) : (
                           <Text size="sm" c="dimmed" p="sm">No admins found.</Text>

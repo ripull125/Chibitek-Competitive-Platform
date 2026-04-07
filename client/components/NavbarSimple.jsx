@@ -1,5 +1,5 @@
 // client/components/NavbarSimple.jsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -13,7 +13,7 @@ import {
   IconLayoutDashboard,
   IconRobot,
 } from "@tabler/icons-react";
-import { Image } from "@mantine/core";
+import { Avatar, Image } from "@mantine/core";
 import classes from "./NavbarSimple.module.css";
 
 import { supabase } from "../src/supabaseClient";
@@ -26,7 +26,7 @@ const FADE_MS = 140;
 const linksData = [
   { key: "dashboard", icon: IconLayoutDashboard, path: "/" },
   { key: "competitorLookup", icon: IconSearch, path: "/competitor-lookup" },
-  { key: "savedPosts", icon: IconBookmark, path: "/savedPosts"},
+  { key: "savedPosts", icon: IconBookmark, path: "/savedPosts" },
   { key: "keywordTracking", icon: IconTrendingUp, path: "/keywords" },
   { key: "watchlist", icon: IconRobot, path: "/watchlist" },
   { key: "reports", icon: IconReport, path: "/reports" },
@@ -56,6 +56,46 @@ export function NavbarSimple() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isFading, setIsFading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const resolveAvatar = async () => {
+      try {
+        const { data } = await supabase?.auth?.getUser?.();
+        const user = data?.user;
+        if (!mounted || !user) return;
+
+        const meta = user.user_metadata || {};
+        const direct = String(meta.avatar_url || meta.picture || meta.avatar || "").trim();
+        if (direct) {
+          setAvatarUrl(direct);
+          return;
+        }
+
+        const identities = Array.isArray(user.identities) ? user.identities : [];
+        for (const identity of identities) {
+          const identityData = identity?.identity_data || {};
+          const url = String(
+            identityData.avatar_url || identityData.picture || identityData.avatar || ""
+          ).trim();
+          if (url) {
+            setAvatarUrl(url);
+            return;
+          }
+        }
+      } catch {
+        setAvatarUrl("");
+      }
+    };
+
+    resolveAvatar();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleNavigate = (path) => {
     if (path === location.pathname) return;
@@ -74,10 +114,6 @@ export function NavbarSimple() {
     } finally {
       navigate("/login", { replace: true });
     }
-  };
-
-  const handleChangeAccount = async () => {
-    await handleLogout();
   };
 
   return (
@@ -100,9 +136,15 @@ export function NavbarSimple() {
       </div>
 
       <div className={classes.footer}>
-        <button type="button" className={classes.link} onClick={handleChangeAccount}>
-          <span className={classes.linkLabel}>{t("nav.changeAccount")}</span>
-        </button>
+        <div className={classes.footerAvatarWrap}>
+          <Avatar
+            src={avatarUrl || undefined}
+            alt={t("profile.profilePictureAlt")}
+            radius="xl"
+            size={38}
+            className={classes.footerAvatar}
+          />
+        </div>
 
         <button type="button" className={classes.link} onClick={handleLogout}>
           <IconLogout className={classes.linkIcon} stroke={1.6} />

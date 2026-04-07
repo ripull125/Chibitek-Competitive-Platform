@@ -2,32 +2,31 @@ import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
 
 const STORAGE_KEY = "chibitek.auth.session";
-const ADMIN_EMAILS = new Set([
-  "erick.grau@chibitek.com",
-  "puhalenthirv@gmail.com",
-  "evanchin0322@gmail.com",
-  "ethan.j.cha@gmail.com",
-  "davidpaul.villarosa@gmail.com",
-  "andreasbratu26@gmail.com",
-  "bergen.capstone.2025@gmail.com"
-]);
+
+const ROLE_OWNER = "owner";
+const ROLE_ADMIN = "admin";
+const ROLE_USER = "user";
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
-export function isAdminEmail(email) {
-  return ADMIN_EMAILS.has(normalizeEmail(email));
+export function normalizeRole(role) {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized === "regular") return ROLE_USER;
+  if (normalized === ROLE_OWNER || normalized === ROLE_ADMIN || normalized === ROLE_USER) {
+    return normalized;
+  }
+  return ROLE_USER;
 }
 
-export function isAuthorizedEmail(email) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) return false;
-  return isAdminEmail(normalized);
+export function isAdminRole(role) {
+  const normalized = normalizeRole(role);
+  return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
 }
 
 export function isSessionAuthorized(session) {
-  return isAuthorizedEmail(session?.user?.email);
+  return Boolean(session?.access?.authorized);
 }
 
 export function getStoredSession() {
@@ -78,8 +77,11 @@ export async function resolveSessionAccess(session) {
   const email = normalizeEmail(session?.user?.email);
   const localAccess = {
     email,
-    authorized: isAuthorizedEmail(email),
-    isAdmin: isAdminEmail(email),
+    authorized: false,
+    role: ROLE_USER,
+    isAdmin: false,
+    canManageRegularUsers: false,
+    canManageAdmins: false,
   };
 
   const token = session?.access_token;
@@ -95,10 +97,24 @@ export async function resolveSessionAccess(session) {
     if (!response.ok) return localAccess;
 
     const payload = await response.json();
+    const role = normalizeRole(payload?.role);
+    const isAdmin = Boolean(payload?.isAdmin) || isAdminRole(role);
+    const canManageRegularUsers =
+      typeof payload?.canManageRegularUsers === "boolean"
+        ? payload.canManageRegularUsers
+        : isAdmin;
+    const canManageAdmins =
+      typeof payload?.canManageAdmins === "boolean"
+        ? payload.canManageAdmins
+        : role === ROLE_OWNER;
+
     return {
       email: normalizeEmail(payload?.email || email),
       authorized: Boolean(payload?.authorized),
-      isAdmin: Boolean(payload?.isAdmin),
+      role,
+      isAdmin,
+      canManageRegularUsers,
+      canManageAdmins,
     };
   } catch {
     return localAccess;

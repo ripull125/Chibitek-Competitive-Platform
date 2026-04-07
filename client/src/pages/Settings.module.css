@@ -139,9 +139,10 @@
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: 2.3fr 1.5fr 1fr;
+  grid-template-columns: 2.3fr 1fr auto;
   gap: 10px;
   padding: 12px;
+  align-items: center;
 }
 
 .userListHead,
@@ -270,7 +271,7 @@
 
   .listHead,
   .listRow {
-    grid-template-columns: 1.5fr 1fr 1fr;
+    grid-template-columns: 1.5fr 1fr auto;
   }
 
   .userListHead,
