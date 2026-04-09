@@ -89,6 +89,7 @@ export async function resolveSessionAccess(session) {
 
   try {
     const response = await fetch(apiUrl("/api/auth/access"), {
+      cache: "no-store",
       headers: {
         Authorization: `Bearer ${token}`,
       },

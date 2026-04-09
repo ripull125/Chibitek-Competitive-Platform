@@ -119,14 +119,28 @@
 
 .adminForms {
   width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px;
+  align-items: start;
 }
 
 .inlineForm {
   width: 100%;
+  flex: 1 1 320px;
+  max-width: 420px;
   background: #f8fafc;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 12px;
   padding: 12px;
+}
+
+.inlineForm :global(.mantine-InputWrapper-root),
+.inlineForm :global(.mantine-Select-root),
+.inlineForm :global(.mantine-TextInput-root),
+.inlineForm :global(.mantine-Button-root) {
+  width: 100%;
 }
 
 .listWrap {
@@ -139,7 +153,7 @@
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: 2.3fr 1fr auto;
+  grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr) 128px;
   gap: 10px;
   padding: 12px;
   align-items: center;
@@ -148,7 +162,7 @@
 .userListHead,
 .userListRow {
   display: grid;
-  grid-template-columns: 2.2fr 1.4fr 1fr auto;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) 128px;
   gap: 10px;
   padding: 12px;
 }
@@ -196,6 +210,11 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+}
+
+.listHead .colAction,
+.userListHead .colAction {
+  font-weight: 700;
 }
 
 /* Select */
@@ -271,18 +290,22 @@
 
   .listHead,
   .listRow {
-    grid-template-columns: 1.5fr 1fr auto;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 112px;
   }
 
   .userListHead,
   .userListRow {
-    grid-template-columns: 1.5fr 1fr 1fr auto;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 112px;
   }
 }
 
 @media (max-width: 700px) {
   .adminForms {
     flex-direction: column;
+  }
+
+  .inlineForm {
+    max-width: none;
   }
 
   .listHead,

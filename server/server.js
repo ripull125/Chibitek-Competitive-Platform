@@ -89,7 +89,7 @@ const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -146,6 +146,8 @@ const isMissingTableError = (error) => {
   );
 };
 
+const isDuplicateKeyError = (error) => String(error?.code || '') === '23505';
+
 function getBearerToken(req) {
   const header = req.get('authorization') || '';
   const match = String(header).match(/^Bearer\s+(.+)$/i);
@@ -175,22 +177,7 @@ async function getRequestAuthContext(req) {
 
   const { data, error } = await supabaseAuth.auth.getUser(token);
   if (error || !data?.user) {
-    // Fallback for access checks when auth introspection fails due env drift.
-    // This only enables non-admin user gating; admin endpoints still require verified tokens.
-    const payload = decodeJwtPayload(token);
-    const fallbackEmail = normalizeEmail(payload?.email);
-    if (!fallbackEmail) {
-      return { ok: false, status: 401, error: 'Invalid or expired token.' };
-    }
-
-    return {
-      ok: true,
-      token,
-      user: null,
-      email: fallbackEmail,
-      isAdmin: false,
-      verified: false,
-    };
+    return { ok: false, status: 401, error: 'Invalid or expired token.' };
   }
 
   const email = normalizeEmail(data.user.email);
@@ -287,15 +274,13 @@ async function getAuthRoleByEmail(email) {
 
 app.get('/api/auth/access', async (req, res) => {
   try {
+    // Always re-check Supabase state; avoid stale auth results from browser/proxy cache.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+
     const auth = await getRequestAuthContext(req);
     if (!auth.ok) {
       return res.status(auth.status).json({ error: auth.error });
-    }
-
-    try {
-      await ensureVerifiedUserRow(auth);
-    } catch (seedErr) {
-      console.warn('Failed to provision verified user row:', seedErr?.message || seedErr);
     }
 
     let access = {
@@ -336,12 +321,6 @@ async function requireRoleAccess(req, res) {
   if (!auth.verified) {
     res.status(401).json({ error: 'Access requires a valid token.' });
     return null;
-  }
-
-  try {
-    await ensureVerifiedUserRow(auth);
-  } catch (seedErr) {
-    console.warn('Failed to provision verified user row for role access:', seedErr?.message || seedErr);
   }
 
   const access = await getAuthRoleByEmail(auth.email);
@@ -1321,22 +1300,27 @@ app.post("/api/posts", async (req, res) => {
   // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id
   const PLATFORM_NAME_MAP = { x: 'X', youtube: 'YouTube', reddit: 'Reddit', linkedin: 'LinkedIn', instagram: 'Instagram', tiktok: 'TikTok' };
   let platform_id = rawPlatformId;
+  const platformKey = String(platform_name || '').trim().toLowerCase();
   if (platform_name) {
     const resolvedName = PLATFORM_NAME_MAP[platform_name.toLowerCase()] || platform_name;
     platform_id = await ensurePlatform(resolvedName);
   }
 
+  const platformPostId = String(platform_post_id).trim();
+  const isYouTube = platformKey === 'youtube' || Number(platform_id) === 8;
+  const isX = platformKey === 'x' || Number(platform_id) === 1;
+  const isInstagram = platformKey === 'instagram' || Number(platform_id) === 3;
+  const isTikTok = platformKey === 'tiktok' || Number(platform_id) === 5;
+  const isReddit = platformKey === 'reddit' || Number(platform_id) === REDDIT_PLATFORM_ID;
+
   try {
     // Find or create competitor
-    const profileUrlMap = {
-      1: `https://x.com/${username}`,
-      3: `https://www.instagram.com/${username}`,
-      5: `https://www.tiktok.com/@${username}`,
-      8: `https://www.youtube.com/channel/${platform_user_id}`,
-    };
-    // Reddit platform ID is dynamic (ensured at startup)
-    profileUrlMap[REDDIT_PLATFORM_ID] = `https://www.reddit.com/user/${username}`;
-    const profileUrl = profileUrlMap[platform_id] || `https://unknown/${username}`;
+    let profileUrl = `https://unknown/${username || platform_user_id}`;
+    if (isX) profileUrl = `https://x.com/${username || platform_user_id}`;
+    if (isInstagram) profileUrl = `https://www.instagram.com/${username || platform_user_id}`;
+    if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platform_user_id}`;
+    if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platform_user_id}`;
+    if (isReddit) profileUrl = `https://www.reddit.com/user/${username || platform_user_id}`;
 
     let competitor;
     const { data: existingComp, error: competitorError } = await supabase
@@ -1367,18 +1351,24 @@ app.post("/api/posts", async (req, res) => {
 
     // Find or create post
     let post;
-    const { data: existingPost } = await supabase
+    const { data: existingPost, error: existingPostErr } = await supabase
       .from("posts")
       .select("*")
-      .eq("user_id", user_id)
       .eq("platform_id", platform_id)
-      .eq("platform_post_id", platform_post_id)
+      .eq("platform_post_id", platformPostId)
       .maybeSingle();
+    if (existingPostErr) throw existingPostErr;
 
     if (existingPost) {
       const { data: updated, error: updateErr } = await supabase
         .from("posts")
-        .update({ content, published_at })
+        .update({
+          content,
+          published_at,
+          competitor_id: competitor.id,
+          // Keep ownership stable when set, but backfill when empty.
+          user_id: existingPost.user_id || user_id,
+        })
         .eq("id", existingPost.id)
         .select()
         .single();
@@ -1390,19 +1380,46 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           competitor_id: competitor.id,
-          platform_post_id,
+          platform_post_id: platformPostId,
           content,
           published_at,
           user_id,
         })
         .select()
         .single();
-      if (insertErr) throw insertErr;
-      post = newPost;
+      if (insertErr) {
+        if (!isDuplicateKeyError(insertErr)) throw insertErr;
+
+        // Concurrent saves can race on insert; resolve by loading the existing row.
+        const { data: racedPost, error: racedPostErr } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('platform_id', platform_id)
+          .eq('platform_post_id', platformPostId)
+          .maybeSingle();
+        if (racedPostErr) throw racedPostErr;
+        if (!racedPost) throw insertErr;
+
+        const { data: synced, error: syncedErr } = await supabase
+          .from('posts')
+          .update({
+            content,
+            published_at,
+            competitor_id: competitor.id,
+            user_id: racedPost.user_id || user_id,
+          })
+          .eq('id', racedPost.id)
+          .select()
+          .single();
+        if (syncedErr) throw syncedErr;
+        post = synced;
+      } else {
+        post = newPost;
+      }
     }
 
     console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments, 'views:', views);
-    await supabase.from("post_metrics").insert({
+    const { error: metricsErr } = await supabase.from("post_metrics").insert({
       post_id: post.id,
       snapshot_at: new Date(),
       likes,
@@ -1410,9 +1427,10 @@ app.post("/api/posts", async (req, res) => {
       comments,
       other_json: { views: views ?? 0 },
     });
+    if (metricsErr) throw metricsErr;
 
     // For YouTube, save additional details
-    if (platform_id === 8) {
+    if (isYouTube) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1423,13 +1441,13 @@ app.post("/api/posts", async (req, res) => {
           views,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
       }
     }
 
     // For X (Twitter), save additional details
-    if (platform_id === 1) {
+    if (isX) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1439,13 +1457,13 @@ app.post("/api/posts", async (req, res) => {
           views: views ?? 0,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving X post details:', detailsError);
       }
     }
 
     // For Instagram, TikTok, Reddit — save author details + views
-    if ([3, 5, REDDIT_PLATFORM_ID].includes(platform_id)) {
+    if (isInstagram || isTikTok || isReddit) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1455,7 +1473,7 @@ app.post("/api/posts", async (req, res) => {
           views: views ?? 0,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
       }
     }

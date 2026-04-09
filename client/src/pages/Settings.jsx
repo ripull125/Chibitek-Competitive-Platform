@@ -56,7 +56,7 @@ export default function Settings() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserName, setNewUserName] = useState("");
   const [savingUser, setSavingUser] = useState(false);
-  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [selectedAdminEmail, setSelectedAdminEmail] = useState("");
   const [savingAdmin, setSavingAdmin] = useState(false);
   const [deletingAdminEmail, setDeletingAdminEmail] = useState("");
   const [deletingEmail, setDeletingEmail] = useState("");
@@ -66,6 +66,29 @@ export default function Settings() {
     () => t(`languages.${language}`),
     [language, t]
   );
+
+  const adminCandidateOptions = useMemo(() => {
+    const seen = new Set();
+    return (users || [])
+      .filter((user) => {
+        const email = String(user?.email || "").trim().toLowerCase();
+        if (!email || seen.has(email)) return false;
+        seen.add(email);
+
+        const role = String(user?.role || "").trim().toLowerCase();
+        return role !== "owner" && role !== "admin";
+      })
+      .map((user) => {
+        const email = String(user?.email || "").trim().toLowerCase();
+        const name = String(user?.name || "").trim();
+        const provider = String(user?.provider || "").trim();
+        const labelParts = [name || null, email, provider ? `(${provider})` : null].filter(Boolean);
+        return {
+          value: email,
+          label: labelParts.join(" "),
+        };
+      });
+  }, [users]);
 
   async function getAuthHeader() {
     const { data } = await supabase.auth.getSession();
@@ -204,9 +227,9 @@ export default function Settings() {
 
   async function handleCreateAdmin(e) {
     e.preventDefault();
-    const email = String(newAdminEmail || "").trim().toLowerCase();
+    const email = String(selectedAdminEmail || "").trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setAdminBanner({ color: "red", message: "Please enter a valid admin email address." });
+      setAdminBanner({ color: "red", message: "Please choose a user to promote to admin." });
       return;
     }
 
@@ -228,7 +251,7 @@ export default function Settings() {
         throw new Error(payload?.error || "Failed to create admin.");
       }
 
-      setNewAdminEmail("");
+      setSelectedAdminEmail("");
       setAdminBanner({ color: "green", message: `Admin ${payload?.admin?.email || email} added successfully.` });
       await loadAdminLists();
     } catch (err) {
@@ -460,13 +483,17 @@ export default function Settings() {
                     <form onSubmit={handleCreateAdmin} className={classes.inlineForm}>
                       <Stack gap="xs">
                         <Text fw={700}>Add Admin</Text>
-                        <TextInput
-                          value={newAdminEmail}
-                          onChange={(e) => setNewAdminEmail(e.currentTarget.value)}
-                          placeholder="new.admin@example.com"
-                          label="Admin email"
+                        <Select
+                          value={selectedAdminEmail}
+                          onChange={(value) => setSelectedAdminEmail(value || "")}
+                          data={adminCandidateOptions}
+                          label="Select user"
+                          placeholder={adminCandidateOptions.length ? "Choose user" : "No eligible users"}
+                          searchable
+                          clearable
+                          nothingFoundMessage="No matching users"
                         />
-                        <Button type="submit" loading={savingAdmin}>Add Admin</Button>
+                        <Button type="submit" loading={savingAdmin} disabled={!selectedAdminEmail}>Add Admin</Button>
                       </Stack>
                     </form>
                   ) : null}
