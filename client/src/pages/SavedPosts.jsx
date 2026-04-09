@@ -32,30 +32,61 @@ function Metric({ icon, value }) {
   );
 }
 
-/** Build URL to the original post on its platform */
+function instagramIdToShortcode(id) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+  // Handle cases like "12345_67890"
+  const cleanId = id.toString().split("_")[0];
+
+  let num = BigInt(cleanId);
+  let shortcode = "";
+
+  while (num > 0n) {
+    const remainder = Number(num % 64n);
+    shortcode = alphabet[remainder] + shortcode;
+    num = num / 64n;
+  }
+
+  return shortcode;
+}
+
+// Build URL to the original post on its platform 
 function getPostUrl(post) {
   // Prefer stored url
   if (post.url) return post.url;
+
   const pid = post.platform_post_id;
   if (!pid) return null;
+
   const platformId = post.platform_id;
-  // X / Twitter
-  if (platformId === 1 || platformId === 4) return `https://x.com/i/web/status/${pid}`;
+
+  // X
+  if (platformId === 1 || platformId === 4) {
+    return `https://x.com/i/web/status/${pid}`;
+  }
+
   // Instagram
-  if (platformId === 3) return `https://www.instagram.com/p/${pid}`;
+  if (platformId === 3) {
+    const shortcode = instagramIdToShortcode(pid);
+    return `https://www.instagram.com/p/${shortcode}/`;
+  }
+
   // TikTok
   if (platformId === 5) {
     const user = post.username || post.extra?.username || post.extra?.author_handle;
-    return user ? `https://www.tiktok.com/@${user}/video/${pid}` : `https://www.tiktok.com/video/${pid}`;
+    return user
+      ? `https://www.tiktok.com/@${user}/video/${pid}`
+      : `https://www.tiktok.com/video/${pid}`;
   }
+
   // YouTube
   if (platformId === 8) {
     const vid = post.extra?.videoId || pid;
     return `https://www.youtube.com/watch?v=${vid}`;
   }
+
   return null;
 }
-
 /* ── X / Twitter card ────────────────────────────────────────────────────── */
 
 function XPostCard({ post, onDelete }) {
