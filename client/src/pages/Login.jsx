@@ -5,10 +5,9 @@ import { supabase } from "../supabaseClient";
 import {
   getStoredSession,
   getSupabaseSession,
-  isAuthorizedEmail,
-  isSessionAuthorized,
   isSessionValid,
   onAuthStateChange,
+  resolveSessionAccess,
   storeSession,
 } from "../auth/session";
 import { useTranslation } from "react-i18next";
@@ -28,46 +27,58 @@ export default function Login() {
   }, [location.state?.from, searchParams]);
 
   useEffect(() => {
+    let mounted = true;
+
     // Quick path: if we already have a valid stored session, allow entry.
     const stored = getStoredSession();
     if (isSessionValid(stored)) {
-      const storedEmail = stored?.user?.email;
-      if (!isAuthorizedEmail(storedEmail)) {
-        storeSession(null);
-        if (supabase?.auth?.signOut) supabase.auth.signOut();
-        setErrorMsg(unauthorizedMessage);
-        return;
-      }
-      navigate(nextPath, { replace: true });
-      return;
-    }
-
-    // Confirm with Supabase (source of truth).
-    let mounted = true;
-    (async () => {
-      const sess = await getSupabaseSession();
-      if (!mounted) return;
-      if (sess) {
-        if (!isSessionAuthorized(sess)) {
+      (async () => {
+        const access = await resolveSessionAccess(stored);
+        if (!mounted) return;
+        if (!access.authorized) {
           storeSession(null);
           if (supabase?.auth?.signOut) supabase.auth.signOut();
           setErrorMsg(unauthorizedMessage);
           return;
         }
-        storeSession(sess);
+        storeSession({ ...stored, access });
+        navigate(nextPath, { replace: true });
+      })();
+    }
+
+    // Confirm with Supabase (source of truth).
+    (async () => {
+      const sess = await getSupabaseSession();
+      if (!mounted) return;
+      if (sess) {
+        const access = await resolveSessionAccess(sess);
+        if (!access.authorized) {
+          storeSession(null);
+          if (supabase?.auth?.signOut) supabase.auth.signOut();
+          setErrorMsg(unauthorizedMessage);
+          return;
+        }
+        storeSession({ ...sess, access });
         navigate(nextPath, { replace: true });
       }
     })();
 
     const sub = onAuthStateChange((_event, session) => {
-      if (session && !isSessionAuthorized(session)) {
+      if (!session) {
         storeSession(null);
-        if (supabase?.auth?.signOut) supabase.auth.signOut();
-        setErrorMsg(unauthorizedMessage);
         return;
       }
-      storeSession(session);
-      if (session) navigate(nextPath, { replace: true });
+      (async () => {
+        const access = await resolveSessionAccess(session);
+        if (!access.authorized) {
+          storeSession(null);
+          if (supabase?.auth?.signOut) supabase.auth.signOut();
+          setErrorMsg(unauthorizedMessage);
+          return;
+        }
+        storeSession({ ...session, access });
+        navigate(nextPath, { replace: true });
+      })();
     });
 
     return () => {

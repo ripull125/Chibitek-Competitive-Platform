@@ -1452,6 +1452,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          platform_name: "youtube",
           platform_id: platformIds.youtube,
           platform_user_id: String(data.channelId || data.channelTitle || "unknown"),
           username: data.channelTitle || "",
@@ -1705,6 +1706,7 @@ export default function CompetitorLookup() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        platform_name: platformKey,
         platform_id: pid,
         platform_user_id: String(platformUserId || "unknown"),
         username: String(username || platformUserId || "unknown"),
@@ -1953,6 +1955,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            platform_name: "youtube",
             platform_id: platformIds.youtube,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
