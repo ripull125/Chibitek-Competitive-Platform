@@ -226,7 +226,11 @@ export default function ChatInput() {
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payloadMessages, attachments }),
+        body: JSON.stringify({
+          messages: payloadMessages,
+          attachments,
+          user_id: currentUserId || undefined,
+        }),
       });
 
       if (!response.ok) {
@@ -265,6 +269,7 @@ export default function ChatInput() {
         body: JSON.stringify({
           messages: [{ role: "user", content: SUMMARY_PROMPT }],
           user_id: currentUserId || undefined,
+          use_latest_posts: true,
         }),
       });
 
