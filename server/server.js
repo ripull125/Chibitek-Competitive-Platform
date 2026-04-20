@@ -93,7 +93,17 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-const { GITHUB_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL, CHAT_MODEL, LLM_PROVIDER, CHAT_DEBUG } = process.env;
+const {
+  GITHUB_TOKEN,
+  OPENAI_API_KEY,
+  OPENAI_BASE_URL,
+  CHAT_MODEL,
+  LLM_PROVIDER,
+  CHAT_DEBUG,
+  VOYAGE_API_KEY,
+  VOYAGE_EMBED_MODEL,
+  VOYAGE_RERANK_MODEL,
+} = process.env;
 const githubAiEndpoint = 'https://models.github.ai/inference';
 const chatModel = CHAT_MODEL || 'openai/gpt-5-nano';
 const provider = String(LLM_PROVIDER || 'auto').toLowerCase();
@@ -103,6 +113,12 @@ const chatBaseUrl = usingGithub
   ? githubAiEndpoint
   : (OPENAI_BASE_URL || 'https://api.openai.com/v1');
 const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
+const voyageEmbedModel = VOYAGE_EMBED_MODEL || 'voyage-4';
+const voyageRerankModel = VOYAGE_RERANK_MODEL || 'rerank-2.5-lite';
+const voyageEmbedEndpoint = 'https://api.voyageai.com/v1/embeddings';
+const voyageRerankEndpoint = 'https://api.voyageai.com/v1/rerank';
+const retrievalCandidateLimit = 30;
+const rerankedContextLimit = 6;
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
@@ -651,13 +667,13 @@ const requireUserId = (req, res) => {
   return String(userId);
 };
 
-async function fetchLatestPostsContext(userId) {
+async function fetchLatestPostsContext(userId, limit = 50) {
   try {
     let query = supabase
       .from('posts')
       .select('platform_id, competitor_id, platform_post_id, url, content, created_at, published_at')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(limit);
     if (userId) {
       query = query.eq('user_id', userId);
     }
@@ -670,6 +686,163 @@ async function fetchLatestPostsContext(userId) {
   } catch (err) {
     console.error('Failed to load posts for LLM context:', err);
     return [];
+  }
+}
+
+const getLastUserMessageText = (messages) => {
+  if (!Array.isArray(messages)) return '';
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg?.role === 'user' && typeof msg.content === 'string' && msg.content.trim()) {
+      return msg.content.trim();
+    }
+  }
+  return '';
+};
+
+const buildPostDocument = (post) => {
+  const content = String(post?.content || '').trim();
+  const url = String(post?.url || '').trim();
+  const publishedAt = post?.published_at || '';
+  const platform = post?.platform_id ? `Platform: ${post.platform_id}` : '';
+  const competitor = post?.competitor_id ? `Competitor: ${post.competitor_id}` : '';
+  const pieces = [
+    content.slice(0, 6000),
+    url && `URL: ${url}`,
+    publishedAt && `Published: ${publishedAt}`,
+    platform,
+    competitor,
+  ];
+  return pieces.filter(Boolean).join('\n');
+};
+
+const cosineSimilarity = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || !a.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const av = Number(a[i]) || 0;
+    const bv = Number(b[i]) || 0;
+    dot += av * bv;
+    normA += av * av;
+    normB += bv * bv;
+  }
+  if (!normA || !normB) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
+const voyagePost = async (endpoint, payload) => {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${VOYAGE_API_KEY}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    const details = errorBody?.detail || errorBody?.error || response.statusText;
+    throw new Error(`Voyage API request failed (${response.status}): ${details}`);
+  }
+  return response.json();
+};
+
+const voyageEmbedBatch = async (inputs, inputType) => {
+  if (!VOYAGE_API_KEY) return null;
+  const safeInputs = inputs.map((input) => String(input || '').trim()).filter(Boolean);
+  if (!safeInputs.length) return [];
+  const payload = {
+    input: safeInputs,
+    model: voyageEmbedModel,
+    input_type: inputType || undefined,
+    truncation: true,
+  };
+  const data = await voyagePost(voyageEmbedEndpoint, payload);
+  if (Array.isArray(data?.embeddings)) return data.embeddings;
+  if (Array.isArray(data?.data)) return data.data.map((item) => item?.embedding).filter(Array.isArray);
+  return [];
+};
+
+const voyageRerank = async (query, documents, topK) => {
+  if (!VOYAGE_API_KEY || !voyageRerankModel) return null;
+  const payload = {
+    query,
+    documents,
+    model: voyageRerankModel,
+    top_k: topK,
+    return_documents: false,
+    truncation: true,
+  };
+  const data = await voyagePost(voyageRerankEndpoint, payload);
+  return Array.isArray(data?.data) ? data.data : data?.results || [];
+};
+
+async function fetchRelevantPostsContext(userId, queryText) {
+  const latestPosts = await fetchLatestPostsContext(userId, 100);
+  if (!latestPosts.length) return [];
+  if (!VOYAGE_API_KEY || !queryText) return latestPosts.slice(0, 20);
+
+  const searchablePosts = latestPosts
+    .map((post) => ({ post, document: buildPostDocument(post) }))
+    .filter((item) => item.document);
+  if (!searchablePosts.length) return [];
+
+  try {
+    const [queryEmbedding] = await voyageEmbedBatch([queryText], 'query') || [];
+    if (!queryEmbedding) return latestPosts.slice(0, 20);
+
+    const batchSize = 64;
+    const docEmbeddings = [];
+    const documents = searchablePosts.map((item) => item.document);
+    for (let i = 0; i < documents.length; i += batchSize) {
+      const batch = documents.slice(i, i + batchSize);
+      const batchEmbeddings = await voyageEmbedBatch(batch, 'document');
+      docEmbeddings.push(...(batchEmbeddings || []));
+    }
+
+    const scored = searchablePosts.map(({ post, document }, idx) => ({
+      post,
+      document,
+      score: cosineSimilarity(queryEmbedding, docEmbeddings[idx]),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    let topCandidates = scored.slice(0, retrievalCandidateLimit);
+
+    if (voyageRerankModel && topCandidates.length > 1) {
+      const rerankQuery = [
+        'Find passages useful for B2B IT competitive intelligence and marketing work.',
+        'Prioritize concrete proof points, buyer pain points, differentiators, examples, and facts relevant to the user request.',
+        `User request: ${queryText}`,
+      ].join('\n');
+      const results = await voyageRerank(
+        rerankQuery,
+        topCandidates.map((item) => item.document),
+        rerankedContextLimit
+      );
+      if (results.length) {
+        topCandidates = results
+          .map((result) => {
+            const candidate = topCandidates[result.index];
+            if (!candidate) return null;
+            return {
+              ...candidate,
+              relevance_score: result.relevance_score,
+            };
+          })
+          .filter(Boolean);
+      }
+    }
+
+    return topCandidates.slice(0, rerankedContextLimit).map((item) => ({
+      ...item.post,
+      retrieval_score: item.score,
+      relevance_score: item.relevance_score,
+    }));
+  } catch (err) {
+    console.error('Voyage retrieval failed, falling back to latest posts:', err.message);
+    return latestPosts.slice(0, 20);
   }
 }
 
@@ -930,11 +1103,14 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    const { messages = [], attachments = [] } = req.body || {};
+    const { messages = [], attachments = [], use_latest_posts: useLatestPosts } = req.body || {};
     const userId = getUserIdFromRequest(req);
-    const latestPosts = await fetchLatestPostsContext(userId);
 
     const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
+    const lastUserMessage = getLastUserMessageText(sanitizedMessages);
+    const latestPosts = useLatestPosts
+      ? await fetchLatestPostsContext(userId, 50)
+      : await fetchRelevantPostsContext(userId, lastUserMessage);
 
     const attachmentContext = (attachments || [])
       .filter((file) => file && file.name && file.content)
@@ -950,7 +1126,9 @@ app.post('/api/chat', async (req, res) => {
 
     const postsContext = latestPosts.length
       ? [
-        'Latest posts from Supabase (most recent first):',
+        useLatestPosts
+          ? 'Recent posts from Supabase for summarization:'
+          : 'Retrieved evidence from Supabase, ranked by Voyage relevance. Use these as supporting context, not as guaranteed exhaustive knowledge:',
         JSON.stringify(
           latestPosts.slice(0, 20).map((post) => ({
             platform_id: post.platform_id,
@@ -960,6 +1138,8 @@ app.post('/api/chat', async (req, res) => {
             content: String(post.content || '').slice(0, 400),
             created_at: post.created_at,
             published_at: post.published_at,
+            retrieval_score: post.retrieval_score,
+            relevance_score: post.relevance_score,
           })),
           null,
           2
@@ -971,7 +1151,7 @@ app.post('/api/chat', async (req, res) => {
       {
         role: 'system',
         content:
-          'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
+          'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use provided posts as factual evidence when relevant, and treat them separately from style or voice examples. Use any provided attachment context to strengthen answers.',
       },
     ];
     if (postsContext) {
