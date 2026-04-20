@@ -11,15 +11,8 @@ import { createHash } from 'crypto';
 import { supabase, supabaseAuth } from './supabase.js';
 import { categorizeTone } from './tone.js';
 import { suggestKeywordsForBooks } from './keywords.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-const execAsync = promisify(exec);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function extractYouTubeVideoId(input) {
   if (!input) return null;
@@ -39,29 +32,6 @@ function extractYouTubeVideoId(input) {
   }
 
   return null;
-}
-
-// Helper function to get transcript using Python library (youtube-transcript-api)
-async function getTranscriptFromPython(videoId) {
-  try {
-    const pythonScript = path.join(__dirname, 'get_transcript.py');
-    const { stdout, stderr } = await execAsync(`python3 "${pythonScript}" "${videoId}"`, {
-      timeout: 15000,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large transcripts
-    });
-
-    if (stderr) {
-      console.error('Python stderr:', stderr);
-    }
-
-    const result = JSON.parse(stdout);
-    if (!result.success) {
-      console.error('Python transcript extraction failed:', result.error);
-    }
-    return result;
-  } catch (err) {
-    console.error('Python transcript extraction error:', err.message);
-  };
 }
 
 // Ensure Reddit platform row exists
@@ -93,16 +63,161 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-const { GITHUB_TOKEN, OPENAI_API_KEY, OPENAI_BASE_URL, CHAT_MODEL, LLM_PROVIDER, CHAT_DEBUG } = process.env;
+const {
+  GITHUB_TOKEN,
+  GITHUB_TOKENS,
+  OPENAI_API_KEY,
+  OPENAI_BASE_URL,
+  CHAT_MODEL,
+  CHAT_MODEL_GITHUB,
+  CHAT_MODEL_CEREBRAS,
+  CHAT_MODEL_OPENAI,
+  CEREBRAS_MODEL,
+  CEREBRAS_API_KEY,
+  CEREBRAS_BASE_URL,
+  LLM_PROVIDER,
+  CHAT_DEBUG,
+} = process.env;
+
 const githubAiEndpoint = 'https://models.github.ai/inference';
-const chatModel = CHAT_MODEL || 'openai/gpt-5-nano';
-const provider = String(LLM_PROVIDER || 'auto').toLowerCase();
-const usingGithub = provider === 'github' || (provider === 'auto' && !!GITHUB_TOKEN);
-const chatApiKey = usingGithub ? GITHUB_TOKEN : OPENAI_API_KEY;
-const chatBaseUrl = usingGithub
-  ? githubAiEndpoint
-  : (OPENAI_BASE_URL || 'https://api.openai.com/v1');
-const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
+const cerebrasEndpoint = CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1';
+const cerebrasEndpointAlt = 'https://api.cerebras.ai';
+const openaiEndpoint = OPENAI_BASE_URL || 'https://api.openai.com/v1';
+const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-4o-mini';
+const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-8b';
+
+function loadIndexedEnvValues(prefix, { start = 1, end = 20 } = {}) {
+  const values = [];
+  for (let i = start; i <= end; i++) {
+    const value = process.env[`${prefix}${i}`];
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+function resolveRequestedProvider(rawProvider) {
+  const normalized = String(rawProvider || '').trim().toLowerCase();
+  if (normalized === 'github' || normalized === 'cerebras' || normalized === 'openai') {
+    return normalized;
+  }
+
+  const envProvider = String(LLM_PROVIDER || 'auto').trim().toLowerCase();
+  if (envProvider === 'github' || envProvider === 'cerebras' || envProvider === 'openai') {
+    return envProvider;
+  }
+
+  if (GITHUB_KEYS.length) return 'github';
+  if (CEREBRAS_API_KEY || process.env.CEREBRAS_API_KEY1) return 'cerebras';
+  return 'openai';
+}
+
+const GITHUB_KEYS = [
+  GITHUB_TOKEN,
+  ...(GITHUB_TOKENS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  ...loadIndexedEnvValues('GITHUB_TOKEN', { start: 1, end: 20 }),
+].filter(Boolean);
+
+let githubKeyIndex = 0;
+function nextGithubKey() {
+  if (!GITHUB_KEYS.length) return null;
+  const index = githubKeyIndex % GITHUB_KEYS.length;
+  githubKeyIndex++;
+  return GITHUB_KEYS[index];
+}
+
+const CEREBRAS_KEYS = [
+  CEREBRAS_API_KEY,
+  ...(process.env.CEREBRAS_API_KEYS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  ...loadIndexedEnvValues('CEREBRAS_API_KEY', { start: 1, end: 20 }),
+].filter(Boolean);
+
+let cerebrasKeyIndex = 0;
+function nextCerebrasKey() {
+  if (!CEREBRAS_KEYS.length) return null;
+  const index = cerebrasKeyIndex % CEREBRAS_KEYS.length;
+  cerebrasKeyIndex++;
+  return CEREBRAS_KEYS[index];
+}
+
+function parseModelSelection(rawModel) {
+  const value = String(rawModel || '').trim();
+  if (!value) return { provider: null, model: '' };
+
+  const match = value.match(/^(github|cerebras|openai):(.*)$/i);
+  if (!match) {
+    return { provider: null, model: value };
+  }
+
+  return {
+    provider: String(match[1] || '').toLowerCase(),
+    model: String(match[2] || '').trim(),
+  };
+}
+
+function normalizeCerebrasModel(model) {
+  const raw = String(model || '').trim();
+  if (!raw) return raw;
+
+  const aliases = {
+    'llama-3.1-8b': 'llama3.1-8b',
+    'llama-3.1-70b': 'llama3.1-70b',
+    'llama-3.3-70b': 'llama-3.3-70b',
+    'meta/llama-3.1-8b-instruct': 'llama3.1-8b',
+    'meta/llama-3.1-70b-instruct': 'llama3.1-70b',
+  };
+
+  const key = raw.toLowerCase();
+  return aliases[key] || raw;
+}
+
+function getCerebrasModelCandidates(primaryModel) {
+  const base = normalizeCerebrasModel(primaryModel);
+  const fallback = normalizeCerebrasModel(cerebrasFallbackModel);
+  const candidates = [
+    base,
+    fallback,
+    'llama3.1-8b',
+    'llama3.1-70b',
+  ].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+function resolveChatConfig({ requestedProvider, requestedModel } = {}) {
+  const parsedModel = parseModelSelection(requestedModel);
+  const provider = resolveRequestedProvider(parsedModel.provider || requestedProvider);
+  const modelOverride = parsedModel.model;
+
+  if (provider === 'github') {
+    const model = modelOverride || CHAT_MODEL_GITHUB || CHAT_MODEL || 'openai/gpt-5-nano';
+    return {
+      provider,
+      model,
+      baseUrl: githubAiEndpoint,
+      apiKey: nextGithubKey(),
+      missingEnv: 'GITHUB_TOKEN',
+    };
+  }
+
+  if (provider === 'cerebras') {
+    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-8b');
+    return {
+      provider,
+      model,
+      baseUrl: cerebrasEndpoint,
+      apiKey: nextCerebrasKey(),
+      missingEnv: 'CEREBRAS_API_KEY',
+    };
+  }
+
+  const model = modelOverride || CHAT_MODEL_OPENAI || CHAT_MODEL || 'gpt-4o-mini';
+  return {
+    provider: 'openai',
+    model,
+    baseUrl: openaiEndpoint,
+    apiKey: OPENAI_API_KEY || null,
+    missingEnv: 'OPENAI_API_KEY',
+  };
+}
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
@@ -921,11 +1036,13 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  if (!chatApiKey) {
-    const missing = usingGithub ? 'GITHUB_TOKEN' : 'OPENAI_API_KEY';
-    console.error(`Missing chat API key on server (${missing}).`);
+  const { llmProvider, chatModel: requestedModel } = req.body || {};
+  let chatConfig = resolveChatConfig({ requestedProvider: llmProvider, requestedModel });
+
+  if (!chatConfig.apiKey) {
+    console.error(`Missing chat API key on server (${chatConfig.missingEnv}).`);
     return res.status(500).json({
-      error: `Chat API key is not configured on the server (${missing}).`,
+      error: `Chat API key is not configured on the server (${chatConfig.missingEnv}).`,
     });
   }
 
@@ -981,15 +1098,105 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    const response = await openai.chat.completions.create({
-      model: chatModel,
-      messages: [...systemMessages, ...userMessages],
-    });
+    const maxAttempts = chatConfig.provider === 'github'
+      ? Math.max(1, GITHUB_KEYS.length)
+      : chatConfig.provider === 'cerebras'
+        ? Math.max(1, CEREBRAS_KEYS.length || 1) * 4
+        : 1;
+
+    const cerebrasModelCandidates = chatConfig.provider === 'cerebras'
+      ? getCerebrasModelCandidates(chatConfig.model)
+      : [];
+    let cerebrasModelIndex = 0;
+    let triedCerebrasAltBase = false;
+
+    let response;
+    let lastError = null;
+    let attemptedUnknownModelFallback = false;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const llmClient = new OpenAI({
+          baseURL: chatConfig.baseUrl,
+          apiKey: chatConfig.apiKey,
+        });
+
+        response = await llmClient.chat.completions.create({
+          model: chatConfig.model,
+          messages: [...systemMessages, ...userMessages],
+        });
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        const unauthorized = error?.status === 401 || String(error?.message || '').includes('401');
+        const rateLimited = error?.status === 429 || String(error?.message || '').includes('429');
+        const unknownModel =
+          error?.code === 'unknown_model' ||
+          (error?.status === 404 && /unknown model/i.test(String(error?.message || '')));
+
+        if (chatConfig.provider === 'github' && unknownModel && !attemptedUnknownModelFallback) {
+          attemptedUnknownModelFallback = true;
+          chatConfig = {
+            ...chatConfig,
+            model: githubFallbackModel,
+          };
+          continue;
+        }
+
+        if (chatConfig.provider === 'cerebras') {
+          const cerebras404 = error?.status === 404 || String(error?.message || '').includes('404');
+
+          if ((unknownModel || cerebras404) && cerebrasModelIndex < cerebrasModelCandidates.length - 1) {
+            cerebrasModelIndex++;
+            chatConfig = {
+              ...chatConfig,
+              model: cerebrasModelCandidates[cerebrasModelIndex],
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+
+          if (cerebras404 && !triedCerebrasAltBase) {
+            triedCerebrasAltBase = true;
+            chatConfig = {
+              ...chatConfig,
+              baseUrl: cerebrasEndpointAlt,
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+
+          const shouldRetryCerebras = (unauthorized || rateLimited) && attempt < maxAttempts - 1;
+          if (shouldRetryCerebras) {
+            chatConfig = {
+              ...chatConfig,
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+        }
+
+        const shouldRetryGithub = chatConfig.provider === 'github' && unauthorized && attempt < maxAttempts - 1;
+        if (!shouldRetryGithub) {
+          throw error;
+        }
+        chatConfig = resolveChatConfig({ requestedProvider: 'github', requestedModel });
+      }
+    }
+
+    if (!response && lastError) {
+      throw lastError;
+    }
 
     const reply = response.choices?.[0]?.message?.content || 'No response from model.';
-    return res.json({ reply });
+    return res.json({
+      reply,
+      provider: chatConfig.provider,
+      model: chatConfig.model,
+    });
   } catch (error) {
-    const providerLabel = usingGithub ? 'github' : 'openai';
+    const providerLabel = chatConfig.provider;
     const details = {
       message: error?.message,
       status: error?.status,
@@ -997,8 +1204,8 @@ app.post('/api/chat', async (req, res) => {
       type: error?.type,
       code: error?.code,
       provider: providerLabel,
-      baseUrl: chatBaseUrl,
-      model: chatModel,
+      baseUrl: chatConfig.baseUrl,
+      model: chatConfig.model,
     };
     console.error('Chat completion error:', details);
     if (CHAT_DEBUG === 'true') {
@@ -1016,14 +1223,19 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.get('/api/chat/health', (req, res) => {
-  const providerLabel = usingGithub ? 'github' : 'openai';
-  const keyPresent = Boolean(chatApiKey);
+  const chatConfig = resolveChatConfig();
+  const keyPresent = Boolean(chatConfig.apiKey);
   res.json({
     ok: true,
-    provider: providerLabel,
-    baseUrl: chatBaseUrl,
-    model: chatModel,
+    provider: chatConfig.provider,
+    baseUrl: chatConfig.baseUrl,
+    model: chatConfig.model,
     keyPresent,
+    availableProviders: {
+      github: Boolean(GITHUB_KEYS.length),
+      cerebras: Boolean(CEREBRAS_KEYS.length),
+      openai: Boolean(OPENAI_API_KEY),
+    },
   });
 });
 
@@ -2729,7 +2941,7 @@ async function searchYouTube(query, maxResults = 10) {
 
 /**
  * POST /api/youtube/search
- * Body: { options: { channelDetails, channelVideos, videoDetails, transcript, videoComments, search },
+ * Body: { options: { channelDetails, channelVideos, videoDetails, videoComments, search },
  *         inputs: { channelUrl, videoUrl, searchQuery } }
  */
 app.post('/api/youtube/search', async (req, res) => {
@@ -2760,18 +2972,6 @@ app.post('/api/youtube/search', async (req, res) => {
       labels.push('videoDetails');
       tasks.push(fetchVideoDetails(videoId));
     }
-    if (options.transcript && videoId) {
-      labels.push('transcript');
-      tasks.push((async () => {
-        const pythonResult = await getTranscriptFromPython(videoId);
-        if (pythonResult?.success && pythonResult.transcript) {
-          return { available: true, language: pythonResult.language || 'en', text: pythonResult.transcript };
-        }
-        // Fallback: still return video metadata
-        const details = await fetchVideoDetails(videoId);
-        return { available: false, reason: pythonResult?.error || 'No transcript available', videoTitle: details.title };
-      })());
-    }
 
     // Search
     if (options.search && inputs.searchQuery) {
@@ -2798,72 +2998,6 @@ app.post('/api/youtube/search', async (req, res) => {
     return res.json({ success: true, results, errors });
   } catch (err) {
     console.error('YouTube search error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/youtube/transcript", async (req, res) => {
-  try {
-    const { video } = req.query;
-    const videoId = extractYouTubeVideoId(video);
-
-    if (!videoId) {
-      return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
-    }
-
-    if (!process.env.YOUTUBE_API_KEY) {
-      return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
-    }
-
-    // Fetch video metadata using official YouTube API
-    const videoMetaRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-    const videoMetaData = await videoMetaRes.json();
-
-    if (!videoMetaData.items?.length) {
-      return res.status(404).json({ error: "Video not found" });
-    }
-
-    const videoItem = videoMetaData.items[0];
-
-    const videoInfo = {
-      title: videoItem.snippet.title,
-      description: videoItem.snippet.description,
-      publishedAt: videoItem.snippet.publishedAt,
-      channelId: videoItem.snippet.channelId,
-      channelTitle: videoItem.snippet.channelTitle,
-      stats: {
-        views: Number(videoItem.statistics.viewCount || 0),
-        likes: Number(videoItem.statistics.likeCount || 0),
-        comments: Number(videoItem.statistics.commentCount || 0),
-      },
-    };
-
-    // Extract transcript using Python library
-    const pythonResult = await getTranscriptFromPython(videoId);
-
-    if (pythonResult.success && pythonResult.transcript) {
-      return res.json({
-        videoId,
-        video: videoInfo,
-        transcriptAvailable: true,
-        language: pythonResult.language || "en",
-        source: "youtube-transcript-api",
-        transcript: pythonResult.transcript,
-      });
-    }
-
-    // Failed to get transcript
-    return res.json({
-      videoId,
-      video: videoInfo,
-      transcriptAvailable: false,
-      transcript: "",
-      reason: pythonResult.error || "No transcript available",
-    });
-  } catch (err) {
-    console.error("YouTube transcript error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });

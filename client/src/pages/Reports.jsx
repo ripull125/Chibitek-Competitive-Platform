@@ -24,6 +24,7 @@ import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { useTranslation } from "react-i18next";
+import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
 
 const KW_SUMMARY_KEY = "chibitek-keyword-summary";
 
@@ -128,6 +129,8 @@ export default function Reports() {
       const kwList = topKeywords.slice(0, 5).map(kw => kw.term).join(", ");
 
       const prompt = `My top keywords are: ${kwList}. In 2-3 sentences, summarize what these keywords say about the content that performs best and any common theme. Be concise.`;
+      const aiSettings = loadAiSettings();
+      const modelMeta = getModelMeta(aiSettings?.modelChoice);
 
       const response = await fetch(apiUrl("/api/chat"), {
         method: "POST",
@@ -135,6 +138,8 @@ export default function Reports() {
         body: JSON.stringify({
           messages: [{ role: "user", content: prompt }],
           user_id: currentUserId || undefined,
+          llmProvider: modelMeta?.provider,
+          chatModel: aiSettings?.modelChoice,
         }),
       });
 
@@ -542,7 +547,7 @@ export default function Reports() {
                 />
               </Group>
             )}
-            
+
             {/* Tone chip filters */}
             <Group gap={6} wrap="wrap">
               <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Tones:</Text>

@@ -8,7 +8,7 @@ let _cachedKeys = null;
 function loadApiKeys() {
   if (_cachedKeys) return _cachedKeys;
   const keys = [];
-  for (let i = 1; i <= 50; i++) {
+  for (let i = 0; i <= 50; i++) {
     const key = process.env[`SCRAPE_CREATORS${i}`];
     if (key) keys.push(key);
   }
