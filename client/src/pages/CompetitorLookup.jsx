@@ -63,7 +63,7 @@ function LabelWithInfo({ label, info }) {
 
 /* ─── LinkedIn Results Display ───────────────────────────────────────────── */
 
-function SaveButton({ label, onSave }) {
+function SaveButton({ label, onSave, postContent = "" }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   return (
@@ -78,8 +78,12 @@ function SaveButton({ label, onSave }) {
         try {
           await onSave();
           setStatus("saved");
-          // Notify the global toast — content is passed in via onSave closure
-          window.dispatchEvent(new CustomEvent("chibitek:postSaved", { detail: {} }));
+          // Notify the global toast — pass content so it can be forwarded to chat
+          window.dispatchEvent(
+            new CustomEvent("chibitek:postSaved", {
+              detail: { content: postContent },
+            })
+          );
         } catch (err) {
           console.error("[SaveButton] Save failed:", err);
           setStatus("error");
@@ -375,7 +379,7 @@ function LinkedinProfileCard({ profile, onSave }) {
                         )}
                       </Group>
                     </div>
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} />
+                    <SaveButton label={t("competitorLookup.save")} postContent={p.title || p.text || ""} onSave={() => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} />
                   </Group>
                 </Card>
               ))}
@@ -498,7 +502,7 @@ function LinkedinCompanyCard({ company, onSave }) {
                         </Text>
                       )}
                     </Group>
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} />
+                    <SaveButton label={t("competitorLookup.save")} postContent={p.text || ""} onSave={() => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} />
                   </Group>
                 </Card>
               ))}
@@ -548,7 +552,7 @@ function LinkedinPostCard({ post, onSave }) {
             <Badge color="blue" variant="light" size="lg">
               <IconBrandLinkedin size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.post")}
             </Badge>
-            <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
+            <SaveButton label={t("competitorLookup.savePost")} postContent={content || title || ""} onSave={() => onSave("post", post)} />
           </Group>
         </Group>
 
@@ -627,7 +631,7 @@ function LinkedinPostCard({ post, onSave }) {
                     </Group>
                   )}
                   <Group justify="flex-end" mt={4}>
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
+                    <SaveButton label={t("competitorLookup.save")} postContent={decode(c.text || c.description) || ""} onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
                   </Group>
                 </Card>
               ))}
@@ -655,7 +659,7 @@ function LinkedinPostCard({ post, onSave }) {
                     {a.url && (
                       <Text size="xs" c="blue" component="a" href={a.url} target="_blank">{t("competitorLookup.view")}</Text>
                     )}
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} />
+                    <SaveButton label={t("competitorLookup.save")} postContent={decode(a.headline || a.name) || ""} onSave={() => onSave("article", { headline: decode(a.headline || a.name), author: a.author, url: a.url })} />
                   </Group>
                 </Group>
               ))}
@@ -776,7 +780,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
             <IconBrandX size={16} style={{ opacity: 0.5 }} />
             {onSave && (
-              <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
+              <SaveButton label={t("competitorLookup.save")} postContent={tweet.text || ""} onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
             )}
           </Group>
         </Group>
@@ -2145,7 +2149,7 @@ export default function CompetitorLookup() {
           )}
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
+              <SaveButton label="Save Video" postContent={video.title || video.description || ""} onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
             </Group>
           )}
         </Stack>
@@ -2170,7 +2174,7 @@ export default function CompetitorLookup() {
             <Text fw={600}>Transcript</Text>
             <Group gap="xs">
               <Badge size="xs" variant="light">{data.language || "en"}</Badge>
-              <SaveButton label="Save Transcript" onSave={() => saveYoutubeTranscript(data)} />
+              <SaveButton label="Save Transcript" postContent={typeof data?.text === "string" ? data.text : ""} onSave={() => saveYoutubeTranscript(data)} />
             </Group>
           </Group>
           <ScrollArea h={250}>
@@ -2338,7 +2342,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
+              <SaveButton label="Save Post" postContent={post.caption?.text || post.caption || post.title || ""} onSave={() => onSave("post", post)} />
             </Group>
           )}
         </Stack>
@@ -2365,7 +2369,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label="Save Reel" onSave={() => onSave("post", reel)} />
+              <SaveButton label="Save Reel" postContent={reel.caption?.text || reel.caption || ""} onSave={() => onSave("post", reel)} />
             </Group>
           )}
         </Stack>
@@ -2552,7 +2556,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", video)} />
+              <SaveButton label={t("competitorLookup.savePost")} postContent={video.title || video.description || ""} onSave={() => onSave("post", video)} />
             </Group>
           )}
         </Stack>
@@ -2671,7 +2675,7 @@ export default function CompetitorLookup() {
               {transcript ? (
                 <>
                   <Group justify="flex-end" mb="xs">
-                    <SaveButton label={t("competitorLookup.saveTranscript")} onSave={() => saveTiktokTranscript(transcript)} />
+                    <SaveButton label={t("competitorLookup.saveTranscript")} postContent={typeof transcript === "string" ? transcript : ""} onSave={() => saveTiktokTranscript(transcript)} />
                   </Group>
                   <ScrollArea h={300}>
                     <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{typeof transcript === 'string' ? transcript : JSON.stringify(transcript, null, 2)}</Text>
@@ -2804,7 +2808,7 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
-              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
+              <SaveButton label={t("competitorLookup.savePost")} postContent={post.title || post.selftext || ""} onSave={() => onSave("post", post)} />
             </Group>
           )}
         </Stack>
@@ -2832,7 +2836,7 @@ export default function CompetitorLookup() {
                 <Text size="xs" c="dimmed" mt={2}>{t("competitorLookup.repliesCount", { count: c.replies.length })}</Text>
               )}
               <Group justify="flex-end" mt={4}>
-                <SaveButton label={t("competitorLookup.save")} onSave={() => saveRedditComment(c)} />
+                <SaveButton label={t("competitorLookup.save")} postContent={c.body || c.text || ""} onSave={() => saveRedditComment(c)} />
               </Group>
             </Card>
           ))}
@@ -2852,7 +2856,7 @@ export default function CompetitorLookup() {
             <Text fw={600} size="sm" lineClamp={2}>{creative.title || creative.headline || ad.id}</Text>
             <Group gap="xs">
               <Badge variant="light" color="orange" size="xs">Ad</Badge>
-              <SaveButton label={t("competitorLookup.save")} onSave={() => saveRedditAd(ad)} />
+              <SaveButton label={t("competitorLookup.save")} postContent={creative.body || creative.title || creative.headline || ""} onSave={() => saveRedditAd(ad)} />
             </Group>
           </Group>
           {creative.body && <Text size="xs" lineClamp={3}>{creative.body}</Text>}

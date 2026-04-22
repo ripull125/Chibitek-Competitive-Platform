@@ -160,16 +160,21 @@ export default function ChatInput() {
     hasHydratedRef.current = true;
   }, []);
 
-  // Pick up any post that was forwarded from the "Send to Chat" toast
+  // Pick up any post forwarded from the "Send to Chat" toast.
+  // It arrives as a pre-built attachment object so the user can read it
+  // in the chat panel and the model receives it as file context.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("chibitek-pending-chat-post");
       if (!raw) return;
       sessionStorage.removeItem("chibitek-pending-chat-post");
-      const { content, platform } = JSON.parse(raw);
-      if (content) {
-        const prefix = platform ? `[${platform}] ` : "";
-        setMessage(`${prefix}${content}`);
+      const { attachment, platform } = JSON.parse(raw);
+      if (attachment?.content) {
+        setAttachments((prev) => [...prev, attachment]);
+        const label = platform
+          ? platform.charAt(0).toUpperCase() + platform.slice(1)
+          : "this";
+        setMessage(`Analyze ${label} post for me`);
       }
     } catch (_) {
       // ignore parse errors
