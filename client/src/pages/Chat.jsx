@@ -160,6 +160,22 @@ export default function ChatInput() {
     hasHydratedRef.current = true;
   }, []);
 
+  // Pick up any post that was forwarded from the "Send to Chat" toast
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("chibitek-pending-chat-post");
+      if (!raw) return;
+      sessionStorage.removeItem("chibitek-pending-chat-post");
+      const { content, platform } = JSON.parse(raw);
+      if (content) {
+        const prefix = platform ? `[${platform}] ` : "";
+        setMessage(`${prefix}${content}`);
+      }
+    } catch (_) {
+      // ignore parse errors
+    }
+  }, []);
+
   useEffect(() => {
     setConversation((prev) => {
       const hasUserMessages = prev.some((entry) => entry.role === "user");

@@ -30,6 +30,7 @@ import SavedPosts from "./pages/SavedPosts.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
+import SavedPostToast from "../components/SavedPostToast.jsx";
 import "./index.css";
 
 function AppLayout() {
@@ -40,6 +41,7 @@ function AppLayout() {
       </aside>
 
       <main className="app-main">
+        <SavedPostToast />
         <ScrollArea type="auto" scrollbarSize={10} h="100dvh">
           <Routes>
             <Route path="/" element={<RequireAuth><DashboardPage /></RequireAuth>} />

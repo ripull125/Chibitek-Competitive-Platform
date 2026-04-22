@@ -78,6 +78,8 @@ function SaveButton({ label, onSave }) {
         try {
           await onSave();
           setStatus("saved");
+          // Notify the global toast — content is passed in via onSave closure
+          window.dispatchEvent(new CustomEvent("chibitek:postSaved", { detail: {} }));
         } catch (err) {
           console.error("[SaveButton] Save failed:", err);
           setStatus("error");

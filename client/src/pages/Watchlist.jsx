@@ -741,6 +741,11 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
       });
       setStatus("saved");
       if (onSaved) onSaved(String(postId));
+      window.dispatchEvent(
+        new CustomEvent("chibitek:postSaved", {
+          detail: { content, platform, postId: String(postId) },
+        })
+      );
     } catch (err) {
       console.error("Save post failed:", err);
       setStatus("error");
