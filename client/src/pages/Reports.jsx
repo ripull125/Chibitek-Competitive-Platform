@@ -3,7 +3,7 @@ import KeywordTracking from "./KeywordTracking";
 import { convertSavedPosts, analyzeUniversalPosts } from "./DataConverter";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Badge, Button, Card, Checkbox, Chip, Container, Group, Title, Paper, LoadingOverlay, RangeSlider, SegmentedControl, Stack, Text, Select, Switch } from "@mantine/core";
+import { Badge, Button, Card, Checkbox, Chip, Container, Group, Title, Paper, LoadingOverlay, RangeSlider, SegmentedControl, Stack, Text, Select, Switch, Modal } from "@mantine/core";
 import { IconDownload, IconSparkles, IconRefresh, IconChartDots, IconChartBar } from "@tabler/icons-react";
 import {
   ScatterChart,
@@ -33,6 +33,46 @@ const KW_SUMMARY_KEY = "chibitek-keyword-summary";
 export default function Reports() {
   const chartRef = useRef(null);
   const toneChartRef = useRef(null);
+  const [popupImages, setPopupImages] = useState({ keyword: null, tone: null });
+  // Draggable image positions (relative to modal)
+  const [imagePositions, setImagePositions] = useState({
+    keyword: { x: 40, y: 40 },
+    tone: { x: 320, y: 40 },
+  });
+  const [dragging, setDragging] = useState({ type: null, offsetX: 0, offsetY: 0 });
+
+  // Drag handlers
+  const handleDragStart = (type, e) => {
+    const imgRect = e.target.getBoundingClientRect();
+    setDragging({
+      type,
+      offsetX: e.clientX - imgRect.left,
+      offsetY: e.clientY - imgRect.top,
+    });
+  };
+  const handleDrag = (e) => {
+    if (!dragging.type) return;
+    const modal = document.querySelector('.mantine-Modal-content');
+    if (!modal) return;
+    const modalRect = modal.getBoundingClientRect();
+    let x = e.clientX - modalRect.left - dragging.offsetX;
+    let y = e.clientY - modalRect.top - dragging.offsetY;
+    // Clamp to modal bounds
+    x = Math.max(0, Math.min(x, modalRect.width - 200));
+    y = Math.max(0, Math.min(y, modalRect.height - 200));
+    setImagePositions(pos => ({ ...pos, [dragging.type]: { x, y } }));
+  };
+  const handleDragEnd = () => setDragging({ type: null, offsetX: 0, offsetY: 0 });
+
+  useEffect(() => {
+    if (!dragging.type) return;
+    window.addEventListener('mousemove', handleDrag);
+    window.addEventListener('mouseup', handleDragEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleDrag);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [dragging]);
   const [includeKeywordTracking, setIncludeKeywordTracking] = useState(true);
   const [includeTone, setIncludeTone] = useState(true);
   const [includeSummary, setIncludeSummary] = useState(true);
@@ -52,6 +92,7 @@ export default function Reports() {
   const [showUnlabeled, setShowUnlabeled] = useState(true);
   const [competitorFilter, setCompetitorFilter] = useState(null);  // null = show all
   const { t } = useTranslation();
+  const [createPdfModalOpen, setCreatePdfModalOpen] = useState(false);
 
   // Persist & restore keyword summary from localStorage
   const loadSavedSummary = (uid) => {
@@ -350,8 +391,101 @@ export default function Reports() {
       .sort((a, b) => b.avgEngagement - a.avgEngagement);
   }, [filteredToneData]);
 
+  // Capture images of selected graphs when opening the modal
+  const handleOpenCreatePdfModal = async () => {
+    const images = { keyword: null, tone: null };
+    if (includeKeywordTracking && chartRef.current) {
+      try {
+        const canvas = await html2canvas(chartRef.current, { scale: 2 });
+        images.keyword = canvas.toDataURL("image/png");
+      } catch {}
+    }
+    if (includeTone && toneChartRef.current) {
+      try {
+        const canvas = await html2canvas(toneChartRef.current, { scale: 2 });
+        images.tone = canvas.toDataURL("image/png");
+      } catch {}
+    }
+    setPopupImages(images);
+    setCreatePdfModalOpen(true);
+  };
+
   return (
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
+      <Button mb="sm" variant="outline" color="gray" onClick={handleOpenCreatePdfModal}>
+        Create PDF
+      </Button>
+      <Modal
+        opened={createPdfModalOpen}
+        onClose={() => setCreatePdfModalOpen(false)}
+        title="Create PDF"
+        centered
+        size="90vw"
+        styles={{
+          content: { maxWidth: '90vw', maxHeight: '90vh', width: '90vw', height: '90vh', padding: 24, overflow: 'auto', position: 'relative' },
+        }}
+      >
+        <div style={{ width: '100%', height: '100%', minHeight: 400, minWidth: 400, position: 'relative' }}>
+          {/* Toolbar */}
+          <div style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10,
+            background: 'rgba(255,255,255,0.95)',
+            borderRadius: 8,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+            padding: '8px 20px',
+            display: 'flex',
+            gap: 16,
+            alignItems: 'center',
+            border: '1px solid #eee',
+            minWidth: 260,
+          }}>
+            <Button size="xs" variant="light" color="gray" disabled>Resize</Button>
+            <Button size="xs" variant="light" color="gray" disabled>Crop</Button>
+            <Button size="xs" variant="light" color="gray" disabled>Add Text</Button>
+          </div>
+          {includeKeywordTracking && popupImages.keyword && (
+            <div
+              style={{
+                position: 'absolute',
+                left: imagePositions.keyword.x,
+                top: imagePositions.keyword.y,
+                cursor: dragging.type === 'keyword' ? 'grabbing' : 'grab',
+                zIndex: dragging.type === 'keyword' ? 2 : 1,
+                width: 280,
+                userSelect: 'none',
+              }}
+              onMouseDown={e => handleDragStart('keyword', e)}
+            >
+              <Text fw={600} mb={4} style={{ pointerEvents: 'none' }}>Keyword Tracking Chart</Text>
+              <img src={popupImages.keyword} alt="Keyword Tracking Chart" style={{ width: '100%', border: '1px solid #eee', borderRadius: 8, pointerEvents: 'none' }} />
+            </div>
+          )}
+          {includeTone && popupImages.tone && (
+            <div
+              style={{
+                position: 'absolute',
+                left: imagePositions.tone.x,
+                top: imagePositions.tone.y,
+                cursor: dragging.type === 'tone' ? 'grabbing' : 'grab',
+                zIndex: dragging.type === 'tone' ? 2 : 1,
+                width: 280,
+                userSelect: 'none',
+              }}
+              onMouseDown={e => handleDragStart('tone', e)}
+            >
+              <Text fw={600} mb={4} style={{ pointerEvents: 'none' }}>Tone Analysis Chart</Text>
+              <img src={popupImages.tone} alt="Tone Analysis Chart" style={{ width: '100%', border: '1px solid #eee', borderRadius: 8, pointerEvents: 'none' }} />
+            </div>
+          )}
+          {!(popupImages.keyword || popupImages.tone) && (
+            <Text>No graphs selected or available to display.</Text>
+          )}
+        </div>
+      </Modal>
       <LoadingOverlay visible={loading} />
       <Title order={1} mb="lg">
         {t("reports.title")}
