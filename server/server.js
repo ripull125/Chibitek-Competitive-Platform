@@ -3573,14 +3573,14 @@ async function _executeWatchlistScrape(item) {
       switch (scrape_type) {
         case 'subreddit_posts': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreators('/v1/reddit/subreddit', { subreddit: sub, limit });
+          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, limit);
         }
         case 'subreddit_details': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub });
+          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub, trim: true });
         }
         case 'search':
-          return scrapeCreators('/v1/reddit/search', { query: target, limit });
+          return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
       }
@@ -3602,14 +3602,14 @@ async function _executeWatchlistScrape(item) {
 
     /* ── Instagram ───────────────────────────────────────── */
     case 'instagram': {
-      const username = target.replace(/^@/, '').trim();
+      const handle = target.replace(/^@/, '').trim();
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/instagram/profile', { username });
+          return scrapeCreators('/v1/instagram/profile', { handle, trim: true });
         case 'user_posts':
-          return scrapeCreators('/v1/instagram/user/posts', { username, limit: config.max_results });
+          return scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle, trim: true }, config.max_results || 12);
         case 'user_reels':
-          return scrapeCreators('/v1/instagram/user/reels', { username, limit: config.max_results });
+          return scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle, trim: true }, config.max_results || 12);
         default:
           throw new Error(`Unknown Instagram scrape_type: ${scrape_type}`);
       }
@@ -3617,15 +3617,15 @@ async function _executeWatchlistScrape(item) {
 
     /* ── TikTok ──────────────────────────────────────────── */
     case 'tiktok': {
-      const username = target.replace(/^@/, '').trim();
+      const handle = target.replace(/^@/, '').trim();
       const limit = config.max_results || 20;
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/tiktok/profile', { username });
+          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'profile_videos':
-          return scrapeCreators('/v1/tiktok/user/videos', { username, limit });
+          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'search':
-          return scrapeCreators('/v1/tiktok/search/keyword', { keyword: target, limit });
+          return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
       }
@@ -3635,6 +3635,266 @@ async function _executeWatchlistScrape(item) {
       throw new Error(`Unknown platform: ${platform}`);
   }
 }
+
+function normalizeLookupItems(source, raw) {
+  const items = [];
+
+  if (source === 'google') {
+    for (const r of raw?.results || []) {
+      items.push({
+        source,
+        id: r.url,
+        title: r.title || r.url,
+        text: r.description || '',
+        url: r.url,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'reddit') {
+    const subreddit = raw?.data || raw;
+    if (!raw?.posts && (subreddit?.display_name || subreddit?.name)) {
+      items.push({
+        source,
+        id: subreddit.id || subreddit.name || subreddit.display_name,
+        title: `r/${subreddit.display_name || subreddit.name}`,
+        text: subreddit.public_description || subreddit.description || '',
+        url: `https://reddit.com/r/${subreddit.display_name || subreddit.name}`,
+      });
+      return items;
+    }
+
+    for (const p of raw?.posts || []) {
+      items.push({
+        source,
+        id: p.id || p.name,
+        title: p.title || 'Reddit post',
+        text: p.selftext || '',
+        url: p.permalink ? `https://reddit.com${p.permalink}` : p.url,
+        author: p.author,
+        metrics: {
+          score: p.score ?? p.ups ?? 0,
+          comments: p.num_comments ?? 0,
+        },
+      });
+    }
+    return items;
+  }
+
+  if (source === 'youtube') {
+    const all = [
+      ...(raw?.videos || []),
+      ...(raw?.shorts || []),
+      ...(raw?.channels || []),
+      ...(raw?.playlists || []),
+    ];
+    for (const v of all) {
+      items.push({
+        source,
+        id: v.id || v.url,
+        title: v.title || v.name || 'YouTube result',
+        text: v.description || '',
+        url: v.url || (v.id ? `https://www.youtube.com/watch?v=${v.id}` : null),
+        author: v.channel?.title || v.channelTitle || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'tiktok') {
+    const profile = raw?.data || raw;
+    if (!raw?.search_item_list && (profile?.uniqueId || profile?.username || profile?.nickname)) {
+      const handle = profile.uniqueId || profile.username;
+      items.push({
+        source,
+        id: profile.id || handle || profile.nickname,
+        title: profile.nickname || handle || 'TikTok profile',
+        text: profile.signature || profile.bio || '',
+        url: handle ? `https://www.tiktok.com/@${handle}` : null,
+        author: handle || null,
+      });
+      return items;
+    }
+
+    for (const row of raw?.search_item_list || []) {
+      const v = row?.data || row;
+      items.push({
+        source,
+        id: v.aweme_id || v.id,
+        title: (v.desc || 'TikTok video').slice(0, 120),
+        text: v.desc || '',
+        url: v.url || (v.aweme_id ? `https://www.tiktok.com/@${v.author?.uniqueId || 'user'}/video/${v.aweme_id}` : null),
+        author: v.author?.uniqueId || v.author?.nickname || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'instagram') {
+    const d = raw?.data || raw;
+    if (!raw?.reels && (d?.username || d?.full_name || d?.fullName)) {
+      items.push({
+        source,
+        id: d.id || d.username,
+        title: d.full_name || d.fullName || d.username || 'Instagram profile',
+        text: d.biography || d.bio || '',
+        url: d.username ? `https://www.instagram.com/${d.username}/` : null,
+        author: d.username || null,
+      });
+      return items;
+    }
+
+    for (const r of raw?.reels || []) {
+      items.push({
+        source,
+        id: r.id || r.shortcode || r.url,
+        title: r.caption ? r.caption.slice(0, 120) : 'Instagram reel',
+        text: r.caption || '',
+        url: r.url || (r.shortcode ? `https://www.instagram.com/reel/${r.shortcode}/` : null),
+        author: r.owner?.username || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'linkedin') {
+    items.push({
+      source,
+      id: raw?.url || raw?.name || 'linkedin',
+      title: raw?.name || raw?.headline || 'LinkedIn',
+      text: raw?.about || raw?.description || '',
+      url: raw?.url || null,
+    });
+    return items;
+  }
+
+  return items;
+}
+
+app.post('/api/lookup/search', async (req, res) => {
+  try {
+    const query = String(req.body?.query || '').trim();
+    const limit = Math.min(150, Math.max(10, Number(req.body?.limit) || 60));
+    const maxCredits = Math.min(6, Math.max(1, Number(req.body?.maxCredits) || 1));
+
+    if (!query) {
+      return res.status(400).json({ error: 'query is required' });
+    }
+
+    const isUrl = /^https?:\/\//i.test(query);
+    const accountMatch = query.match(/^@([A-Za-z0-9._]{2,})(?:\s+(instagram|tiktok|reddit))?$/i);
+    const isAccountHandle = Boolean(accountMatch);
+    const queue = [];
+    let intent = isUrl ? 'url' : isAccountHandle ? 'account' : 'phrase';
+    let routeUsed = null;
+
+    if (isUrl) {
+      if (/linkedin\.com\//i.test(query)) {
+        const endpoint = /\/company\//i.test(query)
+          ? '/v1/linkedin/company'
+          : (/\/pulse\//i.test(query) || /\/posts\//i.test(query))
+            ? '/v1/linkedin/post'
+            : '/v1/linkedin/profile';
+
+        queue.push({ source: 'linkedin', run: () => scrapeCreators(endpoint, { url: query }) });
+        routeUsed = endpoint;
+      } else if (/instagram\.com\//i.test(query)) {
+        const isPostUrl = /\/p\/|\/reel\//i.test(query);
+        if (isPostUrl) {
+          queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/post', { url: query, trim: true }) });
+          routeUsed = '/v1/instagram/post';
+        } else {
+          const handle = query.split('/').filter(Boolean).pop()?.replace(/^@/, '') || '';
+          queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/profile', { handle, trim: true }) });
+          routeUsed = '/v1/instagram/profile';
+        }
+      } else if (/tiktok\.com\//i.test(query)) {
+        const handle = query.match(/@([^/]+)/)?.[1];
+        if (handle) {
+          queue.push({ source: 'tiktok', run: () => scrapeCreators('/v1/tiktok/profile', { handle, trim: true }) });
+          routeUsed = '/v1/tiktok/profile';
+        } else {
+          queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+          routeUsed = '/v1/google/search';
+        }
+      } else if (/reddit\.com\//i.test(query)) {
+        const subMatch = query.match(/\/r\/([^/]+)/i);
+        if (subMatch?.[1]) {
+          queue.push({ source: 'reddit', run: () => scrapeCreators('/v1/reddit/subreddit/details', { subreddit: subMatch[1], trim: true }) });
+          routeUsed = '/v1/reddit/subreddit/details';
+        } else {
+          queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+          routeUsed = '/v1/google/search';
+        }
+      } else if (/youtube\.com\/|youtu\.be\//i.test(query)) {
+        queue.push({ source: 'youtube', run: () => searchYouTube(query, Math.min(15, limit)) });
+        routeUsed = 'youtube-api-search';
+      } else {
+        queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+        routeUsed = '/v1/google/search';
+      }
+    } else if (isAccountHandle) {
+      const handle = accountMatch[1];
+      const hint = (accountMatch[2] || 'instagram').toLowerCase();
+
+      if (hint === 'tiktok') {
+        queue.push({ source: 'tiktok', run: () => scrapeCreators('/v1/tiktok/profile', { handle, trim: true }) });
+        routeUsed = '/v1/tiktok/profile';
+      } else if (hint === 'reddit') {
+        queue.push({ source: 'reddit', run: () => scrapeCreators('/v1/reddit/subreddit/details', { subreddit: handle, trim: true }) });
+        routeUsed = '/v1/reddit/subreddit/details';
+      } else {
+        queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/profile', { handle, trim: true }) });
+        routeUsed = '/v1/instagram/profile';
+      }
+    } else {
+      // Phrase / keyword mode: single Google-style endpoint for low credit usage.
+      queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+      routeUsed = '/v1/google/search';
+    }
+
+    const results = [];
+    const bySource = {};
+    const errors = [];
+    let calls = 0;
+    let credits_remaining = null;
+
+    for (const task of queue) {
+      if (calls >= maxCredits) break;
+      try {
+        const raw = await task.run();
+        calls += 1;
+        if (raw?.credits_remaining != null) credits_remaining = raw.credits_remaining;
+
+        const normalized = normalizeLookupItems(task.source, raw);
+        bySource[task.source] = normalized;
+        results.push(...normalized);
+
+        if (results.length >= limit) break;
+      } catch (err) {
+        errors.push({ source: task.source, error: err?.message || String(err) });
+      }
+    }
+
+    return res.json({
+      success: true,
+      query,
+      intent,
+      routeUsed,
+      maxCredits,
+      callsUsed: calls,
+      total: Math.min(results.length, limit),
+      results: results.slice(0, limit),
+      bySource,
+      errors,
+      credits_remaining,
+    });
+  } catch (err) {
+    console.error('Lookup search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
    Cron endpoint — runs ALL users' enabled watchlist items.

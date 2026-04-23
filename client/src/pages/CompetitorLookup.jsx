@@ -61,6 +61,72 @@ function LabelWithInfo({ label, info }) {
   );
 }
 
+function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3, threshold = 180 }) {
+  const value = String(text || "");
+  const [expanded, setExpanded] = useState(false);
+  const isLong = value.length > threshold;
+
+  if (!value) return null;
+
+  return (
+    <Stack gap={4}>
+      <Text
+        size={size}
+        c={dimmed ? "dimmed" : undefined}
+        style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}
+        lineClamp={!expanded && isLong ? collapsedLines : undefined}
+      >
+        {value}
+      </Text>
+      {isLong && (
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          px={0}
+          style={{ alignSelf: "flex-start" }}
+          onClick={() => setExpanded((prev) => !prev)}
+        >
+          {expanded ? "Less" : "More"}
+        </Button>
+      )}
+    </Stack>
+  );
+}
+
+function isHiddenCount(value) {
+  return Number(value) === -1;
+}
+
+function shortCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  return n.toLocaleString();
+}
+
+function formatCount(value) {
+  return isHiddenCount(value) ? "Hidden" : shortCount(value);
+}
+
+function HiddenCountNote({ likes, comments }) {
+  const likesHidden = isHiddenCount(likes);
+  const commentsHidden = isHiddenCount(comments);
+  if (!likesHidden && !commentsHidden) return null;
+
+  const hiddenLabel = likesHidden && commentsHidden
+    ? "likes and comments"
+    : likesHidden
+      ? "likes"
+      : "comments";
+
+  return (
+    <Text size="xs" c="dimmed">
+      Note: {hiddenLabel} count is hidden by the creator.
+    </Text>
+  );
+}
+
 /* ─── LinkedIn Results Display ───────────────────────────────────────────── */
 
 function SaveButton({ label, onSave }) {
@@ -751,6 +817,8 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
   const date = tweet.created_at
     ? new Date(tweet.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
+  const likeCount = m.like_count ?? 0;
+  const commentCount = m.reply_count ?? 0;
 
   return (
     <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
@@ -768,7 +836,10 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
               </div>
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }} lineClamp={4}>{tweet.text}</Text>
+              {authorUsername && (
+                <Text size="xs" c="dimmed" mb={4}>Posted by @{authorUsername}</Text>
+              )}
+              <ExpandableText text={tweet.text} size="sm" collapsedLines={4} threshold={220} />
             </div>
           </Group>
           <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -785,15 +856,16 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
 
         <Group justify="space-between" align="center">
           <Group gap="lg">
-            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(m.like_count || 0).toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{isHiddenCount(likeCount) ? "Hidden" : likeCount.toLocaleString()}</Text></Group>
             <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{(m.retweet_count || 0).toLocaleString()}</Text></Group>
-            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{(m.reply_count || 0).toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{isHiddenCount(commentCount) ? "Hidden" : commentCount.toLocaleString()}</Text></Group>
             {m.quote_count > 0 && <Group gap={4} wrap="nowrap"><IconQuote size={14} color="#794bc4" /><Text size="xs" c="dimmed">{m.quote_count.toLocaleString()}</Text></Group>}
           </Group>
           <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
             {t("competitorLookup.viewArrow")}
           </Text>
         </Group>
+        <HiddenCountNote likes={likeCount} comments={commentCount} />
       </Stack>
     </Card>
   );
@@ -1053,6 +1125,18 @@ export default function CompetitorLookup() {
   const [redditLoading, setRedditLoading] = useState(false);
   const [redditError, setRedditError] = useState(null);
   const [creditsRemaining, setCreditsRemaining] = useState(null);
+  const [quickQuery, setQuickQuery] = useState("");
+  const [quickLookupLoading, setQuickLookupLoading] = useState(false);
+  const [quickLookupError, setQuickLookupError] = useState(null);
+  const [quickLookupResult, setQuickLookupResult] = useState(cached.quickLookupResult || null);
+  const [simpleQueries, setSimpleQueries] = useState(cached.simpleQueries || {
+    x: "",
+    youtube: "",
+    linkedin: "",
+    instagram: "",
+    tiktok: "",
+    reddit: "",
+  });
 
   // Persist results + inputs to sessionStorage so they survive tab navigation
   useEffect(() => {
@@ -1062,6 +1146,8 @@ export default function CompetitorLookup() {
       username, youtubeUrl,
       linkedinInputs, instagramInputs, tiktokInputs,
       xInputs, youtubeInputs, redditInputs,
+      quickLookupResult,
+      simpleQueries,
     });
   }, [
     result, linkedinResult, xResult, youtubeResult,
@@ -1069,6 +1155,8 @@ export default function CompetitorLookup() {
     username, youtubeUrl,
     linkedinInputs, instagramInputs, tiktokInputs,
     xInputs, youtubeInputs, redditInputs,
+    quickLookupResult,
+    simpleQueries,
   ]);
 
   // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
@@ -1245,6 +1333,238 @@ export default function CompetitorLookup() {
     err.type = "backend_error";
     err.attempts = attempts;
     throw err;
+  }
+
+  async function handleQuickLookupSubmit(e) {
+    e?.preventDefault?.();
+    const q = String(quickQuery || "").trim();
+    setQuickLookupError(null);
+
+    if (!q) {
+      setQuickLookupError("Please enter a search query.");
+      return;
+    }
+
+    setQuickLookupLoading(true);
+    try {
+      const json = await tryPostJson("/api/lookup/search", {
+        query: q,
+        limit: Math.min(120, Math.max(20, scrapePostCount * 3)),
+      });
+      setQuickLookupResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (err) {
+      setQuickLookupError(err?.message || "Lookup failed.");
+      setQuickLookupResult(null);
+    } finally {
+      setQuickLookupLoading(false);
+    }
+  }
+
+  const cleanHandle = (value) => String(value || "").trim().replace(/^@/, "");
+
+  async function handleSimpleXSubmit() {
+    const q = String(simpleQueries.x || "").trim();
+    setXError(null);
+    setXResult(null);
+    if (!q) {
+      setXError("Please enter an X username, tweet URL, or keyword.");
+      return;
+    }
+
+    const isTweetUrl = /x\.com\/.+\/status\/\d+/i.test(q) || /twitter\.com\/.+\/status\/\d+/i.test(q);
+    const isHandle = /^@?[A-Za-z0-9_]{2,15}$/.test(q);
+    const username = cleanHandle(q);
+
+    setXLoading(true);
+    try {
+      const payload = isTweetUrl
+        ? { options: { tweetLookup: true }, inputs: { tweetUrl: q }, limit: scrapePostCount }
+        : isHandle
+          ? {
+            options: { userLookup: true, userTweets: true },
+            inputs: { username, tweetsUsername: username },
+            limit: scrapePostCount,
+          }
+          : { options: { searchTweets: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
+
+      const json = await tryPostJson("/api/x/search", payload);
+      setXResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setXError(e?.message || "Unknown error");
+    } finally {
+      setXLoading(false);
+    }
+  }
+
+  async function handleSimpleYoutubeSubmit() {
+    const q = String(simpleQueries.youtube || "").trim();
+    setYoutubeError(null);
+    setYoutubeResult(null);
+    if (!q) {
+      setYoutubeError("Please enter a YouTube URL, channel, or keyword.");
+      return;
+    }
+
+    const isVideo = /youtu\.be\//i.test(q) || /youtube\.com\/watch\?/i.test(q);
+    const isChannel = /youtube\.com\/(channel|@)/i.test(q) || /^UC[A-Za-z0-9_-]{20,}$/i.test(q);
+
+    setYoutubeLoading(true);
+    try {
+      const payload = isVideo
+        ? { options: { videoDetails: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
+        : isChannel
+          ? { options: { channelDetails: true, channelVideos: true }, inputs: { channelUrl: q }, limit: scrapePostCount }
+          : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
+
+      const json = await tryPostJson("/api/youtube/search", payload);
+      setYoutubeResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setYoutubeError(e?.message || "Unknown error");
+    } finally {
+      setYoutubeLoading(false);
+    }
+  }
+
+  async function handleSimpleLinkedinSubmit() {
+    const q = String(simpleQueries.linkedin || "").trim();
+    setLinkedinError(null);
+    setLinkedinResult(null);
+    if (!q) {
+      setLinkedinError("Please enter a LinkedIn profile/company/post URL.");
+      return;
+    }
+    if (!/linkedin\.com\//i.test(q)) {
+      setLinkedinError("Please paste a LinkedIn URL (profile, company, or post).");
+      return;
+    }
+
+    setLinkedinLoading(true);
+    try {
+      const isCompany = /\/company\//i.test(q);
+      const isPost = /\/posts\//i.test(q) || /\/pulse\//i.test(q);
+      const options = isCompany ? { company: true } : isPost ? { post: true } : { profile: true };
+      const inputs = isCompany ? { company: q } : isPost ? { post: q } : { profile: q };
+
+      const json = await tryPostJson("/api/linkedin/search", { options, inputs });
+      setLinkedinResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setLinkedinError(e?.message || "Unknown error");
+    } finally {
+      setLinkedinLoading(false);
+    }
+  }
+
+  async function handleSimpleInstagramSubmit() {
+    const q = String(simpleQueries.instagram || "").trim();
+    setInstagramError(null);
+    setInstagramResult(null);
+    if (!q) {
+      setInstagramError("Please enter an Instagram @username, URL, or keyword.");
+      return;
+    }
+
+    const isPostUrl = /instagram\.com\/(p|reel)\//i.test(q);
+    const isProfileUrl = /instagram\.com\/(?!p\/|reel\/)[A-Za-z0-9._]+\/?$/i.test(q);
+    const isHandle = /^@?[A-Za-z0-9._]{2,30}$/.test(q);
+    const handle = cleanHandle(q);
+
+    setInstagramLoading(true);
+    try {
+      const payload = isPostUrl
+        ? { options: { singlePost: true }, inputs: { postUrl: q }, limit: scrapePostCount }
+        : (isProfileUrl || isHandle)
+          ? {
+            options: { profile: true, userPosts: true, userReels: true },
+            inputs: { username: handle, userPostsUsername: handle, userReelsUsername: handle },
+            limit: scrapePostCount,
+          }
+          : { options: { reelsSearch: true }, inputs: { reelsSearchTerm: q }, limit: scrapePostCount };
+
+      const json = await tryPostJson("/api/instagram/search", payload);
+      setInstagramResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setInstagramError(e?.message || "Unknown error");
+    } finally {
+      setInstagramLoading(false);
+    }
+  }
+
+  async function handleSimpleTiktokSubmit() {
+    const q = String(simpleQueries.tiktok || "").trim();
+    setTiktokError(null);
+    setTiktokResult(null);
+    if (!q) {
+      setTiktokError("Please enter a TikTok @username, video URL, hashtag, or keyword.");
+      return;
+    }
+
+    const isVideoUrl = /tiktok\.com\/.+\/video\//i.test(q);
+    const isHandle = /^@?[A-Za-z0-9._]{2,30}$/.test(q);
+    const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+/i.test(q);
+    const isHashtag = q.trim().startsWith("#");
+    const handle = (isProfileUrl ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "") : cleanHandle(q));
+
+    setTiktokLoading(true);
+    try {
+      const payload = isVideoUrl
+        ? { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
+        : (isHandle || isProfileUrl)
+          ? {
+            options: { profile: true, profileVideos: true },
+            inputs: { username: handle, videosUsername: handle },
+            limit: scrapePostCount,
+          }
+          : isHashtag
+            ? { options: { searchHashtag: true }, inputs: { hashtag: q }, limit: scrapePostCount }
+            : { options: { searchKeyword: true }, inputs: { keyword: q }, limit: scrapePostCount };
+
+      const json = await tryPostJson("/api/tiktok/search", payload);
+      setTiktokResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setTiktokError(e?.message || "Unknown error");
+    } finally {
+      setTiktokLoading(false);
+    }
+  }
+
+  async function handleSimpleRedditSubmit() {
+    const q = String(simpleQueries.reddit || "").trim();
+    setRedditError(null);
+    setRedditResult(null);
+    if (!q) {
+      setRedditError("Please enter a subreddit, Reddit URL, or keyword.");
+      return;
+    }
+
+    const postUrl = /reddit\.com\/r\/.+\/comments\//i.test(q);
+    const subMatch = q.match(/^r\/([A-Za-z0-9_]+)/i) || q.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/i);
+
+    setRedditLoading(true);
+    try {
+      const payload = postUrl
+        ? { options: { postComments: true }, inputs: { postUrl: q }, limit: scrapePostCount }
+        : subMatch?.[1]
+          ? {
+            options: { subredditDetails: true, subredditPosts: true },
+            inputs: { subreddit: subMatch[1] },
+            limit: scrapePostCount,
+          }
+          : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
+
+      const json = await tryPostJson("/api/reddit/search", payload);
+      setRedditResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+    } catch (e) {
+      setRedditError(e?.message || "Unknown error");
+    } finally {
+      setRedditLoading(false);
+    }
   }
 
   async function handleLinkedinSubmit() {
@@ -2055,25 +2375,34 @@ export default function CompetitorLookup() {
 
   function YTVideoCard({ video, onSave, compact }) {
     if (!video) return null;
+    const videoId = video.id?.videoId || video.videoId || video.id;
+    const postUrl = video.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
+    const likeCount = video.likes;
+    const commentCount = video.comments;
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
           <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}{video.duration ? ` · ${parseDuration(video.duration)}` : ""}</Text>
+          {video.channelTitle && <Text size="xs" c="dimmed">Posted by {video.channelTitle}</Text>}
           <Group gap="xs">
             {[
               { label: "Views", val: video.views },
               { label: "Likes", val: video.likes },
               { label: "Comments", val: video.comments },
             ].map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label}: {fmtNum(val)}</Badge>
+              <Badge key={label} variant="light" size="xs">{label}: {formatCount(val)}</Badge>
             ))}
           </Group>
-          {!compact && video.description && (
-            <Text size="xs" c="dimmed" lineClamp={2}>{video.description}</Text>
-          )}
+          <HiddenCountNote likes={likeCount} comments={commentCount} />
+          {!compact && video.description && <ExpandableText text={video.description} size="xs" dimmed collapsedLines={2} threshold={140} />}
           {onSave && (
             <Group justify="flex-end">
+              {postUrl && (
+                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  View Post
+                </Button>
+              )}
               <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
             </Group>
           )}
@@ -2215,6 +2544,10 @@ export default function CompetitorLookup() {
     if (!post) return null;
     const caption = post.caption?.text || post.caption || "";
     const isVideo = post.media_type === 2 || post.video_url || post.is_video;
+    const shortCode = post.code || post.shortcode;
+    const postUrl = post.url || post.permalink || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
+    const likeCount = post.like_count ?? post.likes;
+    const commentCount = post.comment_count ?? post.comments;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
@@ -2223,9 +2556,9 @@ export default function CompetitorLookup() {
             {isVideo && <Badge size="xs" variant="light">{t("competitorLookup.video")}</Badge>}
             {post.carousel_media_count > 1 && <Badge size="xs" variant="light">{t("competitorLookup.carouselCount", { count: post.carousel_media_count })}</Badge>}
           </Group>
-          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{caption || <i>{t("competitorLookup.noCaption")}</i>}</Text>
+          <ExpandableText text={caption} size={compact ? "xs" : "sm"} collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />
           <Text size="xs" c="dimmed">
-            {post.user?.username || post.owner?.username || ""}
+            Posted by {post.user?.username || post.owner?.username || "unknown"}
             {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
           </Text>
           <Group gap="xs">
@@ -2234,11 +2567,17 @@ export default function CompetitorLookup() {
               { label: "💬", val: post.comment_count ?? post.comments },
               { label: "👁", val: post.play_count || post.video_view_count },
             ].filter(x => x.val != null).map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
             ))}
           </Group>
+          <HiddenCountNote likes={likeCount} comments={commentCount} />
           {onSave && (
             <Group justify="flex-end">
+              {postUrl && (
+                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  View Post
+                </Button>
+              )}
               <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
             </Group>
           )}
@@ -2250,22 +2589,32 @@ export default function CompetitorLookup() {
   function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
     const caption = reel.caption?.text || reel.caption || "";
+    const shortCode = reel.code || reel.shortcode;
+    const postUrl = reel.url || reel.permalink || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
+    const likeCount = reel.like_count ?? reel.likes;
+    const commentCount = reel.comment_count ?? reel.comments;
     return (
       <Card withBorder radius="md" shadow="sm" p="xs">
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <Text size="xs" lineClamp={2} fw={500}>{caption || <i>No caption</i>}</Text>
-          <Text size="xs" c="dimmed">{reel.user?.username || ""}</Text>
+          <ExpandableText text={caption} size="xs" collapsedLines={2} threshold={90} />
+          <Text size="xs" c="dimmed">Posted by {reel.user?.username || "unknown"}</Text>
           <Group gap="xs">
             {[
               { label: "▶", val: reel.play_count || reel.video_view_count },
               { label: "❤️", val: reel.like_count ?? reel.likes },
               { label: "💬", val: reel.comment_count ?? reel.comments },
             ].filter(x => x.val != null).map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
             ))}
           </Group>
+          <HiddenCountNote likes={likeCount} comments={commentCount} />
           {onSave && (
             <Group justify="flex-end">
+              {postUrl && (
+                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  View Post
+                </Button>
+              )}
               <SaveButton label="Save Reel" onSave={() => onSave("post", reel)} />
             </Group>
           )}
@@ -2432,13 +2781,18 @@ export default function CompetitorLookup() {
     const stats = video.stats || video.statsV2 || video.statistics || {};
     const author = video.author || {};
     const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
+    const authorHandle = author.uniqueId || author.unique_id || author.nickname;
+    const videoId = video.aweme_id || video.id;
+    const postUrl = video.share_url || video.url || (videoId ? `https://www.tiktok.com/@${authorHandle || 'user'}/video/${videoId}` : null);
+    const likeCount = stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count;
+    const commentCount = stats.commentCount ?? stats.comment_count;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <Text size={compact ? "xs" : "sm"} lineClamp={compact ? 2 : 4}>{desc || <i>{t("competitorLookup.noDescription")}</i>}</Text>
+          <ExpandableText text={desc} size={compact ? "xs" : "sm"} collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />
           <Text size="xs" c="dimmed">
-            {author.uniqueId || author.unique_id || author.nickname || ""}
+            Posted by {author.uniqueId || author.unique_id || author.nickname || "unknown"}
             {created ? ` · ${created}` : ""}
           </Text>
           <Group gap="xs">
@@ -2448,11 +2802,17 @@ export default function CompetitorLookup() {
               { label: "💬", val: stats.commentCount ?? stats.comment_count },
               { label: "🔗", val: stats.shareCount ?? stats.share_count },
             ].filter(x => x.val != null).map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
+              <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
             ))}
           </Group>
+          <HiddenCountNote likes={likeCount} comments={commentCount} />
           {onSave && (
             <Group justify="flex-end">
+              {postUrl && (
+                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  View Post
+                </Button>
+              )}
               <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", video)} />
             </Group>
           )}
@@ -2682,14 +3042,15 @@ export default function CompetitorLookup() {
     const title = post.title || "";
     const body = post.selftext || post.body || "";
     const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
+    const postUrl = post.permalink ? `https://reddit.com${post.permalink}` : post.url;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>{t("competitorLookup.noTitle")}</i>}</Text>
-          {body && <Text size="xs" lineClamp={compact ? 2 : 4} c="dimmed">{body}</Text>}
+          {body && <ExpandableText text={body} size="xs" dimmed collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />}
           <Text size="xs" c="dimmed">
-            {post.author ? `u/${post.author}` : ""}
+            {post.author ? `Posted by u/${post.author}` : ""}
             {post.subreddit ? ` · r/${post.subreddit}` : ""}
             {created ? ` · ${created}` : ""}
           </Text>
@@ -2705,6 +3066,11 @@ export default function CompetitorLookup() {
           </Group>
           {onSave && (
             <Group justify="flex-end">
+              {postUrl && (
+                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                  View Post
+                </Button>
+              )}
               <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
             </Group>
           )}
@@ -2877,6 +3243,8 @@ export default function CompetitorLookup() {
   }
 
   const posts = Array.isArray(result?.posts) ? result.posts : [];
+  const SHOW_GLOBAL_LOOKUP = false;
+  const SHOW_ADVANCED_LOOKUP = false;
 
   return (
     <Card withBorder radius="lg" shadow="sm" p="lg" style={{ position: "relative" }}>
@@ -2911,36 +3279,12 @@ export default function CompetitorLookup() {
             keepMounted={false}
           >
             <Tabs.List>
-              {connectedPlatforms.x && (
-                <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>
-                  X / Twitter
-                </Tabs.Tab>
-              )}
-              {connectedPlatforms.linkedin && (
-                <Tabs.Tab value="linkedin" leftSection={<IconBrandLinkedin size={16} color="#0A66C2" />}>
-                  LinkedIn
-                </Tabs.Tab>
-              )}
-              {connectedPlatforms.instagram && (
-                <Tabs.Tab value="instagram" leftSection={<IconBrandInstagram size={16} color="#E1306C" />}>
-                  Instagram
-                </Tabs.Tab>
-              )}
-              {connectedPlatforms.tiktok && (
-                <Tabs.Tab value="tiktok" leftSection={<IconBrandTiktok size={16} />}>
-                  TikTok
-                </Tabs.Tab>
-              )}
-              {connectedPlatforms.reddit && (
-                <Tabs.Tab value="reddit" leftSection={<IconBrandReddit size={16} color="#FF4500" />}>
-                  Reddit
-                </Tabs.Tab>
-              )}
-              {connectedPlatforms.youtube && (
-                <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} color="#FF0000" />}>
-                  YouTube
-                </Tabs.Tab>
-              )}
+              {connectedPlatforms.x && <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>X / Twitter</Tabs.Tab>}
+              {connectedPlatforms.linkedin && <Tabs.Tab value="linkedin" leftSection={<IconBrandLinkedin size={16} color="#0A66C2" />}>LinkedIn</Tabs.Tab>}
+              {connectedPlatforms.instagram && <Tabs.Tab value="instagram" leftSection={<IconBrandInstagram size={16} color="#E1306C" />}>Instagram</Tabs.Tab>}
+              {connectedPlatforms.tiktok && <Tabs.Tab value="tiktok" leftSection={<IconBrandTiktok size={16} />}>TikTok</Tabs.Tab>}
+              {connectedPlatforms.reddit && <Tabs.Tab value="reddit" leftSection={<IconBrandReddit size={16} color="#FF4500" />}>Reddit</Tabs.Tab>}
+              {connectedPlatforms.youtube && <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} color="#FF0000" />}>YouTube</Tabs.Tab>}
             </Tabs.List>
 
             <Card withBorder radius="md" p="sm" mt="md">
@@ -2953,119 +3297,27 @@ export default function CompetitorLookup() {
                   step={5}
                   value={scrapePostCount}
                   onChange={(val) => setScrapePostCount(val || 10)}
-                  style={{ maxWidth: 200 }}
+                  style={{ maxWidth: 220 }}
                 />
               </Group>
             </Card>
 
             {connectedPlatforms.x && (
               <Tabs.Panel value="x" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>X / Twitter {t("competitorLookup.lookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    {t("competitorLookup.selectDataFetch")}
-                  </Text>
-
-                  {/* PROFILE & ACCOUNT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userLookup")} info={t("competitorLookup.userLookupDesc")} />}
-                        checked={xOptions.userLookup || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, userLookup: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.followersDesc")} />}
-                        checked={xOptions.followers || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, followers: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.followingDesc")} />}
-                        checked={xOptions.following || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, following: e.target.checked }))}
-                      />
-
-                      {(xOptions.userLookup || xOptions.followers || xOptions.following) && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.username || ""}
-                          onChange={(e) => setXInputs(prev => ({ ...prev, username: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* TWEETS & CONTENT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📝 {t("competitorLookup.tweetsContent")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userTweets")} info={t("competitorLookup.userTweetsDesc")} />}
-                        checked={xOptions.userTweets || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, userTweets: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userMentions")} info={t("competitorLookup.userMentionsDesc")} />}
-                        checked={xOptions.userMentions || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, userMentions: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.tweetLookup")} info={t("competitorLookup.tweetLookupDesc")} />}
-                        checked={xOptions.tweetLookup || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, tweetLookup: e.target.checked }))}
-                      />
-
-                      {(xOptions.userTweets || xOptions.userMentions) && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.tweetsUsername || ""}
-                          onChange={(e) => setXInputs(prev => ({ ...prev, tweetsUsername: e.target.value }))} />
-                      )}
-
-                      {xOptions.tweetLookup && (
-                        <TextInput label={t("competitorLookup.tweetUrlId")} placeholder="https://x.com/user/status/123..." value={xInputs.tweetUrl || ""}
-                          onChange={(e) => setXInputs(prev => ({ ...prev, tweetUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* SEARCH */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchTweets")} info={t("competitorLookup.searchTweetsDesc")} />}
-                        checked={xOptions.searchTweets || false}
-                        onChange={(e) => setXOptions(prev => ({ ...prev, searchTweets: e.target.checked }))}
-                      />
-
-                      {xOptions.searchTweets && (
-                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="from:elonmusk OR #tech" value={xInputs.searchQuery || ""}
-                          onChange={(e) => setXInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    disabled={!Object.values(xOptions).some(Boolean)}
-                    loading={xLoading}
-                    onClick={handleXSubmit}
-                  >
-                    {t("competitorLookup.searchX")}
-                  </Button>
-
-                  {xError && (
-                    <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
-                      {xError}
-                    </Alert>
-                  )}
-
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">One bar lookup for profile, tweet URL, or keyword search.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="X Search"
+                      placeholder="@username, https://x.com/.../status/..., or keyword"
+                      value={simpleQueries.x}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, x: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleXSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>Search X</Button>
+                  </Group>
+                  {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
                   {xResult && <XResults data={xResult} onSave={handleXSave} />}
                 </Stack>
               </Tabs.Panel>
@@ -3073,171 +3325,41 @@ export default function CompetitorLookup() {
 
             {connectedPlatforms.youtube && (
               <Tabs.Panel value="youtube" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>{t("competitorLookup.youtubeLookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    {t("competitorLookup.selectDataFetch")}
-                  </Text>
-
-                  {/* CHANNEL */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📺 {t("competitorLookup.channel")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.channelDetails")} info={t("competitorLookup.channelDetailsDesc")} />}
-                        checked={youtubeOptions.channelDetails || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelDetails: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.channelVideos")} info={t("competitorLookup.channelVideosDesc")} />}
-                        checked={youtubeOptions.channelVideos || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelVideos: e.target.checked }))}
-                      />
-
-                      {(youtubeOptions.channelDetails || youtubeOptions.channelVideos) && (
-                        <TextInput label={t("competitorLookup.channelUrl")} placeholder="https://youtube.com/@MrBeast or UCX6OQ3..." value={youtubeInputs.channelUrl || ""}
-                          onChange={(e) => setYoutubeInputs(prev => ({ ...prev, channelUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* VIDEO & CONTENT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🎬 {t("competitorLookup.videoContent")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.videoDetails")} info={t("competitorLookup.videoDetailsDesc")} />}
-                        checked={youtubeOptions.videoDetails || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, videoDetails: e.target.checked }))}
-                      />
-
-                      {youtubeOptions.videoDetails && (
-                        <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
-                          onChange={(e) => setYoutubeInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* SEARCH */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.searchDesc")} />}
-                        checked={youtubeOptions.search || false}
-                        onChange={(e) => setYoutubeOptions(prev => ({ ...prev, search: e.target.checked }))}
-                      />
-
-                      {youtubeOptions.search && (
-                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="react tutorial, #coding" value={youtubeInputs.searchQuery || ""}
-                          onChange={(e) => setYoutubeInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    disabled={!Object.values(youtubeOptions).some(Boolean)}
-                    loading={youtubeLoading}
-                    onClick={handleYoutubeSubmit}
-                  >
-                    {t("competitorLookup.searchYouTube")}
-                  </Button>
-
-                  {youtubeError && (
-                    <Alert color="red" title={t("competitorLookup.youtubeError")} withCloseButton onClose={() => setYoutubeError(null)}>
-                      {youtubeError}
-                    </Alert>
-                  )}
-
-                  {youtubeResult && (
-                    <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />
-                  )}
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">One bar lookup for channel URL, video URL, or keyword.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="YouTube Search"
+                      placeholder="Channel URL, video URL, or keyword"
+                      value={simpleQueries.youtube}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, youtube: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleYoutubeSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={youtubeLoading} onClick={handleSimpleYoutubeSubmit}>Search YouTube</Button>
+                  </Group>
+                  {youtubeError && <Alert color="red" title={t("competitorLookup.youtubeError")}>{youtubeError}</Alert>}
+                  {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />}
                 </Stack>
               </Tabs.Panel>
             )}
 
             {connectedPlatforms.linkedin && (
               <Tabs.Panel value="linkedin" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>{t("competitorLookup.linkedinLookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
-                  </Text>
-
-                  {/* PROFILE & COMPANY */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>👔 {t("competitorLookup.profileCompany")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.personProfile")} info={t("competitorLookup.personProfileDesc")} />}
-                        checked={linkedinOptions.profile || false}
-                        onChange={(e) => setLinkedinOptions(prev => ({ ...prev, profile: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.companyPage")} info={t("competitorLookup.companyPageDesc")} />}
-                        checked={linkedinOptions.company || false}
-                        onChange={(e) => setLinkedinOptions(prev => ({ ...prev, company: e.target.checked }))}
-                      />
-
-                      {linkedinOptions.profile && (
-                        <TextInput label={t("competitorLookup.profileUrlUsername")} placeholder="https://linkedin.com/in/..."
-                          value={linkedinInputs.profile}
-                          onChange={(e) => setLinkedinInputs(prev => ({ ...prev, profile: e.target.value }))} />
-                      )}
-
-                      {linkedinOptions.company && (
-                        <TextInput label={t("competitorLookup.companyUrlName")} placeholder="https://linkedin.com/company/..."
-                          value={linkedinInputs.company}
-                          onChange={(e) => setLinkedinInputs(prev => ({ ...prev, company: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* POSTS */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.post")} info={t("competitorLookup.postDesc")} />}
-                        checked={linkedinOptions.post || false}
-                        onChange={(e) => setLinkedinOptions(prev => ({ ...prev, post: e.target.checked }))}
-                      />
-
-                      {linkedinOptions.post && (
-                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://linkedin.com/posts/..."
-                          value={linkedinInputs.post}
-                          onChange={(e) => setLinkedinInputs(prev => ({ ...prev, post: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    disabled={!linkedinOptions.profile && !linkedinOptions.company && !linkedinOptions.post}
-                    loading={linkedinLoading}
-                    onClick={handleLinkedinSubmit}
-                  >
-                    {t("competitorLookup.searchLinkedin")}
-                  </Button>
-
-                  {linkedinError && (
-                    <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
-                      {linkedinError}
-                    </Alert>
-                  )}
-
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">Paste a LinkedIn profile, company, or post URL.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="LinkedIn Search"
+                      placeholder="https://linkedin.com/in/... or /company/... or /posts/..."
+                      value={simpleQueries.linkedin}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, linkedin: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleLinkedinSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={linkedinLoading} onClick={handleSimpleLinkedinSubmit}>Search LinkedIn</Button>
+                  </Group>
+                  {linkedinError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{linkedinError}</Alert>}
                   {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
                 </Stack>
               </Tabs.Panel>
@@ -3245,387 +3367,890 @@ export default function CompetitorLookup() {
 
             {connectedPlatforms.instagram && (
               <Tabs.Panel value="instagram" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>{t("competitorLookup.instagramLookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
-                  </Text>
-
-                  {/* PROFILE SECTION */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.profileDesc")} />}
-                        checked={instagramOptions.profile || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, profile: e.target.checked }))}
-                      />
-
-                      {instagramOptions.profile && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.username || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, username: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* POSTS SECTION */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userPosts")} info={t("competitorLookup.userPostsDesc")} />}
-                        checked={instagramOptions.userPosts || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, userPosts: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.postReelInfo")} info={t("competitorLookup.postReelInfoDesc")} />}
-                        checked={instagramOptions.singlePost || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, singlePost: e.target.checked }))}
-                      />
-
-                      {instagramOptions.userPosts && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userPostsUsername || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, userPostsUsername: e.target.value }))} />
-                      )}
-
-                      {instagramOptions.singlePost && (
-                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* REELS SECTION */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🎥 {t("competitorLookup.reels")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchReels")} info={t("competitorLookup.searchReelsDesc")} />}
-                        checked={instagramOptions.reelsSearch || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, reelsSearch: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userReels")} info={t("competitorLookup.userReelsDesc")} />}
-                        checked={instagramOptions.userReels || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, userReels: e.target.checked }))}
-                      />
-
-                      {instagramOptions.reelsSearch && (
-                        <TextInput label={t("competitorLookup.searchTerm")} placeholder="fitness, #workout" value={instagramInputs.reelsSearchTerm || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, reelsSearchTerm: e.target.value }))} />
-                      )}
-
-                      {instagramOptions.userReels && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userReelsUsername || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, userReelsUsername: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* HIGHLIGHTS SECTION */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>⭐ {t("competitorLookup.highlights")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.userHighlights")} info={t("competitorLookup.userHighlightsDesc")} />}
-                        checked={instagramOptions.highlightDetail || false}
-                        onChange={(e) => setInstagramOptions(prev => ({ ...prev, highlightDetail: e.target.checked }))}
-                      />
-
-                      {instagramOptions.highlightDetail && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.highlightUrl || ""}
-                          onChange={(e) => setInstagramInputs(prev => ({ ...prev, highlightUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    disabled={!Object.values(instagramOptions).some(Boolean)}
-                    loading={instagramLoading}
-                    onClick={handleInstagramSubmit}
-                  >
-                    {t("competitorLookup.searchInstagram")}
-                  </Button>
-
-                  {instagramError && (
-                    <Alert color="red" title={t("competitorLookup.instagramError")} withCloseButton onClose={() => setInstagramError(null)}>
-                      {instagramError}
-                    </Alert>
-                  )}
-
-                  {instagramResult && (
-                    <InstagramResults data={instagramResult} onSave={handleInstagramSave} />
-                  )}
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">Use @username, profile/post URL, or a keyword.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="Instagram Search"
+                      placeholder="@username, instagram URL, or keyword"
+                      value={simpleQueries.instagram}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, instagram: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleInstagramSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={instagramLoading} onClick={handleSimpleInstagramSubmit}>Search Instagram</Button>
+                  </Group>
+                  {instagramError && <Alert color="red" title={t("competitorLookup.instagramError")}>{instagramError}</Alert>}
+                  {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} />}
                 </Stack>
               </Tabs.Panel>
             )}
 
-
             {connectedPlatforms.tiktok && (
               <Tabs.Panel value="tiktok" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>{t("competitorLookup.tiktokLookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
-                  </Text>
-
-                  {/* PROFILE & ACCOUNT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.tiktokProfileDesc")} />}
-                        checked={tiktokOptions.profile || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, profile: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.tiktokFollowingDesc")} />}
-                        checked={tiktokOptions.following || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, following: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.tiktokFollowersDesc")} />}
-                        checked={tiktokOptions.followers || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, followers: e.target.checked }))}
-                      />
-
-                      {(tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.username || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, username: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* VIDEOS & CONTENT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🎬 {t("competitorLookup.videosContent")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.profileVideos")} info={t("competitorLookup.profileVideosDesc")} />}
-                        checked={tiktokOptions.profileVideos || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, profileVideos: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.transcript")} info={t("competitorLookup.tiktokTranscriptDesc")} />}
-                        checked={tiktokOptions.transcript || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
-                      />
-
-                      {tiktokOptions.profileVideos && (
-                        <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.videosUsername || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
-                      )}
-
-                      {tiktokOptions.transcript && (
-                        <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* SEARCH & DISCOVERY */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>🔍 {t("competitorLookup.searchDiscovery")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchUsers")} info={t("competitorLookup.searchUsersDesc")} />}
-                        checked={tiktokOptions.searchUsers || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchUsers: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchByHashtag")} info={t("competitorLookup.searchByHashtagDesc")} />}
-                        checked={tiktokOptions.searchHashtag || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchHashtag: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchByKeyword")} info={t("competitorLookup.searchByKeywordDesc")} />}
-                        checked={tiktokOptions.searchKeyword || false}
-                        onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchKeyword: e.target.checked }))}
-                      />
-
-                      {tiktokOptions.searchUsers && (
-                        <TextInput label={t("competitorLookup.userSearchQuery")} placeholder="fitness creator" value={tiktokInputs.userSearchQuery || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, userSearchQuery: e.target.value }))} />
-                      )}
-
-                      {tiktokOptions.searchHashtag && (
-                        <TextInput label={t("competitorLookup.hashtag")} placeholder="#fitness" value={tiktokInputs.hashtag || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, hashtag: e.target.value }))} />
-                      )}
-
-                      {tiktokOptions.searchKeyword && (
-                        <TextInput label={t("competitorLookup.keyword")} placeholder="workout routine" value={tiktokInputs.keyword || ""}
-                          onChange={(e) => setTiktokInputs(prev => ({ ...prev, keyword: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    loading={tiktokLoading}
-                    disabled={!Object.values(tiktokOptions).some(Boolean)}
-                    onClick={handleTiktokSubmit}
-                  >
-                    {t("competitorLookup.searchTikTok")}
-                  </Button>
-
-                  {tiktokError && (
-                    <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
-                      {tiktokError}
-                    </Alert>
-                  )}
-
-                  {tiktokResult && (
-                    <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />
-                  )}
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">Use @username, TikTok URL, #hashtag, or keyword.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="TikTok Search"
+                      placeholder="@username, TikTok URL, #hashtag, or keyword"
+                      value={simpleQueries.tiktok}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, tiktok: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleTiktokSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={tiktokLoading} onClick={handleSimpleTiktokSubmit}>Search TikTok</Button>
+                  </Group>
+                  {tiktokError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{tiktokError}</Alert>}
+                  {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />}
                 </Stack>
               </Tabs.Panel>
             )}
 
             {connectedPlatforms.reddit && (
               <Tabs.Panel value="reddit" pt="md">
-                <Stack gap="lg">
-
-                  <Title order={4}>{t("competitorLookup.redditLookup")}</Title>
-
-                  <Text size="sm" c="dimmed">
-                    Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
-                  </Text>
-
-                  {/* SUBREDDIT */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📋 {t("competitorLookup.subreddit")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.subredditDetails")} info={t("competitorLookup.subredditDetailsDesc")} />}
-                        checked={redditOptions.subredditDetails || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditDetails: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.subredditPosts")} info={t("competitorLookup.subredditPostsDesc")} />}
-                        checked={redditOptions.subredditPosts || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditPosts: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.subredditSearch")} info={t("competitorLookup.subredditSearchDesc")} />}
-                        checked={redditOptions.subredditSearch || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditSearch: e.target.checked }))}
-                      />
-
-                      {(redditOptions.subredditDetails || redditOptions.subredditPosts || redditOptions.subredditSearch) && (
-                        <TextInput label={t("competitorLookup.subreddit")} placeholder="r/reactjs" value={redditInputs.subreddit || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, subreddit: e.target.value }))} />
-                      )}
-
-                      {redditOptions.subredditSearch && (
-                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="state management" value={redditInputs.subredditQuery || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, subredditQuery: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* POSTS & SEARCH */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>💬 {t("competitorLookup.postsSearch")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.postComments")} info={t("competitorLookup.postCommentsDesc")} />}
-                        checked={redditOptions.postComments || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, postComments: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.redditSearchDesc")} />}
-                        checked={redditOptions.search || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, search: e.target.checked }))}
-                      />
-
-                      {redditOptions.postComments && (
-                        <TextInput label={t("competitorLookup.postUrl")} placeholder="https://reddit.com/r/reactjs/comments/..." value={redditInputs.postUrl || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
-                      )}
-
-                      {redditOptions.search && (
-                        <TextInput label={t("competitorLookup.searchQuery")} placeholder="best javascript framework" value={redditInputs.searchQuery || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  {/* ADS */}
-                  <Card withBorder radius="md" p="md">
-                    <Stack gap="xs">
-                      <Text fw={600}>📢 {t("competitorLookup.ads")}</Text>
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.searchAds")} info={t("competitorLookup.searchAdsDesc")} />}
-                        checked={redditOptions.searchAds || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, searchAds: e.target.checked }))}
-                      />
-
-                      <Checkbox
-                        label={<LabelWithInfo label={t("competitorLookup.getAd")} info={t("competitorLookup.getAdDesc")} />}
-                        checked={redditOptions.getAd || false}
-                        onChange={(e) => setRedditOptions(prev => ({ ...prev, getAd: e.target.checked }))}
-                      />
-
-                      {redditOptions.searchAds && (
-                        <TextInput label={t("competitorLookup.adSearchQuery")} placeholder="software, SaaS" value={redditInputs.adSearchQuery || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, adSearchQuery: e.target.value }))} />
-                      )}
-
-                      {redditOptions.getAd && (
-                        <TextInput label={t("competitorLookup.adUrlId")} placeholder="https://reddit.com/..." value={redditInputs.adUrl || ""}
-                          onChange={(e) => setRedditInputs(prev => ({ ...prev, adUrl: e.target.value }))} />
-                      )}
-                    </Stack>
-                  </Card>
-
-                  <Button
-                    leftSection={<IconSearch size={16} />}
-                    loading={redditLoading}
-                    disabled={!Object.values(redditOptions).some(Boolean)}
-                    onClick={handleRedditSubmit}
-                  >
-                    {t("competitorLookup.searchReddit")}
-                  </Button>
-
-                  {redditError && (
-                    <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
-                      {redditError}
-                    </Alert>
-                  )}
-
-                  {redditResult && (
-                    <RedditResults data={redditResult} onSave={handleRedditSave} />
-                  )}
+                <Stack gap="md">
+                  <Text size="sm" c="dimmed">Use r/subreddit, Reddit URL, or keyword.</Text>
+                  <Group align="end">
+                    <TextInput
+                      label="Reddit Search"
+                      placeholder="r/startups, reddit URL, or keyword"
+                      value={simpleQueries.reddit}
+                      onChange={(e) => setSimpleQueries((p) => ({ ...p, reddit: e.target.value }))}
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSimpleRedditSubmit()}
+                    />
+                    <Button leftSection={<IconSearch size={16} />} loading={redditLoading} onClick={handleSimpleRedditSubmit}>Search Reddit</Button>
+                  </Group>
+                  {redditError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{redditError}</Alert>}
+                  {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} />}
                 </Stack>
               </Tabs.Panel>
             )}
           </Tabs>
+        )}
+
+        {SHOW_GLOBAL_LOOKUP && (
+          <Stack gap="md">
+            <Card withBorder radius="md" p="md">
+              <Stack gap="sm">
+                <Group justify="space-between" align="center">
+                  <div>
+                    <Text fw={700}>Quick Lookup</Text>
+                    <Text size="xs" c="dimmed">Use a URL for direct lookup, use @handle for account lookup, or type a phrase for regular search.</Text>
+                  </div>
+                  {quickLookupResult?.callsUsed != null && (
+                    <Badge variant="light" color="teal">Calls used: {quickLookupResult.callsUsed}</Badge>
+                  )}
+                </Group>
+
+                <Group align="end">
+                  <TextInput
+                    label="Search"
+                    placeholder="Examples: https://linkedin.com/in/... , @natgeo instagram , ai video tools"
+                    value={quickQuery}
+                    onChange={(e) => setQuickQuery(e.target.value)}
+                    style={{ flex: 1 }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleQuickLookupSubmit(e);
+                    }}
+                  />
+                  <Button
+                    leftSection={<IconSearch size={16} />}
+                    loading={quickLookupLoading}
+                    onClick={handleQuickLookupSubmit}
+                  >
+                    Search
+                  </Button>
+                </Group>
+
+                {quickLookupError && (
+                  <Alert variant="light" color="red" title="Quick lookup error" icon={<IconAlertCircle />}>
+                    {quickLookupError}
+                  </Alert>
+                )}
+
+                {quickLookupResult?.results?.length > 0 && (
+                  <Stack gap="xs">
+                    <Group gap="xs" wrap="wrap">
+                      <Badge variant="light" color="blue">Results: {quickLookupResult.total || quickLookupResult.results.length}</Badge>
+                      {quickLookupResult.intent && (
+                        <Badge variant="light" color="grape">Intent: {quickLookupResult.intent}</Badge>
+                      )}
+                      {quickLookupResult.routeUsed && (
+                        <Badge variant="outline" color="teal">Route: {quickLookupResult.routeUsed}</Badge>
+                      )}
+                      {Object.entries(quickLookupResult.bySource || {}).map(([source, items]) => (
+                        <Badge key={source} variant="outline" color="gray">
+                          {source}: {Array.isArray(items) ? items.length : 0}
+                        </Badge>
+                      ))}
+                    </Group>
+
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                      {quickLookupResult.results.map((item, idx) => (
+                        <Card key={item.id || item.url || idx} withBorder radius="sm" p="xs">
+                          <Stack gap={4}>
+                            <Group justify="space-between" align="start" wrap="nowrap">
+                              <Text fw={600} size="sm" lineClamp={2} style={{ flex: 1 }}>
+                                {item.title || item.url || "Untitled result"}
+                              </Text>
+                              <Badge size="xs" variant="light">{item.source}</Badge>
+                            </Group>
+
+                            {item.text && (
+                              <Text size="xs" c="dimmed" lineClamp={3}>{item.text}</Text>
+                            )}
+
+                            {item.author && (
+                              <Text size="xs" c="dimmed">@{item.author}</Text>
+                            )}
+
+                            {item.url && (
+                              <Text
+                                size="xs"
+                                c="blue"
+                                component="a"
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                lineClamp={1}
+                              >
+                                {item.url}
+                              </Text>
+                            )}
+                          </Stack>
+                        </Card>
+                      ))}
+                    </SimpleGrid>
+                  </Stack>
+                )}
+              </Stack>
+            </Card>
+
+            {SHOW_ADVANCED_LOOKUP && Object.values(connectedPlatforms).some(Boolean) && (
+              <Tabs
+                defaultValue={Object.keys(connectedPlatforms).find((k) => connectedPlatforms[k]) || "x"}
+                keepMounted={false}
+              >
+                <Tabs.List>
+                  {connectedPlatforms.x && (
+                    <Tabs.Tab value="x" leftSection={<IconBrandX size={16} />}>
+                      X / Twitter
+                    </Tabs.Tab>
+                  )}
+                  {connectedPlatforms.linkedin && (
+                    <Tabs.Tab value="linkedin" leftSection={<IconBrandLinkedin size={16} color="#0A66C2" />}>
+                      LinkedIn
+                    </Tabs.Tab>
+                  )}
+                  {connectedPlatforms.instagram && (
+                    <Tabs.Tab value="instagram" leftSection={<IconBrandInstagram size={16} color="#E1306C" />}>
+                      Instagram
+                    </Tabs.Tab>
+                  )}
+                  {connectedPlatforms.tiktok && (
+                    <Tabs.Tab value="tiktok" leftSection={<IconBrandTiktok size={16} />}>
+                      TikTok
+                    </Tabs.Tab>
+                  )}
+                  {connectedPlatforms.reddit && (
+                    <Tabs.Tab value="reddit" leftSection={<IconBrandReddit size={16} color="#FF4500" />}>
+                      Reddit
+                    </Tabs.Tab>
+                  )}
+                  {connectedPlatforms.youtube && (
+                    <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} color="#FF0000" />}>
+                      YouTube
+                    </Tabs.Tab>
+                  )}
+                </Tabs.List>
+
+                <Card withBorder radius="md" p="sm" mt="md">
+                  <Group gap="sm" align="flex-end">
+                    <NumberInput
+                      label={t("competitorLookup.scrapePostAmount")}
+                      description={t("competitorLookup.scrapePostAmountDesc")}
+                      min={5}
+                      max={100}
+                      step={5}
+                      value={scrapePostCount}
+                      onChange={(val) => setScrapePostCount(val || 10)}
+                      style={{ maxWidth: 200 }}
+                    />
+                  </Group>
+                </Card>
+
+                {connectedPlatforms.x && (
+                  <Tabs.Panel value="x" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>X / Twitter {t("competitorLookup.lookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        {t("competitorLookup.selectDataFetch")}
+                      </Text>
+
+                      {/* PROFILE & ACCOUNT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userLookup")} info={t("competitorLookup.userLookupDesc")} />}
+                            checked={xOptions.userLookup || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, userLookup: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.followersDesc")} />}
+                            checked={xOptions.followers || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, followers: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.followingDesc")} />}
+                            checked={xOptions.following || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, following: e.target.checked }))}
+                          />
+
+                          {(xOptions.userLookup || xOptions.followers || xOptions.following) && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.username || ""}
+                              onChange={(e) => setXInputs(prev => ({ ...prev, username: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* TWEETS & CONTENT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📝 {t("competitorLookup.tweetsContent")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userTweets")} info={t("competitorLookup.userTweetsDesc")} />}
+                            checked={xOptions.userTweets || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, userTweets: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userMentions")} info={t("competitorLookup.userMentionsDesc")} />}
+                            checked={xOptions.userMentions || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, userMentions: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.tweetLookup")} info={t("competitorLookup.tweetLookupDesc")} />}
+                            checked={xOptions.tweetLookup || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, tweetLookup: e.target.checked }))}
+                          />
+
+                          {(xOptions.userTweets || xOptions.userMentions) && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@jack" value={xInputs.tweetsUsername || ""}
+                              onChange={(e) => setXInputs(prev => ({ ...prev, tweetsUsername: e.target.value }))} />
+                          )}
+
+                          {xOptions.tweetLookup && (
+                            <TextInput label={t("competitorLookup.tweetUrlId")} placeholder="https://x.com/user/status/123..." value={xInputs.tweetUrl || ""}
+                              onChange={(e) => setXInputs(prev => ({ ...prev, tweetUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* SEARCH */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchTweets")} info={t("competitorLookup.searchTweetsDesc")} />}
+                            checked={xOptions.searchTweets || false}
+                            onChange={(e) => setXOptions(prev => ({ ...prev, searchTweets: e.target.checked }))}
+                          />
+
+                          {xOptions.searchTweets && (
+                            <TextInput label={t("competitorLookup.searchQuery")} placeholder="from:elonmusk OR #tech" value={xInputs.searchQuery || ""}
+                              onChange={(e) => setXInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        disabled={!Object.values(xOptions).some(Boolean)}
+                        loading={xLoading}
+                        onClick={handleXSubmit}
+                      >
+                        {t("competitorLookup.searchX")}
+                      </Button>
+
+                      {xError && (
+                        <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
+                          {xError}
+                        </Alert>
+                      )}
+
+                      {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+
+                {connectedPlatforms.youtube && (
+                  <Tabs.Panel value="youtube" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>{t("competitorLookup.youtubeLookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        {t("competitorLookup.selectDataFetch")}
+                      </Text>
+
+                      {/* CHANNEL */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📺 {t("competitorLookup.channel")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.channelDetails")} info={t("competitorLookup.channelDetailsDesc")} />}
+                            checked={youtubeOptions.channelDetails || false}
+                            onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelDetails: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.channelVideos")} info={t("competitorLookup.channelVideosDesc")} />}
+                            checked={youtubeOptions.channelVideos || false}
+                            onChange={(e) => setYoutubeOptions(prev => ({ ...prev, channelVideos: e.target.checked }))}
+                          />
+
+                          {(youtubeOptions.channelDetails || youtubeOptions.channelVideos) && (
+                            <TextInput label={t("competitorLookup.channelUrl")} placeholder="https://youtube.com/@MrBeast or UCX6OQ3..." value={youtubeInputs.channelUrl || ""}
+                              onChange={(e) => setYoutubeInputs(prev => ({ ...prev, channelUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* VIDEO & CONTENT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🎬 {t("competitorLookup.videoContent")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.videoDetails")} info={t("competitorLookup.videoDetailsDesc")} />}
+                            checked={youtubeOptions.videoDetails || false}
+                            onChange={(e) => setYoutubeOptions(prev => ({ ...prev, videoDetails: e.target.checked }))}
+                          />
+
+                          {youtubeOptions.videoDetails && (
+                            <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://youtube.com/watch?v=..." value={youtubeInputs.videoUrl || ""}
+                              onChange={(e) => setYoutubeInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* SEARCH */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🔍 {t("competitorLookup.search")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.searchDesc")} />}
+                            checked={youtubeOptions.search || false}
+                            onChange={(e) => setYoutubeOptions(prev => ({ ...prev, search: e.target.checked }))}
+                          />
+
+                          {youtubeOptions.search && (
+                            <TextInput label={t("competitorLookup.searchQuery")} placeholder="react tutorial, #coding" value={youtubeInputs.searchQuery || ""}
+                              onChange={(e) => setYoutubeInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        disabled={!Object.values(youtubeOptions).some(Boolean)}
+                        loading={youtubeLoading}
+                        onClick={handleYoutubeSubmit}
+                      >
+                        {t("competitorLookup.searchYouTube")}
+                      </Button>
+
+                      {youtubeError && (
+                        <Alert color="red" title={t("competitorLookup.youtubeError")} withCloseButton onClose={() => setYoutubeError(null)}>
+                          {youtubeError}
+                        </Alert>
+                      )}
+
+                      {youtubeResult && (
+                        <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />
+                      )}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+
+                {connectedPlatforms.linkedin && (
+                  <Tabs.Panel value="linkedin" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>{t("competitorLookup.linkedinLookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                      </Text>
+
+                      {/* PROFILE & COMPANY */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>👔 {t("competitorLookup.profileCompany")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.personProfile")} info={t("competitorLookup.personProfileDesc")} />}
+                            checked={linkedinOptions.profile || false}
+                            onChange={(e) => setLinkedinOptions(prev => ({ ...prev, profile: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.companyPage")} info={t("competitorLookup.companyPageDesc")} />}
+                            checked={linkedinOptions.company || false}
+                            onChange={(e) => setLinkedinOptions(prev => ({ ...prev, company: e.target.checked }))}
+                          />
+
+                          {linkedinOptions.profile && (
+                            <TextInput label={t("competitorLookup.profileUrlUsername")} placeholder="https://linkedin.com/in/..."
+                              value={linkedinInputs.profile}
+                              onChange={(e) => setLinkedinInputs(prev => ({ ...prev, profile: e.target.value }))} />
+                          )}
+
+                          {linkedinOptions.company && (
+                            <TextInput label={t("competitorLookup.companyUrlName")} placeholder="https://linkedin.com/company/..."
+                              value={linkedinInputs.company}
+                              onChange={(e) => setLinkedinInputs(prev => ({ ...prev, company: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* POSTS */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.post")} info={t("competitorLookup.postDesc")} />}
+                            checked={linkedinOptions.post || false}
+                            onChange={(e) => setLinkedinOptions(prev => ({ ...prev, post: e.target.checked }))}
+                          />
+
+                          {linkedinOptions.post && (
+                            <TextInput label={t("competitorLookup.postUrl")} placeholder="https://linkedin.com/posts/..."
+                              value={linkedinInputs.post}
+                              onChange={(e) => setLinkedinInputs(prev => ({ ...prev, post: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        disabled={!linkedinOptions.profile && !linkedinOptions.company && !linkedinOptions.post}
+                        loading={linkedinLoading}
+                        onClick={handleLinkedinSubmit}
+                      >
+                        {t("competitorLookup.searchLinkedin")}
+                      </Button>
+
+                      {linkedinError && (
+                        <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
+                          {linkedinError}
+                        </Alert>
+                      )}
+
+                      {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+
+                {connectedPlatforms.instagram && (
+                  <Tabs.Panel value="instagram" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>{t("competitorLookup.instagramLookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                      </Text>
+
+                      {/* PROFILE SECTION */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.profileDesc")} />}
+                            checked={instagramOptions.profile || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, profile: e.target.checked }))}
+                          />
+
+                          {instagramOptions.profile && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.username || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, username: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* POSTS SECTION */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📝 {t("competitorLookup.postsContent")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userPosts")} info={t("competitorLookup.userPostsDesc")} />}
+                            checked={instagramOptions.userPosts || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, userPosts: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.postReelInfo")} info={t("competitorLookup.postReelInfoDesc")} />}
+                            checked={instagramOptions.singlePost || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, singlePost: e.target.checked }))}
+                          />
+
+                          {instagramOptions.userPosts && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userPostsUsername || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, userPostsUsername: e.target.value }))} />
+                          )}
+
+                          {instagramOptions.singlePost && (
+                            <TextInput label={t("competitorLookup.postUrl")} placeholder="https://instagram.com/p/..." value={instagramInputs.postUrl || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* REELS SECTION */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🎥 {t("competitorLookup.reels")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchReels")} info={t("competitorLookup.searchReelsDesc")} />}
+                            checked={instagramOptions.reelsSearch || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, reelsSearch: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userReels")} info={t("competitorLookup.userReelsDesc")} />}
+                            checked={instagramOptions.userReels || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, userReels: e.target.checked }))}
+                          />
+
+                          {instagramOptions.reelsSearch && (
+                            <TextInput label={t("competitorLookup.searchTerm")} placeholder="fitness, #workout" value={instagramInputs.reelsSearchTerm || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, reelsSearchTerm: e.target.value }))} />
+                          )}
+
+                          {instagramOptions.userReels && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.userReelsUsername || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, userReelsUsername: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* HIGHLIGHTS SECTION */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>⭐ {t("competitorLookup.highlights")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.userHighlights")} info={t("competitorLookup.userHighlightsDesc")} />}
+                            checked={instagramOptions.highlightDetail || false}
+                            onChange={(e) => setInstagramOptions(prev => ({ ...prev, highlightDetail: e.target.checked }))}
+                          />
+
+                          {instagramOptions.highlightDetail && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={instagramInputs.highlightUrl || ""}
+                              onChange={(e) => setInstagramInputs(prev => ({ ...prev, highlightUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        disabled={!Object.values(instagramOptions).some(Boolean)}
+                        loading={instagramLoading}
+                        onClick={handleInstagramSubmit}
+                      >
+                        {t("competitorLookup.searchInstagram")}
+                      </Button>
+
+                      {instagramError && (
+                        <Alert color="red" title={t("competitorLookup.instagramError")} withCloseButton onClose={() => setInstagramError(null)}>
+                          {instagramError}
+                        </Alert>
+                      )}
+
+                      {instagramResult && (
+                        <InstagramResults data={instagramResult} onSave={handleInstagramSave} />
+                      )}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+
+
+                {connectedPlatforms.tiktok && (
+                  <Tabs.Panel value="tiktok" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>{t("competitorLookup.tiktokLookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                      </Text>
+
+                      {/* PROFILE & ACCOUNT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>👤 {t("competitorLookup.profileAccount")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.profile")} info={t("competitorLookup.tiktokProfileDesc")} />}
+                            checked={tiktokOptions.profile || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, profile: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.following")} info={t("competitorLookup.tiktokFollowingDesc")} />}
+                            checked={tiktokOptions.following || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, following: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.followers")} info={t("competitorLookup.tiktokFollowersDesc")} />}
+                            checked={tiktokOptions.followers || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, followers: e.target.checked }))}
+                          />
+
+                          {(tiktokOptions.profile || tiktokOptions.following || tiktokOptions.followers) && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.username || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, username: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* VIDEOS & CONTENT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🎬 {t("competitorLookup.videosContent")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.profileVideos")} info={t("competitorLookup.profileVideosDesc")} />}
+                            checked={tiktokOptions.profileVideos || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, profileVideos: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.transcript")} info={t("competitorLookup.tiktokTranscriptDesc")} />}
+                            checked={tiktokOptions.transcript || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, transcript: e.target.checked }))}
+                          />
+
+                          {tiktokOptions.profileVideos && (
+                            <TextInput label={t("competitorLookup.username")} placeholder="@username" value={tiktokInputs.videosUsername || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, videosUsername: e.target.value }))} />
+                          )}
+
+                          {tiktokOptions.transcript && (
+                            <TextInput label={t("competitorLookup.videoUrl")} placeholder="https://tiktok.com/@user/video/..." value={tiktokInputs.videoUrl || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, videoUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* SEARCH & DISCOVERY */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>🔍 {t("competitorLookup.searchDiscovery")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchUsers")} info={t("competitorLookup.searchUsersDesc")} />}
+                            checked={tiktokOptions.searchUsers || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchUsers: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchByHashtag")} info={t("competitorLookup.searchByHashtagDesc")} />}
+                            checked={tiktokOptions.searchHashtag || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchHashtag: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchByKeyword")} info={t("competitorLookup.searchByKeywordDesc")} />}
+                            checked={tiktokOptions.searchKeyword || false}
+                            onChange={(e) => setTiktokOptions(prev => ({ ...prev, searchKeyword: e.target.checked }))}
+                          />
+
+                          {tiktokOptions.searchUsers && (
+                            <TextInput label={t("competitorLookup.userSearchQuery")} placeholder="fitness creator" value={tiktokInputs.userSearchQuery || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, userSearchQuery: e.target.value }))} />
+                          )}
+
+                          {tiktokOptions.searchHashtag && (
+                            <TextInput label={t("competitorLookup.hashtag")} placeholder="#fitness" value={tiktokInputs.hashtag || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, hashtag: e.target.value }))} />
+                          )}
+
+                          {tiktokOptions.searchKeyword && (
+                            <TextInput label={t("competitorLookup.keyword")} placeholder="workout routine" value={tiktokInputs.keyword || ""}
+                              onChange={(e) => setTiktokInputs(prev => ({ ...prev, keyword: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        loading={tiktokLoading}
+                        disabled={!Object.values(tiktokOptions).some(Boolean)}
+                        onClick={handleTiktokSubmit}
+                      >
+                        {t("competitorLookup.searchTikTok")}
+                      </Button>
+
+                      {tiktokError && (
+                        <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
+                          {tiktokError}
+                        </Alert>
+                      )}
+
+                      {tiktokResult && (
+                        <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />
+                      )}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+
+                {connectedPlatforms.reddit && (
+                  <Tabs.Panel value="reddit" pt="md">
+                    <Stack gap="lg">
+
+                      <Title order={4}>{t("competitorLookup.redditLookup")}</Title>
+
+                      <Text size="sm" c="dimmed">
+                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                      </Text>
+
+                      {/* SUBREDDIT */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📋 {t("competitorLookup.subreddit")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.subredditDetails")} info={t("competitorLookup.subredditDetailsDesc")} />}
+                            checked={redditOptions.subredditDetails || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditDetails: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.subredditPosts")} info={t("competitorLookup.subredditPostsDesc")} />}
+                            checked={redditOptions.subredditPosts || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditPosts: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.subredditSearch")} info={t("competitorLookup.subredditSearchDesc")} />}
+                            checked={redditOptions.subredditSearch || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, subredditSearch: e.target.checked }))}
+                          />
+
+                          {(redditOptions.subredditDetails || redditOptions.subredditPosts || redditOptions.subredditSearch) && (
+                            <TextInput label={t("competitorLookup.subreddit")} placeholder="r/reactjs" value={redditInputs.subreddit || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, subreddit: e.target.value }))} />
+                          )}
+
+                          {redditOptions.subredditSearch && (
+                            <TextInput label={t("competitorLookup.searchQuery")} placeholder="state management" value={redditInputs.subredditQuery || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, subredditQuery: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* POSTS & SEARCH */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>💬 {t("competitorLookup.postsSearch")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.postComments")} info={t("competitorLookup.postCommentsDesc")} />}
+                            checked={redditOptions.postComments || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, postComments: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.search")} info={t("competitorLookup.redditSearchDesc")} />}
+                            checked={redditOptions.search || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, search: e.target.checked }))}
+                          />
+
+                          {redditOptions.postComments && (
+                            <TextInput label={t("competitorLookup.postUrl")} placeholder="https://reddit.com/r/reactjs/comments/..." value={redditInputs.postUrl || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, postUrl: e.target.value }))} />
+                          )}
+
+                          {redditOptions.search && (
+                            <TextInput label={t("competitorLookup.searchQuery")} placeholder="best javascript framework" value={redditInputs.searchQuery || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, searchQuery: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      {/* ADS */}
+                      <Card withBorder radius="md" p="md">
+                        <Stack gap="xs">
+                          <Text fw={600}>📢 {t("competitorLookup.ads")}</Text>
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.searchAds")} info={t("competitorLookup.searchAdsDesc")} />}
+                            checked={redditOptions.searchAds || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, searchAds: e.target.checked }))}
+                          />
+
+                          <Checkbox
+                            label={<LabelWithInfo label={t("competitorLookup.getAd")} info={t("competitorLookup.getAdDesc")} />}
+                            checked={redditOptions.getAd || false}
+                            onChange={(e) => setRedditOptions(prev => ({ ...prev, getAd: e.target.checked }))}
+                          />
+
+                          {redditOptions.searchAds && (
+                            <TextInput label={t("competitorLookup.adSearchQuery")} placeholder="software, SaaS" value={redditInputs.adSearchQuery || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, adSearchQuery: e.target.value }))} />
+                          )}
+
+                          {redditOptions.getAd && (
+                            <TextInput label={t("competitorLookup.adUrlId")} placeholder="https://reddit.com/..." value={redditInputs.adUrl || ""}
+                              onChange={(e) => setRedditInputs(prev => ({ ...prev, adUrl: e.target.value }))} />
+                          )}
+                        </Stack>
+                      </Card>
+
+                      <Button
+                        leftSection={<IconSearch size={16} />}
+                        loading={redditLoading}
+                        disabled={!Object.values(redditOptions).some(Boolean)}
+                        onClick={handleRedditSubmit}
+                      >
+                        {t("competitorLookup.searchReddit")}
+                      </Button>
+
+                      {redditError && (
+                        <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>
+                          {redditError}
+                        </Alert>
+                      )}
+
+                      {redditResult && (
+                        <RedditResults data={redditResult} onSave={handleRedditSave} />
+                      )}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
+              </Tabs>
+            )}
+          </Stack>
         )}
 
         {error && (

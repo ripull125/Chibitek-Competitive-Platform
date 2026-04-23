@@ -91,9 +91,9 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
     const { key: apiKey, index: keyIdx } = getNextKey();
 
     try {
-      // Abort after 20 seconds to prevent indefinite hangs (e.g. some LinkedIn profiles)
+      // Abort after 35 seconds; some endpoints are slow but still valid.
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20_000);
+      const timeoutId = setTimeout(() => controller.abort(), 35_000);
 
       let resp;
       try {
@@ -158,9 +158,11 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
       // If the error was thrown by us (from the block above) just re-throw
       if (err === lastError) throw err;
 
-      // Timeout (AbortError) → don't retry, the endpoint itself is slow
+      // Timeout (AbortError) can be transient; retry with backoff.
       if (err.name === 'AbortError') {
-        throw new Error(`Request timed out after 20s: ${path}`);
+        lastError = new Error(`Request timed out after 35s: ${path}`);
+        await new Promise(r => setTimeout(r, (attempt + 1) * 750));
+        continue;
       }
 
       // Network / fetch error → try next key
