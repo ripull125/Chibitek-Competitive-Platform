@@ -290,7 +290,17 @@ async function getRequestAuthContext(req) {
     return { ok: false, status: 401, error: 'Missing bearer token.' };
   }
 
-  const { data, error } = await supabaseAuth.auth.getUser(token);
+  let data, error;
+  try {
+    const resp = await supabaseAuth.auth.getUser(token);
+    data = resp.data;
+    error = resp.error;
+  } catch (err) {
+    console.warn('[Auth] supabaseAuth.getUser failed:', err?.message || err);
+    // Treat as unauthenticated rather than crashing the server.
+    return { ok: false, status: 503, error: 'Authentication service unavailable' };
+  }
+
   if (error || !data?.user) {
     return { ok: false, status: 401, error: 'Invalid or expired token.' };
   }
@@ -815,7 +825,7 @@ app.get("/api/x/fetch/:username", async (req, res) => {
 app.post('/api/x/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -1888,7 +1898,16 @@ function normalizeLinkedinUrl(raw, type) {
  */
 app.post('/api/linkedin/search', async (req, res) => {
   try {
+    console.log('[Debug][LinkedIn] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {} } = req.body;
+
+    // If the caller provided only a keyword (no explicit profile/company/post
+    // options), treat the keyword as a request to discover profiles/companies/posts.
+    if (!(options.profile || options.company || options.post) && inputs.keyword) {
+      options.profile = true;
+      options.company = true;
+      options.post = true;
+    }
 
     const tasks = [];
     const labels = [];
@@ -1912,6 +1931,34 @@ app.post('/api/linkedin/search', async (req, res) => {
       tasks.push(scrapeCreators('/v1/linkedin/post', { url: normalizedUrl }));
     }
 
+    // Keyword-based LinkedIn discovery: if a freeform keyword is provided,
+    // perform a lightweight Google search and extract any linkedin.com links,
+    // then enqueue matching LinkedIn endpoints.
+    if (inputs.keyword && String(inputs.keyword).trim()) {
+      try {
+        const googleResp = await scrapeCreators('/v1/google/search', { query: String(inputs.keyword).trim() });
+        const hits = googleResp?.results || googleResp?.data || [];
+        let added = 0;
+        for (const h of hits) {
+          const url = (h.url || h.link || '').toString();
+          if (!url) continue;
+          if (!/linkedin\.com\//i.test(url)) continue;
+          if (added >= 3) break; // limit follow-ups to 3 links
+          // Determine endpoint type
+          const endpoint = /\/company\//i.test(url)
+            ? '/v1/linkedin/company'
+            : (/\/posts\//i.test(url) || /\/pulse\//i.test(url))
+              ? '/v1/linkedin/post'
+              : '/v1/linkedin/profile';
+          labels.push(`keyword_discovery_${added}`);
+          tasks.push(scrapeCreators(endpoint, { url }));
+          added++;
+        }
+      } catch (e) {
+        console.warn('[LinkedIn] Keyword discovery failed:', e?.message || e);
+      }
+    }
+
     if (!tasks.length) {
       return res.status(400).json({ error: 'No LinkedIn options selected or inputs provided.' });
     }
@@ -1923,12 +1970,16 @@ app.post('/api/linkedin/search', async (req, res) => {
 
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
-        results[labels[i]] = s.value;
+        // Ensure we always return an object or array for the label so the
+        // frontend rendering code can safely access expected keys.
+        results[labels[i]] = s.value ?? {};
         if (s.value?.credits_remaining != null) {
           credits_remaining = s.value.credits_remaining;
         }
       } else {
+        // Keep the error message concise but include endpoint label.
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        results[labels[i]] = { error: s.reason?.message || String(s.reason) };
       }
     });
 
@@ -2438,7 +2489,7 @@ function extractIgUsername(input) {
 app.post('/api/instagram/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -2557,8 +2608,9 @@ function extractTkUsername(input) {
  */
 app.post('/api/tiktok/search', async (req, res) => {
   try {
+    console.log('[Debug][TikTok] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -2572,7 +2624,7 @@ app.post('/api/tiktok/search', async (req, res) => {
 
     if (options.profile && handle) {
       labels.push('profile');
-      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle }));
+      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle, trim: true }));
     }
     if (options.following && handle) {
       labels.push('following');
@@ -2584,11 +2636,12 @@ app.post('/api/tiktok/search', async (req, res) => {
     }
 
     // ── Videos & Content ───────────────────────────────────────────────
-    // Profile videos come from the profile endpoint's itemList.
-    // Skip the duplicate call if we already fetched the same handle above.
+    // Profile videos: fetch via paginated search for the user's handle to
+    // ensure we collect multiple pages of videos (more reliable for lots of
+    // recent posts). Also still fetch profile metadata separately above.
     if (options.profileVideos && videosHandle && !(sameHandle && options.profile)) {
       labels.push('profileVideos');
-      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle: videosHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: videosHandle, trim: true }, limit));
     }
 
     const videoUrl = inputs.videoUrl?.trim();
@@ -2638,6 +2691,41 @@ app.post('/api/tiktok/search', async (req, res) => {
       results.profileVideos = results.profile;
     }
 
+    // Normalize profile/profileVideos shapes: some ScrapeCreators responses
+    // return videos under different keys (search_item_list, item_list, aweme_list).
+    try {
+      const trimTo = limit || 10;
+
+      // Helper to extract array from several known keys
+      const extractVideoArray = (obj) => {
+        if (!obj) return null;
+        if (Array.isArray(obj.itemList)) return obj.itemList;
+        if (Array.isArray(obj.search_item_list)) return obj.search_item_list.map(r => r?.data || r);
+        if (Array.isArray(obj.item_list)) return obj.item_list;
+        if (Array.isArray(obj.aweme_list)) return obj.aweme_list;
+        if (Array.isArray(obj.posts)) return obj.posts;
+        return null;
+      };
+
+      // Normalize profile -> itemList
+      if (results.profile && !Array.isArray(results.profile.itemList)) {
+        const arr = extractVideoArray(results.profile) || [];
+        if (arr.length) results.profile.itemList = arr.slice(0, trimTo);
+      } else if (Array.isArray(results.profile?.itemList)) {
+        results.profile.itemList = results.profile.itemList.slice(0, trimTo);
+      }
+
+      // Normalize profileVideos -> itemList
+      if (results.profileVideos && !Array.isArray(results.profileVideos.itemList)) {
+        const arr = extractVideoArray(results.profileVideos) || [];
+        if (arr.length) results.profileVideos.itemList = arr.slice(0, trimTo);
+      } else if (Array.isArray(results.profileVideos?.itemList)) {
+        results.profileVideos.itemList = results.profileVideos.itemList.slice(0, trimTo);
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
     return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
     console.error('TikTok search error:', err);
@@ -2685,7 +2773,7 @@ function extractSubreddit(input) {
 app.post('/api/reddit/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -2694,15 +2782,15 @@ app.post('/api/reddit/search', async (req, res) => {
 
     if (options.subredditDetails && subreddit) {
       labels.push('subredditDetails');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit/details', { subreddit }));
+      tasks.push(scrapeCreators('/v1/reddit/subreddit/details', { subreddit, trim: true }));
     }
     if (options.subredditPosts && subreddit) {
       labels.push('subredditPosts');
-      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit }, limit));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit, trim: true }, limit));
     }
     if (options.subredditSearch && subreddit && inputs.subredditQuery?.trim()) {
       labels.push('subredditSearch');
-      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }, limit));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim(), trim: true }, limit));
     }
 
     // ── Posts & Search ─────────────────────────────────────────────────
@@ -2947,7 +3035,7 @@ async function searchYouTube(query, maxResults = 10) {
 app.post('/api/youtube/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 

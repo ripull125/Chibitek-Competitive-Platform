@@ -1433,24 +1433,29 @@ export default function CompetitorLookup() {
     setLinkedinError(null);
     setLinkedinResult(null);
     if (!q) {
-      setLinkedinError("Please enter a LinkedIn profile/company/post URL.");
-      return;
-    }
-    if (!/linkedin\.com\//i.test(q)) {
-      setLinkedinError("Please paste a LinkedIn URL (profile, company, or post).");
+      setLinkedinError("Please enter a LinkedIn profile/company/post URL or keywords.");
       return;
     }
 
     setLinkedinLoading(true);
     try {
-      const isCompany = /\/company\//i.test(q);
-      const isPost = /\/posts\//i.test(q) || /\/pulse\//i.test(q);
-      const options = isCompany ? { company: true } : isPost ? { post: true } : { profile: true };
-      const inputs = isCompany ? { company: q } : isPost ? { post: q } : { profile: q };
-
-      const json = await tryPostJson("/api/linkedin/search", { options, inputs });
-      setLinkedinResult(json);
-      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+      // If looks like a LinkedIn URL, keep existing behavior
+      if (/linkedin\.com\//i.test(q)) {
+        const isCompany = /\/company\//i.test(q);
+        const isPost = /\/posts\//i.test(q) || /\/pulse\//i.test(q);
+        const options = isCompany ? { company: true } : isPost ? { post: true } : { profile: true };
+        const inputs = isCompany ? { company: q } : isPost ? { post: q } : { profile: q };
+        const json = await tryPostJson("/api/linkedin/search", { options, inputs });
+        setLinkedinResult(json);
+        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+      } else {
+        // Treat as keyword/username/company name — backend will perform discovery
+        const options = { profile: true, company: true, post: true };
+        const inputs = { keyword: q };
+        const json = await tryPostJson("/api/linkedin/search", { options, inputs });
+        setLinkedinResult(json);
+        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+      }
     } catch (e) {
       setLinkedinError(e?.message || "Unknown error");
     } finally {
@@ -2986,6 +2991,7 @@ export default function CompetitorLookup() {
 
   function RedditSubredditCard({ details }) {
     if (!details) return null;
+    const rulesArray = Array.isArray(details.rules) ? details.rules : (details.rules ? [details.rules] : []);
     return (
       <Card withBorder radius="md" shadow="sm">
         <Stack gap="sm">
@@ -3024,11 +3030,11 @@ export default function CompetitorLookup() {
             <Text size="xs" c="dimmed" lineClamp={3}>{details.submit_text}</Text>
           )}
 
-          {details.rules?.length > 0 && (
+          {rulesArray.length > 0 && (
             <div>
-              <Text size="xs" fw={600} mb={4}>{t("competitorLookup.rulesCount", { count: details.rules.length })}</Text>
-              {details.rules.slice(0, 5).map((r, i) => (
-                <Text key={i} size="xs" c="dimmed">• {r.short_name || r.title || r}</Text>
+              <Text size="xs" fw={600} mb={4}>{t("competitorLookup.rulesCount", { count: rulesArray.length })}</Text>
+              {rulesArray.slice(0, 5).map((r, i) => (
+                <Text key={i} size="xs" c="dimmed">• {r?.short_name || r?.title || r}</Text>
               ))}
             </div>
           )}

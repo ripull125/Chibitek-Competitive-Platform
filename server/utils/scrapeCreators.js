@@ -80,6 +80,59 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
   const keys = loadApiKeys();
   const maxAttempts = maxKeyAttempts ?? keys.length;
 
+  // Local test-mode mock: if the only key is the placeholder 'dummy' or
+  // SCRAPE_CREATORS_MOCK=1 is set, return canned responses so local testing
+  // can proceed without contacting the external API.
+  const isMock = (keys.length === 1 && keys[0] === 'dummy') || process.env.SCRAPE_CREATORS_MOCK === '1';
+  if (isMock) {
+    // Minimal fake responses tailored to the most-common paths used by tests.
+    if (path.startsWith('/v1/tiktok/profile')) {
+      const handle = params.handle || 'demo';
+      const videos = Array.from({ length: 12 }).map((_, i) => ({
+        aweme_id: `1000${i}`,
+        desc: `Demo video ${i} by ${handle}`,
+        author: { uniqueId: handle, nickname: handle },
+        url: `https://www.tiktok.com/@${handle}/video/1000${i}`,
+      }));
+      return { uniqueId: handle, nickname: handle, itemList: videos };
+    }
+    if (path === '/v1/tiktok/search/keyword' || path === '/v1/tiktok/search/hashtag') {
+      const q = params.query || params.hashtag || 'demo';
+      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q } } }));
+      return { search_item_list: hits, cursor: null };
+    }
+    if (path === '/v1/reddit/subreddit/details') {
+      // Return subreddit metadata including rules expected by the frontend
+      return {
+        display_name: params.subreddit || 'demo',
+        description: `Demo subreddit for ${params.subreddit || 'demo'}`,
+        subscribers: 12345,
+        weekly_active_users: 678,
+        weekly_contributions: 12,
+        submit_text: 'Demo submit text',
+        advertiser_category: 'Technology',
+        rules: [
+          { short_name: 'No Spam', description: 'No spammy posts' },
+          { short_name: 'Be Respectful', description: 'Be kind to others' },
+        ],
+      };
+    }
+    if (path.startsWith('/v1/reddit/subreddit')) {
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `t3_demo${i}`, title: `Demo post ${i}`, selftext: `Demo content ${i}`, permalink: `/r/demo/comments/t3_demo${i}` }));
+      return { posts };
+    }
+    if (path === '/v1/reddit/search') {
+      const posts = Array.from({ length: 8 }).map((_, i) => ({ id: `s_demo${i}`, title: `Search post ${i}`, selftext: `Search content ${i}`, permalink: `/r/search/comments/s_demo${i}` }));
+      return { posts };
+    }
+    if (path.startsWith('/v1/linkedin/profile')) {
+      return { url: params.url || 'https://linkedin.com/in/demo', name: 'Demo Person', headline: 'Demo Headline', activity: Array.from({ length: 10 }).map((_, i) => ({ id: `lnk_post_${i}`, text: `Demo activity ${i}`, url: `https://linkedin.com/posts/demo_${i}` })) };
+    }
+    if (path.startsWith('/v1/google/search')) {
+      return { results: [{ url: `https://twitter.com/${params.query?.split(' ')[0] || 'demo'}` }] };
+    }
+  }
+
   const url = new URL(path, SCRAPE_CREATORS_BASE);
   for (const [k, v] of Object.entries(params)) {
     if (v != null && v !== '') url.searchParams.set(k, v);

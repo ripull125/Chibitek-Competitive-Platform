@@ -1,6 +1,7 @@
 import "dotenv/config";
 import axios from "axios";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
+import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 
 function loadBearerTokens() {
   const tokens = [];
@@ -106,6 +107,37 @@ export async function getUserIdByUsername(username) {
 
     return res.data.data;
   } catch (err) {
+    // If the bearer-token attempts failed (network/blocking), try a best-effort
+    // fallback using ScrapeCreators: perform a lightweight Google search to
+    // find a twitter.com profile URL and return minimal metadata so the UI
+    // can still show something useful.
+    const isAllBearerFailures = err && (err.attempts || err.message?.includes('All bearer tokens failed'));
+    if (isAllBearerFailures) {
+      try {
+        const google = await scrapeCreators('/v1/google/search', { query: `${username} site:twitter.com` });
+        const hits = google?.results || google?.data || [];
+        const twitterUrl = (hits.find(h => /twitter\.com\//i.test(h.url || h.link || ''))?.url) || null;
+        // Return a fallback id equal to the username so downstream callers
+        // that call fetchPostsByUserId can detect a string id and use a
+        // username-based fallback instead of numeric user-id API calls.
+        return {
+          id: String(username),
+          username,
+          fallback_url: twitterUrl,
+          note: 'Returned via ScrapeCreators Google fallback — not authoritative',
+        };
+      } catch (gErr) {
+        // If fallback fails, return a clearer aggregated error
+        if (err.attempts) {
+          const summary = err.attempts;
+          const ex = new Error(`All bearer tokens failed for X user lookup and fallback also failed: ${gErr?.message || gErr}`);
+          ex.attempts = summary;
+          throw ex;
+        }
+        throw gErr;
+      }
+    }
+
     if (err.response) {
       throw new Error(
         `X API user lookup failed: ${err.response.status} ${JSON.stringify(
@@ -123,16 +155,61 @@ export async function getUserIdByUsername(username) {
 const TWEET_FIELDS = "created_at,public_metrics,lang,conversation_id,in_reply_to_user_id,referenced_tweets,entities,source,impression_count";
 
 export async function fetchPostsByUserId(userId, maxResults = 10) {
-  const res = await requestWithTokenFallback({
-    method: "get",
-    url: `/users/${userId}/tweets`,
-    params: {
-      max_results: Math.min(Math.max(maxResults, 5), 100),
-      exclude: "replies,retweets",
-      "tweet.fields": TWEET_FIELDS,
-    },
-  });
-  return res.data?.data || [];
+  // If a non-numeric userId is supplied (from fallback), treat it as a
+  // username and return best-effort search results via ScrapeCreators.
+  if (!userId || (typeof userId === 'string' && !/^[0-9]+$/.test(userId))) {
+    const username = String(userId || '').trim();
+    try {
+      const google = await scrapeCreators('/v1/google/search', { query: `from:${username} site:twitter.com` });
+      const hits = google?.results || google?.data || [];
+      const tweets = [];
+      for (const h of hits) {
+        const url = h.url || h.link || '';
+        if (!/twitter\.com\/.+\/status\//i.test(url)) continue;
+        tweets.push({ id: url.split('/').pop(), url, text: h.title || h.snippet || '' });
+        if (tweets.length >= maxResults) break;
+      }
+      return tweets;
+    } catch (gErr) {
+      const ex = new Error(`X tweet lookup fallback failed: ${gErr?.message || gErr}`);
+      throw ex;
+    }
+  }
+
+  try {
+    const res = await requestWithTokenFallback({
+      method: "get",
+      url: `/users/${userId}/tweets`,
+      params: {
+        max_results: Math.min(Math.max(maxResults, 5), 100),
+        exclude: "replies,retweets",
+        "tweet.fields": TWEET_FIELDS,
+      },
+    });
+    return res.data?.data || [];
+  } catch (err) {
+    // If bearer tokens all failed, attempt a best-effort ScrapeCreators fallback
+    const isAllBearerFailures = err && (err.attempts || err.message?.includes('All bearer tokens failed'));
+    if (isAllBearerFailures) {
+      try {
+        const google = await scrapeCreators('/v1/google/search', { query: `from:${userId} site:twitter.com` });
+        const hits = google?.results || google?.data || [];
+        const tweets = [];
+        for (const h of hits) {
+          const url = h.url || h.link || '';
+          if (!/twitter\.com\/.+\/status\//i.test(url)) continue;
+          tweets.push({ id: url.split('/').pop(), url, text: h.title || h.snippet || '' });
+          if (tweets.length >= maxResults) break;
+        }
+        return tweets;
+      } catch (gErr) {
+        const ex = new Error(`X tweet lookup failed and fallback also failed: ${gErr?.message || gErr}`);
+        ex.original = err;
+        throw ex;
+      }
+    }
+    throw err;
+  }
 }
 
 export async function fetchUserMentions(userId, maxResults = 10) {
@@ -194,19 +271,41 @@ export async function fetchTweetById(tweetId) {
 }
 
 export async function searchRecentTweets(query, maxResults = 10) {
-  const res = await requestWithTokenFallback({
-    method: "get",
-    url: `/tweets/search/recent`,
-    params: {
-      query,
-      max_results: Math.min(Math.max(maxResults, 10), 100),
-      "tweet.fields": TWEET_FIELDS,
-      "expansions": "author_id",
-      "user.fields": "username,name,profile_image_url,public_metrics",
-    },
-  });
-  return {
-    tweets: res.data?.data || [],
-    users: res.data?.includes?.users || [],
-  };
+  try {
+    const res = await requestWithTokenFallback({
+      method: "get",
+      url: `/tweets/search/recent`,
+      params: {
+        query,
+        max_results: Math.min(Math.max(maxResults, 10), 100),
+        "tweet.fields": TWEET_FIELDS,
+        "expansions": "author_id",
+        "user.fields": "username,name,profile_image_url,public_metrics",
+      },
+    });
+    return {
+      tweets: res.data?.data || [],
+      users: res.data?.includes?.users || [],
+    };
+  } catch (err) {
+    const isAllBearerFailures = err && (err.attempts || err.message?.includes('All bearer tokens failed'));
+    if (isAllBearerFailures) {
+      try {
+        // Best-effort fallback: use Google search to find recent tweet URLs matching the query
+        const google = await scrapeCreators('/v1/google/search', { query: `${query} site:twitter.com` });
+        const hits = google?.results || google?.data || [];
+        const tweets = [];
+        for (const h of hits) {
+          const url = h.url || h.link || '';
+          if (!/twitter\.com\/.+\/status\//i.test(url)) continue;
+          tweets.push({ id: url.split('/').pop(), url, text: h.title || h.snippet || '' });
+          if (tweets.length >= maxResults) break;
+        }
+        return { tweets, users: [] };
+      } catch (gErr) {
+        throw new Error(`X search failed and fallback also failed: ${gErr?.message || gErr}`);
+      }
+    }
+    throw err;
+  }
 }
