@@ -128,6 +128,24 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
     if (path.startsWith('/v1/linkedin/profile')) {
       return { url: params.url || 'https://linkedin.com/in/demo', name: 'Demo Person', headline: 'Demo Headline', activity: Array.from({ length: 10 }).map((_, i) => ({ id: `lnk_post_${i}`, text: `Demo activity ${i}`, url: `https://linkedin.com/posts/demo_${i}` })) };
     }
+    if (path.startsWith('/v1/instagram/profile')) {
+      const handle = params.handle || 'demo';
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_${i}`, shortcode: `ABC${i}`, caption: `Demo IG post ${i} by ${handle}`, url: `https://www.instagram.com/p/ABC${i}/` }));
+      return { username: handle, full_name: handle, biography: `Demo bio for ${handle}`, posts: posts, media_count: 123 };
+    }
+    if (path.startsWith('/v2/instagram/user/posts') || path.startsWith('/v1/instagram/user/posts')) {
+      const handle = params.handle || 'demo';
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_post_${i}`, shortcode: `ABC${i}`, caption: `Demo post ${i}`, url: `https://www.instagram.com/p/ABC${i}/` }));
+      return { posts };
+    }
+    if (path.startsWith('/v1/instagram/post')) {
+      return { id: params.url || 'https://www.instagram.com/p/ABC0/', shortcode: 'ABC0', caption: 'Demo single post', comments_count: 5, likes_count: 100 };
+    }
+    if (path.startsWith('/v2/instagram/reels/search') || path.startsWith('/v1/instagram/user/reels')) {
+      const q = params.query || params.handle || 'demo';
+      const reels = Array.from({ length: 12 }).map((_, i) => ({ id: `reel_${i}`, desc: `Demo reel ${i} for ${q}`, url: `https://www.instagram.com/reel/REEL${i}/` }));
+      return { reels };
+    }
     if (path.startsWith('/v1/google/search')) {
       return { results: [{ url: `https://twitter.com/${params.query?.split(' ')[0] || 'demo'}` }] };
     }

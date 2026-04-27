@@ -34,6 +34,28 @@ function extractYouTubeVideoId(input) {
   return null;
 }
 
+/**
+ * Detect whether a freeform input is a URL, an @handle, or a keyword.
+ * Returns { type: 'url'|'handle'|'keyword', value }
+ */
+function detectInputType(input) {
+  const s = String(input || '').trim();
+  if (!s) return { type: null, value: '' };
+  try {
+    // If it parses as a URL, consider it a URL type
+    new URL(s);
+    return { type: 'url', value: s };
+  } catch { }
+
+  if (s.startsWith('@')) return { type: 'handle', value: s.replace(/^@/, '') };
+
+  // If the input is a single token without spaces, treat it as a possible
+  // handle for platforms (will be interpreted as handle by platform helpers).
+  if (!/\s/.test(s) && /^[\w.@-]+$/.test(s)) return { type: 'handle', value: s };
+
+  return { type: 'keyword', value: s };
+}
+
 // Ensure Reddit platform row exists
 let REDDIT_PLATFORM_ID = 6; // default, will be confirmed/created at startup
 async function ensureRedditPlatform() {
@@ -826,8 +848,42 @@ app.post('/api/x/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    let credits_remaining = null;
     const tasks = [];
     const labels = [];
+
+    // Auto-route when caller passes a single freeform `q` and no options.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && inputs.q) {
+      const detected = detectInputType(inputs.q);
+      if (detected.type === 'handle') {
+        options.userLookup = true;
+        options.userTweets = true;
+        inputs.username = detected.value;
+        inputs.tweetsUsername = detected.value;
+      } else if (detected.type === 'url') {
+        const u = String(detected.value || '');
+        if (/status\//i.test(u)) {
+          options.tweetLookup = true;
+          inputs.tweetUrl = u;
+        } else {
+          // Try to extract username from URL
+          try {
+            const parsed = new URL(u);
+            const m = parsed.pathname.match(/\/@?([\w.]+)/);
+            if (m) {
+              const uname = m[1];
+              options.userLookup = true;
+              options.userTweets = true;
+              inputs.username = uname;
+              inputs.tweetsUsername = uname;
+            }
+          } catch { }
+        }
+      } else {
+        options.searchTweets = true;
+        inputs.searchQuery = detected.value;
+      }
+    }
 
     // Resolve user IDs where needed
     const cleanUsername = (u) => String(u || '').trim().replace(/^@/, '');
@@ -1901,12 +1957,29 @@ app.post('/api/linkedin/search', async (req, res) => {
     console.log('[Debug][LinkedIn] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {} } = req.body;
 
-    // If the caller provided only a keyword (no explicit profile/company/post
-    // options), treat the keyword as a request to discover profiles/companies/posts.
-    if (!(options.profile || options.company || options.post) && inputs.keyword) {
-      options.profile = true;
-      options.company = true;
-      options.post = true;
+    // If caller provided a single freeform query and no explicit options,
+    // auto-route: @handle -> profile, URL -> direct lookup, keyword -> discovery
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.keyword)) {
+      const free = inputs.query || inputs.keyword;
+      const detected = detectInputType(free);
+      if (detected.type === 'handle') {
+        options.profile = true;
+        inputs.profile = detected.value;
+      } else if (detected.type === 'url') {
+        // Let existing logic normalize URL types (profile/company/post)
+        // Try to push the URL into profile/company/post depending on path
+        const url = String(detected.value || '');
+        if (/linkedin\.com\/(company)\//i.test(url)) {
+          options.company = true; inputs.company = url;
+        } else if (/linkedin\.com\/(posts|pulse|feed)\//i.test(url)) {
+          options.post = true; inputs.post = url;
+        } else {
+          options.profile = true; inputs.profile = url;
+        }
+      } else {
+        // keyword discovery
+        options.profile = true; options.company = true; options.post = true; inputs.keyword = detected.value;
+      }
     }
 
     const tasks = [];
@@ -1960,13 +2033,18 @@ app.post('/api/linkedin/search', async (req, res) => {
     }
 
     if (!tasks.length) {
+      // If the caller provided a keyword for discovery but no linkedin.com
+      // links were found, return a successful response with empty results
+      // rather than a 400. This avoids client crashes in mock/offline mode.
+      if (inputs.keyword && String(inputs.keyword).trim()) {
+        return res.json({ success: true, results: {}, errors: [{ message: 'No discovery links found for keyword.' }] });
+      }
       return res.status(400).json({ error: 'No LinkedIn options selected or inputs provided.' });
     }
 
     const settled = await Promise.allSettled(tasks);
     const results = {};
     const errors = [];
-    let credits_remaining = null;
 
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
@@ -2490,6 +2568,35 @@ app.post('/api/instagram/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // Auto-route when caller supplies a single freeform query and no options
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm)) {
+      const free = inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm;
+      const detected = detectInputType(free);
+      if (detected.type === 'handle') {
+        options.profile = true;
+        options.userPosts = true;
+        inputs.username = detected.value;
+        inputs.userPostsUsername = detected.value;
+      } else if (detected.type === 'url') {
+        const u = detected.value;
+        const shortcode = extractIgShortcode(u);
+        if (shortcode) {
+          options.singlePost = true;
+          inputs.postUrl = u;
+        } else {
+          const h = extractIgUsername(u);
+          if (h) {
+            options.profile = true;
+            options.userPosts = true;
+            inputs.username = h;
+            inputs.userPostsUsername = h;
+          }
+        }
+      } else {
+        options.reelsSearch = true;
+        inputs.reelsSearchTerm = detected.value;
+      }
+    }
     const tasks = [];
     const labels = [];
 
@@ -2611,6 +2718,37 @@ app.post('/api/tiktok/search', async (req, res) => {
     console.log('[Debug][TikTok] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // If caller provided a single freeform query and no specific options,
+    // auto-route based on whether it's an @handle, URL, or keyword.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.keyword || inputs.videosUsername)) {
+      const free = inputs.query || inputs.username || inputs.videosUsername || inputs.keyword;
+      const detected = detectInputType(free);
+      if (detected.type === 'handle') {
+        options.profile = true;
+        options.profileVideos = true;
+        inputs.username = detected.value;
+        inputs.videosUsername = detected.value;
+      } else if (detected.type === 'url') {
+        // If the URL looks like a video, route to video-specific endpoints
+        const u = String(detected.value || '');
+        if (/\/video\/|\/v\//i.test(u) || /video/i.test(u)) {
+          options.transcript = true;
+          inputs.videoUrl = u;
+        } else {
+          // Treat as profile URL
+          const h = extractTkUsername(u);
+          if (h) {
+            options.profile = true;
+            options.profileVideos = true;
+            inputs.username = h;
+            inputs.videosUsername = h;
+          }
+        }
+      } else {
+        options.searchKeyword = true;
+        inputs.keyword = detected.value;
+      }
+    }
     const tasks = [];
     const labels = [];
 
@@ -2774,6 +2912,26 @@ app.post('/api/reddit/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // If caller provided a freeform single query and no options, treat
+    // plain words as a keyword search; subreddit-like inputs are handled
+    // by extractSubreddit below when options.subreddit* are present.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && inputs.query) {
+      const detected = detectInputType(inputs.query);
+      if (detected.type === 'handle') {
+        // Treat as subreddit name
+        inputs.subreddit = detected.value.replace(/^r\//i, '');
+        options.subredditDetails = true;
+        options.subredditPosts = true;
+      } else if (detected.type === 'url') {
+        // Try to extract subreddit from URL
+        inputs.subreddit = extractSubreddit(detected.value);
+        options.subredditDetails = true;
+        options.subredditPosts = true;
+      } else {
+        options.search = true;
+        inputs.searchQuery = detected.value;
+      }
+    }
     const tasks = [];
     const labels = [];
 
