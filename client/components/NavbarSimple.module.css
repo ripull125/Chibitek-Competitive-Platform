@@ -2,7 +2,8 @@
 
 .navbar {
   height: 100vh;
-  width: 76px; /* collapsed */
+  width: 76px;
+  /* collapsed */
   padding: 14px 10px;
   display: flex;
   flex-direction: column;
@@ -17,7 +18,8 @@
 
 /* expand on hover anywhere on the sidebar */
 .navbar:hover {
-  width: 260px; /* expanded */
+  width: 260px;
+  /* expanded */
 }
 
 .navbarMain {
@@ -60,6 +62,21 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.footerAvatarWrap {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
+}
+
+.footerAvatar {
+  border: 2px solid var(--border-color);
+}
+
+.navbar:hover .footerAvatarWrap {
+  justify-content: flex-start;
+  padding-left: 10px;
 }
 
 /* link button */

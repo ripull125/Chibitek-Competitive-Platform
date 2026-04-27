@@ -10,6 +10,7 @@ import {
   Modal,
   Paper,
   ScrollArea,
+  Select,
   Text,
   Textarea,
   TextInput,
@@ -18,6 +19,7 @@ import {
 import {
   IconDeviceFloppy,
   IconFolderOpen,
+  IconPlayerStop,
   IconTrash,
   IconMicrophone,
   IconMicrophoneOff,
@@ -29,6 +31,13 @@ import {
 import { apiUrl } from '../utils/api';
 import { supabase } from '../supabaseClient';
 import { useTranslation } from "react-i18next";
+import {
+  AI_MODEL_OPTIONS,
+  getAiSettingsEventName,
+  getModelMeta,
+  loadAiSettings,
+  saveAiSettings,
+} from "../utils/aiModelSettings";
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
 const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
@@ -135,8 +144,13 @@ export default function ChatInput() {
   const [saveTitle, setSaveTitle] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [lastUsedProvider, setLastUsedProvider] = useState(null);
+  const [lastUsedModel, setLastUsedModel] = useState(null);
+  const initialAiSettings = useMemo(() => loadAiSettings(), []);
+  const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const requestAbortRef = useRef(null);
   const hasHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -158,6 +172,21 @@ export default function ChatInput() {
 
   useEffect(() => {
     hasHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    saveAiSettings({ modelChoice: aiModelChoice });
+  }, [aiModelChoice]);
+
+  useEffect(() => {
+    const eventName = getAiSettingsEventName();
+    const syncSettings = (event) => {
+      const nextChoice = event?.detail?.modelChoice || loadAiSettings().modelChoice;
+      setAiModelChoice(nextChoice);
+    };
+
+    window.addEventListener(eventName, syncSettings);
+    return () => window.removeEventListener(eventName, syncSettings);
   }, []);
 
   useEffect(() => {
@@ -207,6 +236,7 @@ export default function ChatInput() {
   }, []);
 
   const handleSend = async () => {
+    if (isSending) return;
     if (!message.trim() && attachments.length === 0) return;
 
     const userMessage = {
@@ -222,14 +252,23 @@ export default function ChatInput() {
     setIsSending(true);
 
     try {
+      const modelMeta = getModelMeta(aiModelChoice);
+      const controller = new AbortController();
+      requestAbortRef.current = controller;
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-ype': 'application/json' },
         body: JSON.stringify({
           messages: payloadMessages,
           attachments,
           user_id: currentUserId || undefined,
+        signal: controller.signal,
+        body: JSON.stringify({
+          messages: payloadMessages,
+          attachments,
+          llmProvider: modelMeta?.provider,
+          chatModel: aiModelChoice,
         }),
       });
 
@@ -240,11 +279,14 @@ export default function ChatInput() {
       }
 
       const data = await response.json();
+      setLastUsedProvider(data.provider || null);
+      setLastUsedModel(data.model || null);
       setConversation((prev) => [
         ...prev,
         { role: "assistant", content: data.reply || "No response." },
       ]);
     } catch (error) {
+      if (error?.name === "AbortError") return;
       setConversation((prev) => [
         ...prev,
         {
@@ -255,6 +297,7 @@ export default function ChatInput() {
         },
       ]);
     } finally {
+      requestAbortRef.current = null;
       setIsSending(false);
     }
   };
@@ -263,13 +306,19 @@ export default function ChatInput() {
     if (isSending) return;
     setIsSending(true);
     try {
+      const modelMeta = getModelMeta(aiModelChoice);
+      const controller = new AbortController();
+      requestAbortRef.current = controller;
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: [{ role: "user", content: SUMMARY_PROMPT }],
           user_id: currentUserId || undefined,
           use_latest_posts: true,
+          llmProvider: modelMeta?.provider,
+          chatModel: aiModelChoice,
         }),
       });
 
@@ -280,11 +329,14 @@ export default function ChatInput() {
       }
 
       const data = await response.json();
+      setLastUsedProvider(data.provider || null);
+      setLastUsedModel(data.model || null);
       setConversation((prev) => [
         ...prev,
         { role: "assistant", content: data.reply || "No response." },
       ]);
     } catch (error) {
+      if (error?.name === "AbortError") return;
       setConversation((prev) => [
         ...prev,
         {
@@ -295,13 +347,22 @@ export default function ChatInput() {
         },
       ]);
     } finally {
+      requestAbortRef.current = null;
       setIsSending(false);
     }
+  };
+
+  const handleStopGenerating = () => {
+    if (!requestAbortRef.current) return;
+    requestAbortRef.current.abort();
+    requestAbortRef.current = null;
+    setIsSending(false);
   };
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (isSending) return;
       handleSend();
     }
   };
@@ -559,6 +620,30 @@ export default function ChatInput() {
               </Menu.Dropdown>
             </Menu>
           </Group>
+
+          <Group justify="center" mt="sm" gap="sm" wrap="wrap">
+            <Select
+              value={aiModelChoice}
+              onChange={(value) => value && setAiModelChoice(value)}
+              data={AI_MODEL_OPTIONS}
+              searchable
+              w={360}
+              size="xs"
+              placeholder="Choose AI model"
+              disabled={isSending}
+              styles={{
+                input: {
+                  opacity: isSending ? 0.6 : 1,
+                },
+              }}
+            />
+          </Group>
+
+          {(lastUsedProvider || lastUsedModel) ? (
+            <Text size="xs" c="dimmed" mt={6}>
+              Last response used: {lastUsedProvider || "unknown"} / {lastUsedModel || "unknown"}
+            </Text>
+          ) : null}
         </Box>
 
         <div data-tour="chat-root">
@@ -693,14 +778,14 @@ export default function ChatInput() {
 
               <ActionIcon
                 variant="filled"
-                color="blue"
+                color={isSending ? "red" : "blue"}
                 size="lg"
                 radius="xl"
-                onClick={handleSend}
-                loading={isSending}
+                onClick={isSending ? handleStopGenerating : handleSend}
                 style={{ flexShrink: 0 }}
+                title={isSending ? "Stop generating" : "Send"}
               >
-                <IconSend size={18} />
+                {isSending ? <IconPlayerStop size={18} /> : <IconSend size={18} />}
               </ActionIcon>
             </Box>
           </Paper>

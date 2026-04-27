@@ -64,6 +64,7 @@ import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
 import classes from "./DashboardPage.module.css";
 import { useTranslation } from "react-i18next";
+import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -836,11 +837,18 @@ function AISummary({ analytics, userId }) {
         .join("; ");
 
       const prompt = "You are a social media analytics assistant for Chibitek. Analyze this data and provide a concise, actionable summary with 3-4 key insights and recommended next steps.\n\nData overview:\n- Total posts analyzed: " + analytics.totalPosts + "\n- Total engagement: " + analytics.totalEngagement + " (" + analytics.totalLikes + " likes, " + analytics.totalComments + " comments, " + analytics.totalShares + " shares)\n- Total views: " + analytics.totalViews + "\n- Average engagement per post: " + analytics.avgEngagement + "\n- Top platforms: " + (topPlatforms || "N/A") + "\n- Top competitors: " + (topCompetitors || "N/A") + "\n- Top keywords: " + (topKws || "N/A") + "\n\nFormat your response with clear headings using **bold** for emphasis. Keep it under 200 words.";
+      const aiSettings = loadAiSettings();
+      const modelMeta = getModelMeta(aiSettings?.modelChoice);
 
       const res = await fetch(apiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: prompt, user_id: userId, conversation: [] }),
+        body: JSON.stringify({
+          messages: [{ role: "user", content: prompt }],
+          user_id: userId,
+          llmProvider: modelMeta?.provider,
+          chatModel: aiSettings?.modelChoice,
+        }),
       });
       const json = await res.json();
       setSummary(json.reply || json.message || t("dashboard.noSummaryGenerated", { defaultValue: "No summary generated." }));

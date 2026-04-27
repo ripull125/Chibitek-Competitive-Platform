@@ -1155,42 +1155,6 @@ export default function CompetitorLookup() {
     throw err;
   }
 
-  async function tryFetchYouTube(youtubeUrlToFetch) {
-    const trimmed = String(youtubeUrlToFetch || "").trim();
-    if (!trimmed) throw new Error("Please enter a YouTube URL.");
-
-    const attempts = [];
-
-    for (const base of backends) {
-      const url = `${base.replace(/\/+$/, "")}/api/youtube/transcript?video=${encodeURIComponent(trimmed)}`;
-      try {
-        const resp = await fetch(url, { method: "GET" });
-        const ct = resp.headers.get("content-type") || "";
-        if (!ct.includes("application/json")) {
-          const text = await resp.text();
-          throw new Error(`Expected JSON from ${base}, got: ${text.slice(0, 300)}`);
-        }
-        const json = await resp.json();
-        if (!resp.ok) {
-          const msg =
-            json?.error ||
-            `Request failed ${resp.status} ${resp.statusText || ""}`.trim();
-          throw new Error(msg);
-        }
-        return { ...json, _usedBackend: base };
-      } catch (e) {
-        attempts.push({ base, error: e?.message || String(e) });
-      }
-    }
-
-    const err = new Error(
-      `Couldn't connect to the server. Please make sure it's running and try again.`
-    );
-    err.type = "backend_error";
-    err.attempts = attempts;
-    throw err;
-  }
-
   async function handleSubmit(e) {
     e?.preventDefault?.();
     setError(null);
@@ -1246,28 +1210,6 @@ export default function CompetitorLookup() {
         console.error('Error converting data:', conversionError);
         setError(`Data fetched successfully but conversion failed: ${conversionError.message}`);
       }
-    } catch (e) {
-      setError(e?.message || "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSubmitYouTube(e) {
-    e?.preventDefault?.();
-    setError(null);
-    setResult(null);
-    setYoutubeResult(null);
-    setConvertedData(null);
-    const u = youtubeUrl.trim();
-    if (!u) {
-      setError("Please enter a YouTube URL.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await tryFetchYouTube(u);
-      setYoutubeResult(data);
     } catch (e) {
       setError(e?.message || "Unknown error");
     } finally {
@@ -1452,6 +1394,7 @@ export default function CompetitorLookup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          platform_name: "youtube",
           platform_id: platformIds.youtube,
           platform_user_id: String(data.channelId || data.channelTitle || "unknown"),
           username: data.channelTitle || "",
@@ -1705,6 +1648,7 @@ export default function CompetitorLookup() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        platform_name: platformKey,
         platform_id: pid,
         platform_user_id: String(platformUserId || "unknown"),
         username: String(username || platformUserId || "unknown"),
@@ -1725,17 +1669,6 @@ export default function CompetitorLookup() {
       throw new Error(`Save failed: ${resp.status} ${text}`);
     }
     return resp.json();
-  }
-
-  // YouTube transcript save (kept for TikTok compatibility)
-  function saveYoutubeTranscript(data) {
-    return handleGenericSave("youtube", {
-      platformUserId: "transcript",
-      username: data.videoTitle || "transcript",
-      postId: `transcript_${Date.now()}`,
-      content: `[Transcript] ${data.videoTitle || ""}\n\n${data.text || ""}`,
-      authorName: data.videoTitle || "Transcript",
-    });
   }
 
   // TikTok transcript save
@@ -1953,6 +1886,7 @@ export default function CompetitorLookup() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            platform_name: "youtube",
             platform_id: platformIds.youtube,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
@@ -2143,34 +2077,6 @@ export default function CompetitorLookup() {
               <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
             </Group>
           )}
-        </Stack>
-      </Card>
-    );
-  }
-
-  function YTTranscript({ data }) {
-    if (!data) return null;
-    if (!data.available) {
-      return (
-        <Alert color="yellow" title={t("competitorLookup.transcriptUnavailable")}>
-          {data.reason || t("competitorLookup.noTranscriptAvailable")}
-          {data.videoTitle && <Text size="sm" mt={4}>Video: {data.videoTitle}</Text>}
-        </Alert>
-      );
-    }
-    return (
-      <Card withBorder radius="md" shadow="sm">
-        <Stack gap="xs">
-          <Group justify="space-between">
-            <Text fw={600}>Transcript</Text>
-            <Group gap="xs">
-              <Badge size="xs" variant="light">{data.language || "en"}</Badge>
-              <SaveButton label="Save Transcript" onSave={() => saveYoutubeTranscript(data)} />
-            </Group>
-          </Group>
-          <ScrollArea h={250}>
-            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{data.text}</Text>
-          </ScrollArea>
         </Stack>
       </Card>
     );

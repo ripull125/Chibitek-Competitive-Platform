@@ -7,18 +7,12 @@ import 'dotenv/config';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
-import { supabase } from './supabase.js';
+import { createHash } from 'crypto';
+import { supabase, supabaseAuth } from './supabase.js';
 import { categorizeTone } from './tone.js';
 import { suggestKeywordsForBooks } from './keywords.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-const execAsync = promisify(exec);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function extractYouTubeVideoId(input) {
   if (!input) return null;
@@ -38,29 +32,6 @@ function extractYouTubeVideoId(input) {
   }
 
   return null;
-}
-
-// Helper function to get transcript using Python library (youtube-transcript-api)
-async function getTranscriptFromPython(videoId) {
-  try {
-    const pythonScript = path.join(__dirname, 'get_transcript.py');
-    const { stdout, stderr } = await execAsync(`python3 "${pythonScript}" "${videoId}"`, {
-      timeout: 15000,
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large transcripts
-    });
-
-    if (stderr) {
-      console.error('Python stderr:', stderr);
-    }
-
-    const result = JSON.parse(stdout);
-    if (!result.success) {
-      console.error('Python transcript extraction failed:', result.error);
-    }
-    return result;
-  } catch (err) {
-    console.error('Python transcript extraction error:', err.message);
-  };
 }
 
 // Ensure Reddit platform row exists
@@ -88,39 +59,703 @@ const app = express();
 app.use(cors({
   origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 }));
 app.use(express.json({ limit: '10mb' }));
 
 const {
   GITHUB_TOKEN,
+  GITHUB_TOKENS,
   OPENAI_API_KEY,
   OPENAI_BASE_URL,
   CHAT_MODEL,
+  CHAT_MODEL_GITHUB,
+  CHAT_MODEL_CEREBRAS,
+  CHAT_MODEL_OPENAI,
+  CEREBRAS_MODEL,
+  CEREBRAS_API_KEY,
+  CEREBRAS_BASE_URL,
   LLM_PROVIDER,
   CHAT_DEBUG,
-  VOYAGE_API_KEY,
-  VOYAGE_EMBED_MODEL,
-  VOYAGE_RERANK_MODEL,
 } = process.env;
+
 const githubAiEndpoint = 'https://models.github.ai/inference';
-const chatModel = CHAT_MODEL || 'openai/gpt-5-nano';
-const provider = String(LLM_PROVIDER || 'auto').toLowerCase();
-const usingGithub = provider === 'github' || (provider === 'auto' && !!GITHUB_TOKEN);
-const chatApiKey = usingGithub ? GITHUB_TOKEN : OPENAI_API_KEY;
-const chatBaseUrl = usingGithub
-  ? githubAiEndpoint
-  : (OPENAI_BASE_URL || 'https://api.openai.com/v1');
-const openai = new OpenAI({ baseURL: chatBaseUrl, apiKey: chatApiKey });
-const voyageEmbedModel = VOYAGE_EMBED_MODEL || 'voyage-4';
-const voyageRerankModel = VOYAGE_RERANK_MODEL || 'rerank-2.5-lite';
-const voyageEmbedEndpoint = 'https://api.voyageai.com/v1/embeddings';
-const voyageRerankEndpoint = 'https://api.voyageai.com/v1/rerank';
-const retrievalCandidateLimit = 30;
-const rerankedContextLimit = 6;
+const cerebrasEndpoint = CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1';
+const cerebrasEndpointAlt = 'https://api.cerebras.ai';
+const openaiEndpoint = OPENAI_BASE_URL || 'https://api.openai.com/v1';
+const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-4o-mini';
+const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-8b';
+
+function loadIndexedEnvValues(prefix, { start = 1, end = 20 } = {}) {
+  const values = [];
+  for (let i = start; i <= end; i++) {
+    const value = process.env[`${prefix}${i}`];
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+function resolveRequestedProvider(rawProvider) {
+  const normalized = String(rawProvider || '').trim().toLowerCase();
+  if (normalized === 'github' || normalized === 'cerebras' || normalized === 'openai') {
+    return normalized;
+  }
+
+  const envProvider = String(LLM_PROVIDER || 'auto').trim().toLowerCase();
+  if (envProvider === 'github' || envProvider === 'cerebras' || envProvider === 'openai') {
+    return envProvider;
+  }
+
+  if (GITHUB_KEYS.length) return 'github';
+  if (CEREBRAS_API_KEY || process.env.CEREBRAS_API_KEY1) return 'cerebras';
+  return 'openai';
+}
+
+const GITHUB_KEYS = [
+  GITHUB_TOKEN,
+  ...(GITHUB_TOKENS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  ...loadIndexedEnvValues('GITHUB_TOKEN', { start: 1, end: 20 }),
+].filter(Boolean);
+
+let githubKeyIndex = 0;
+function nextGithubKey() {
+  if (!GITHUB_KEYS.length) return null;
+  const index = githubKeyIndex % GITHUB_KEYS.length;
+  githubKeyIndex++;
+  return GITHUB_KEYS[index];
+}
+
+const CEREBRAS_KEYS = [
+  CEREBRAS_API_KEY,
+  ...(process.env.CEREBRAS_API_KEYS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  ...loadIndexedEnvValues('CEREBRAS_API_KEY', { start: 1, end: 20 }),
+].filter(Boolean);
+
+let cerebrasKeyIndex = 0;
+function nextCerebrasKey() {
+  if (!CEREBRAS_KEYS.length) return null;
+  const index = cerebrasKeyIndex % CEREBRAS_KEYS.length;
+  cerebrasKeyIndex++;
+  return CEREBRAS_KEYS[index];
+}
+
+function parseModelSelection(rawModel) {
+  const value = String(rawModel || '').trim();
+  if (!value) return { provider: null, model: '' };
+
+  const match = value.match(/^(github|cerebras|openai):(.*)$/i);
+  if (!match) {
+    return { provider: null, model: value };
+  }
+
+  return {
+    provider: String(match[1] || '').toLowerCase(),
+    model: String(match[2] || '').trim(),
+  };
+}
+
+function normalizeCerebrasModel(model) {
+  const raw = String(model || '').trim();
+  if (!raw) return raw;
+
+  const aliases = {
+    'llama-3.1-8b': 'llama3.1-8b',
+    'llama-3.1-70b': 'llama3.1-70b',
+    'llama-3.3-70b': 'llama-3.3-70b',
+    'meta/llama-3.1-8b-instruct': 'llama3.1-8b',
+    'meta/llama-3.1-70b-instruct': 'llama3.1-70b',
+  };
+
+  const key = raw.toLowerCase();
+  return aliases[key] || raw;
+}
+
+function getCerebrasModelCandidates(primaryModel) {
+  const base = normalizeCerebrasModel(primaryModel);
+  const fallback = normalizeCerebrasModel(cerebrasFallbackModel);
+  const candidates = [
+    base,
+    fallback,
+    'llama3.1-8b',
+    'llama3.1-70b',
+  ].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+function resolveChatConfig({ requestedProvider, requestedModel } = {}) {
+  const parsedModel = parseModelSelection(requestedModel);
+  const provider = resolveRequestedProvider(parsedModel.provider || requestedProvider);
+  const modelOverride = parsedModel.model;
+
+  if (provider === 'github') {
+    const model = modelOverride || CHAT_MODEL_GITHUB || CHAT_MODEL || 'openai/gpt-5-nano';
+    return {
+      provider,
+      model,
+      baseUrl: githubAiEndpoint,
+      apiKey: nextGithubKey(),
+      missingEnv: 'GITHUB_TOKEN',
+    };
+  }
+
+  if (provider === 'cerebras') {
+    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-8b');
+    return {
+      provider,
+      model,
+      baseUrl: cerebrasEndpoint,
+      apiKey: nextCerebrasKey(),
+      missingEnv: 'CEREBRAS_API_KEY',
+    };
+  }
+
+  const model = modelOverride || CHAT_MODEL_OPENAI || CHAT_MODEL || 'gpt-4o-mini';
+  return {
+    provider: 'openai',
+    model,
+    baseUrl: openaiEndpoint,
+    apiKey: OPENAI_API_KEY || null,
+    missingEnv: 'OPENAI_API_KEY',
+  };
+}
 
 const getUserIdFromRequest = (req) =>
   req.body?.user_id || req.query?.user_id || req.get('x-user-id') || null;
+
+const ROLE_OWNER = 'owner';
+const ROLE_ADMIN = 'admin';
+const ROLE_USER = 'user';
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const normalizeRole = (role) => {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'regular') return ROLE_USER;
+  if (normalized === ROLE_OWNER || normalized === ROLE_ADMIN || normalized === ROLE_USER) {
+    return normalized;
+  }
+  return ROLE_USER;
+};
+
+const canManageRegularUsers = (role) => {
+  const normalized = normalizeRole(role);
+  return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
+};
+
+const canManageAdmins = (role) => normalizeRole(role) === ROLE_OWNER;
+
+const makeAdminCreatedProviderUserId = (email) => {
+  const normalized = normalizeEmail(email);
+  const salt = process.env.ADMIN_USER_ID_SALT || 'chibitek-admin-user-id';
+  return createHash('sha256').update(`${salt}:${normalized}`).digest('hex');
+};
+
+const isMissingTableError = (error) => {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '');
+  return (
+    code === 'PGRST205' ||
+    code === '42P01' ||
+    /Could not find the table/i.test(message) ||
+    /relation .* does not exist/i.test(message)
+  );
+};
+
+const isDuplicateKeyError = (error) => String(error?.code || '') === '23505';
+
+function getBearerToken(req) {
+  const header = req.get('authorization') || '';
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const payload = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
+async function getRequestAuthContext(req) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return { ok: false, status: 401, error: 'Missing bearer token.' };
+  }
+
+  const { data, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !data?.user) {
+    return { ok: false, status: 401, error: 'Invalid or expired token.' };
+  }
+
+  const email = normalizeEmail(data.user.email);
+  if (!email) {
+    return { ok: false, status: 401, error: 'Authenticated user has no email.' };
+  }
+
+  return {
+    ok: true,
+    token,
+    user: data.user,
+    email,
+    isAdmin: false,
+    verified: true,
+  };
+}
+
+async function getUserByEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, role, name, provider, created_at, updated_at')
+    .ilike('email', normalized)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error)) return null;
+    throw error;
+  }
+
+  if (!data) return null;
+  return {
+    ...data,
+    role: normalizeRole(data.role),
+  };
+}
+
+async function ensureVerifiedUserRow(authCtx) {
+  if (!authCtx?.verified || !authCtx?.user || !authCtx?.email) return null;
+
+  const existing = await getUserByEmail(authCtx.email);
+  if (existing) return existing;
+
+  const meta = authCtx.user.user_metadata || {};
+  const displayName = String(meta.full_name || meta.name || '').trim() || null;
+  const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
+
+  const { data, error } = await supabase
+    .from('users')
+    .insert({
+      email: authCtx.email,
+      name: displayName,
+      provider,
+      provider_user_id: String(authCtx.user.id || makeAdminCreatedProviderUserId(authCtx.email)),
+      role: ROLE_USER,
+    })
+    .select('id, email, role, name, provider, created_at, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    ...data,
+    role: normalizeRole(data.role),
+  };
+}
+
+async function getAuthRoleByEmail(email) {
+  const user = await getUserByEmail(email);
+  if (!user) {
+    return {
+      authorized: false,
+      role: ROLE_USER,
+      canManageRegularUsers: false,
+      canManageAdmins: false,
+      user: null,
+    };
+  }
+
+  const role = normalizeRole(user.role);
+  return {
+    authorized: true,
+    role,
+    canManageRegularUsers: canManageRegularUsers(role),
+    canManageAdmins: canManageAdmins(role),
+    user,
+  };
+}
+
+app.get('/api/auth/access', async (req, res) => {
+  try {
+    // Always re-check Supabase state; avoid stale auth results from browser/proxy cache.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+
+    const auth = await getRequestAuthContext(req);
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    let access = {
+      authorized: false,
+      role: ROLE_USER,
+      canManageRegularUsers: false,
+      canManageAdmins: false,
+    };
+
+    try {
+      access = await getAuthRoleByEmail(auth.email);
+    } catch (lookupErr) {
+      // Do not fail login checks hard if DB lookup has transient/schema issues.
+      console.warn('User access lookup failed, treating as unauthorized:', lookupErr?.message || lookupErr);
+    }
+
+    return res.json({
+      email: auth.email,
+      authorized: access.authorized,
+      role: access.role,
+      isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
+      canManageRegularUsers: access.canManageRegularUsers,
+      canManageAdmins: access.canManageAdmins,
+    });
+  } catch (err) {
+    console.error('Access check failed:', err);
+    return res.status(500).json({ error: 'Failed to verify access.' });
+  }
+});
+
+async function requireRoleAccess(req, res) {
+  const auth = await getRequestAuthContext(req);
+  if (!auth.ok) {
+    res.status(auth.status).json({ error: auth.error });
+    return null;
+  }
+
+  if (!auth.verified) {
+    res.status(401).json({ error: 'Access requires a valid token.' });
+    return null;
+  }
+
+  const access = await getAuthRoleByEmail(auth.email);
+  if (!access.authorized) {
+    res.status(403).json({ error: 'Access denied.' });
+    return null;
+  }
+
+  return {
+    ...auth,
+    role: access.role,
+    isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
+    canManageRegularUsers: access.canManageRegularUsers,
+    canManageAdmins: access.canManageAdmins,
+  };
+}
+
+async function requireRegularManager(req, res) {
+  const auth = await requireRoleAccess(req, res);
+  if (!auth) return null;
+  if (!auth.canManageRegularUsers) {
+    res.status(403).json({ error: 'Admin or owner access required.' });
+    return null;
+  }
+  return auth;
+}
+
+async function requireOwner(req, res) {
+  const auth = await requireRoleAccess(req, res);
+  if (!auth) return null;
+  if (!auth.canManageAdmins) {
+    res.status(403).json({ error: 'Owner access required.' });
+    return null;
+  }
+  return auth;
+}
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireRegularManager(req, res);
+    if (!auth) return;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('email, name, provider, role, created_at, updated_at')
+      .not('email', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ users: data || [] });
+  } catch (err) {
+    console.error('List users failed:', err);
+    return res.status(500).json({ error: 'Failed to list users.' });
+  }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireRegularManager(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email);
+    const name = String(req.body?.name || '').trim() || null;
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const { data: existingUser, error: existingUserErr } = await supabase
+      .from('users')
+      .select('email, name, provider, role, created_at, updated_at')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingUserErr) {
+      throw existingUserErr;
+    }
+
+    if (existingUser) {
+      return res.json({ user: existingUser, existed: true });
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        email,
+        name,
+        provider: 'admin_created',
+        provider_user_id: makeAdminCreatedProviderUserId(email),
+        role: ROLE_USER,
+      })
+      .select('email, name, provider, role, created_at, updated_at')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ user: data, existed: false });
+  } catch (err) {
+    console.error('Create user failed:', err);
+    return res.status(500).json({ error: 'Failed to create user.' });
+  }
+});
+
+app.delete('/api/admin/users', async (req, res) => {
+  try {
+    const auth = await requireRegularManager(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email || req.query?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const targetUser = await getUserByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const targetRole = normalizeRole(targetUser.role);
+    if (targetRole === ROLE_OWNER) {
+      return res.status(403).json({ error: 'Owner users cannot be deleted.' });
+    }
+    if (targetRole === ROLE_ADMIN) {
+      return res.status(403).json({ error: 'Admins cannot be deleted from users endpoint.' });
+    }
+
+    const { data: userRow, error: userLookupError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('id', targetUser.id)
+      .maybeSingle();
+
+    if (userLookupError) {
+      throw userLookupError;
+    }
+    if (!userRow?.id) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // Clean dependent data first so FK constraints do not block user deletion.
+    const { data: userPosts, error: userPostsErr } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('user_id', userRow.id);
+
+    if (userPostsErr) {
+      throw userPostsErr;
+    }
+
+    const postIds = (userPosts || []).map((p) => p.id).filter(Boolean);
+    if (postIds.length) {
+      const { error: metricsErr } = await supabase
+        .from('post_metrics')
+        .delete()
+        .in('post_id', postIds);
+      if (metricsErr) throw metricsErr;
+
+      const { error: detailsErr } = await supabase
+        .from('post_details_platform')
+        .delete()
+        .in('post_id', postIds);
+      if (detailsErr) throw detailsErr;
+
+      const { error: topicsErr } = await supabase
+        .from('post_topics')
+        .delete()
+        .in('post_id', postIds);
+      if (topicsErr) throw topicsErr;
+
+      const { error: postsErr } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', postIds);
+      if (postsErr) throw postsErr;
+    }
+
+    const { error: chatsErr } = await supabase
+      .from('chat_conversations')
+      .delete()
+      .eq('user_id', userRow.id);
+    if (chatsErr) throw chatsErr;
+
+    const { error: watchlistErr } = await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('user_id', userRow.id);
+    if (watchlistErr) throw watchlistErr;
+
+    const { data, error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userRow.id)
+      .select('email');
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.length) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    return res.json({ deleted: true, email });
+  } catch (err) {
+    console.error('Delete user failed:', err);
+    if (String(err?.code || '') === '23503') {
+      return res.status(409).json({ error: 'Cannot delete user due to related records. Delete dependencies first.' });
+    }
+    return res.status(500).json({ error: 'Failed to delete user.' });
+  }
+});
+
+app.get('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireRegularManager(req, res);
+    if (!auth) return;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('email, role, created_at, updated_at')
+      .in('role', [ROLE_OWNER, ROLE_ADMIN])
+      .not('email', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ admins: data || [] });
+  } catch (err) {
+    console.error('List admins failed:', err);
+    return res.status(500).json({ error: 'Failed to list admins.' });
+  }
+});
+
+app.post('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireOwner(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const existing = await getUserByEmail(email);
+
+    let data = null;
+    let error = null;
+    if (existing) {
+      ({ data, error } = await supabase
+        .from('users')
+        .update({ role: ROLE_ADMIN })
+        .eq('id', existing.id)
+        .select('email, role, created_at, updated_at')
+        .single());
+    } else {
+      ({ data, error } = await supabase
+        .from('users')
+        .insert({
+          email,
+          provider: 'admin_created',
+          provider_user_id: makeAdminCreatedProviderUserId(email),
+          role: ROLE_ADMIN,
+        })
+        .select('email, role, created_at, updated_at')
+        .single());
+    }
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ admin: data });
+  } catch (err) {
+    console.error('Create admin failed:', err);
+    return res.status(500).json({ error: 'Failed to create admin.' });
+  }
+});
+
+app.delete('/api/admin/admins', async (req, res) => {
+  try {
+    const auth = await requireOwner(req, res);
+    if (!auth) return;
+
+    const email = normalizeEmail(req.body?.email || req.query?.email);
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required.' });
+    }
+
+    const targetUser = await getUserByEmail(email);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Admin user not found.' });
+    }
+
+    if (normalizeRole(targetUser.role) !== ROLE_ADMIN) {
+      return res.status(400).json({ error: 'Target user is not an admin.' });
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ role: ROLE_USER })
+      .eq('id', targetUser.id)
+      .select('email, role, updated_at')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return res.json({ admin: data, downgraded: true });
+  } catch (err) {
+    console.error('Delete admin failed:', err);
+    return res.status(500).json({ error: 'Failed to delete admin.' });
+  }
+});
 
 const requireUserId = (req, res) => {
   const userId = getUserIdFromRequest(req);
@@ -503,7 +1138,7 @@ app.listen(port, async () => {
     const redditId = await ensureRedditPlatform();
     console.log(`Reddit platform ensured (id=${redditId})`);
   } catch (e) {
-    console.error('Failed to ensure Reddit platform:', e.message);
+    console.error('Startup seed failed:', e.message);
   }
 });
 
@@ -558,11 +1193,13 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-  if (!chatApiKey) {
-    const missing = usingGithub ? 'GITHUB_TOKEN' : 'OPENAI_API_KEY';
-    console.error(`Missing chat API key on server (${missing}).`);
+  const { llmProvider, chatModel: requestedModel } = req.body || {};
+  let chatConfig = resolveChatConfig({ requestedProvider: llmProvider, requestedModel });
+
+  if (!chatConfig.apiKey) {
+    console.error(`Missing chat API key on server (${chatConfig.missingEnv}).`);
     return res.status(500).json({
-      error: `Chat API key is not configured on the server (${missing}).`,
+      error: `Chat API key is not configured on the server (${chatConfig.missingEnv}).`,
     });
   }
 
@@ -625,15 +1262,105 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    const response = await openai.chat.completions.create({
-      model: chatModel,
-      messages: [...systemMessages, ...userMessages],
-    });
+    const maxAttempts = chatConfig.provider === 'github'
+      ? Math.max(1, GITHUB_KEYS.length)
+      : chatConfig.provider === 'cerebras'
+        ? Math.max(1, CEREBRAS_KEYS.length || 1) * 4
+        : 1;
+
+    const cerebrasModelCandidates = chatConfig.provider === 'cerebras'
+      ? getCerebrasModelCandidates(chatConfig.model)
+      : [];
+    let cerebrasModelIndex = 0;
+    let triedCerebrasAltBase = false;
+
+    let response;
+    let lastError = null;
+    let attemptedUnknownModelFallback = false;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const llmClient = new OpenAI({
+          baseURL: chatConfig.baseUrl,
+          apiKey: chatConfig.apiKey,
+        });
+
+        response = await llmClient.chat.completions.create({
+          model: chatConfig.model,
+          messages: [...systemMessages, ...userMessages],
+        });
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        const unauthorized = error?.status === 401 || String(error?.message || '').includes('401');
+        const rateLimited = error?.status === 429 || String(error?.message || '').includes('429');
+        const unknownModel =
+          error?.code === 'unknown_model' ||
+          (error?.status === 404 && /unknown model/i.test(String(error?.message || '')));
+
+        if (chatConfig.provider === 'github' && unknownModel && !attemptedUnknownModelFallback) {
+          attemptedUnknownModelFallback = true;
+          chatConfig = {
+            ...chatConfig,
+            model: githubFallbackModel,
+          };
+          continue;
+        }
+
+        if (chatConfig.provider === 'cerebras') {
+          const cerebras404 = error?.status === 404 || String(error?.message || '').includes('404');
+
+          if ((unknownModel || cerebras404) && cerebrasModelIndex < cerebrasModelCandidates.length - 1) {
+            cerebrasModelIndex++;
+            chatConfig = {
+              ...chatConfig,
+              model: cerebrasModelCandidates[cerebrasModelIndex],
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+
+          if (cerebras404 && !triedCerebrasAltBase) {
+            triedCerebrasAltBase = true;
+            chatConfig = {
+              ...chatConfig,
+              baseUrl: cerebrasEndpointAlt,
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+
+          const shouldRetryCerebras = (unauthorized || rateLimited) && attempt < maxAttempts - 1;
+          if (shouldRetryCerebras) {
+            chatConfig = {
+              ...chatConfig,
+              apiKey: nextCerebrasKey() || chatConfig.apiKey,
+            };
+            continue;
+          }
+        }
+
+        const shouldRetryGithub = chatConfig.provider === 'github' && unauthorized && attempt < maxAttempts - 1;
+        if (!shouldRetryGithub) {
+          throw error;
+        }
+        chatConfig = resolveChatConfig({ requestedProvider: 'github', requestedModel });
+      }
+    }
+
+    if (!response && lastError) {
+      throw lastError;
+    }
 
     const reply = response.choices?.[0]?.message?.content || 'No response from model.';
-    return res.json({ reply });
+    return res.json({
+      reply,
+      provider: chatConfig.provider,
+      model: chatConfig.model,
+    });
   } catch (error) {
-    const providerLabel = usingGithub ? 'github' : 'openai';
+    const providerLabel = chatConfig.provider;
     const details = {
       message: error?.message,
       status: error?.status,
@@ -641,8 +1368,8 @@ app.post('/api/chat', async (req, res) => {
       type: error?.type,
       code: error?.code,
       provider: providerLabel,
-      baseUrl: chatBaseUrl,
-      model: chatModel,
+      baseUrl: chatConfig.baseUrl,
+      model: chatConfig.model,
     };
     console.error('Chat completion error:', details);
     if (CHAT_DEBUG === 'true') {
@@ -660,14 +1387,19 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.get('/api/chat/health', (req, res) => {
-  const providerLabel = usingGithub ? 'github' : 'openai';
-  const keyPresent = Boolean(chatApiKey);
+  const chatConfig = resolveChatConfig();
+  const keyPresent = Boolean(chatConfig.apiKey);
   res.json({
     ok: true,
-    provider: providerLabel,
-    baseUrl: chatBaseUrl,
-    model: chatModel,
+    provider: chatConfig.provider,
+    baseUrl: chatConfig.baseUrl,
+    model: chatConfig.model,
     keyPresent,
+    availableProviders: {
+      github: Boolean(GITHUB_KEYS.length),
+      cerebras: Boolean(CEREBRAS_KEYS.length),
+      openai: Boolean(OPENAI_API_KEY),
+    },
   });
 });
 
@@ -944,22 +1676,27 @@ app.post("/api/posts", async (req, res) => {
   // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id
   const PLATFORM_NAME_MAP = { x: 'X', youtube: 'YouTube', reddit: 'Reddit', linkedin: 'LinkedIn', instagram: 'Instagram', tiktok: 'TikTok' };
   let platform_id = rawPlatformId;
+  const platformKey = String(platform_name || '').trim().toLowerCase();
   if (platform_name) {
     const resolvedName = PLATFORM_NAME_MAP[platform_name.toLowerCase()] || platform_name;
     platform_id = await ensurePlatform(resolvedName);
   }
 
+  const platformPostId = String(platform_post_id).trim();
+  const isYouTube = platformKey === 'youtube' || Number(platform_id) === 8;
+  const isX = platformKey === 'x' || Number(platform_id) === 1;
+  const isInstagram = platformKey === 'instagram' || Number(platform_id) === 3;
+  const isTikTok = platformKey === 'tiktok' || Number(platform_id) === 5;
+  const isReddit = platformKey === 'reddit' || Number(platform_id) === REDDIT_PLATFORM_ID;
+
   try {
     // Find or create competitor
-    const profileUrlMap = {
-      1: `https://x.com/${username}`,
-      3: `https://www.instagram.com/${username}`,
-      5: `https://www.tiktok.com/@${username}`,
-      8: `https://www.youtube.com/channel/${platform_user_id}`,
-    };
-    // Reddit platform ID is dynamic (ensured at startup)
-    profileUrlMap[REDDIT_PLATFORM_ID] = `https://www.reddit.com/user/${username}`;
-    const profileUrl = profileUrlMap[platform_id] || `https://unknown/${username}`;
+    let profileUrl = `https://unknown/${username || platform_user_id}`;
+    if (isX) profileUrl = `https://x.com/${username || platform_user_id}`;
+    if (isInstagram) profileUrl = `https://www.instagram.com/${username || platform_user_id}`;
+    if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platform_user_id}`;
+    if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platform_user_id}`;
+    if (isReddit) profileUrl = `https://www.reddit.com/user/${username || platform_user_id}`;
 
     let competitor;
     const { data: existingComp, error: competitorError } = await supabase
@@ -990,18 +1727,24 @@ app.post("/api/posts", async (req, res) => {
 
     // Find or create post
     let post;
-    const { data: existingPost } = await supabase
+    const { data: existingPost, error: existingPostErr } = await supabase
       .from("posts")
       .select("*")
-      .eq("user_id", user_id)
       .eq("platform_id", platform_id)
-      .eq("platform_post_id", platform_post_id)
+      .eq("platform_post_id", platformPostId)
       .maybeSingle();
+    if (existingPostErr) throw existingPostErr;
 
     if (existingPost) {
       const { data: updated, error: updateErr } = await supabase
         .from("posts")
-        .update({ content, published_at })
+        .update({
+          content,
+          published_at,
+          competitor_id: competitor.id,
+          // Keep ownership stable when set, but backfill when empty.
+          user_id: existingPost.user_id || user_id,
+        })
         .eq("id", existingPost.id)
         .select()
         .single();
@@ -1013,19 +1756,46 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           competitor_id: competitor.id,
-          platform_post_id,
+          platform_post_id: platformPostId,
           content,
           published_at,
           user_id,
         })
         .select()
         .single();
-      if (insertErr) throw insertErr;
-      post = newPost;
+      if (insertErr) {
+        if (!isDuplicateKeyError(insertErr)) throw insertErr;
+
+        // Concurrent saves can race on insert; resolve by loading the existing row.
+        const { data: racedPost, error: racedPostErr } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('platform_id', platform_id)
+          .eq('platform_post_id', platformPostId)
+          .maybeSingle();
+        if (racedPostErr) throw racedPostErr;
+        if (!racedPost) throw insertErr;
+
+        const { data: synced, error: syncedErr } = await supabase
+          .from('posts')
+          .update({
+            content,
+            published_at,
+            competitor_id: competitor.id,
+            user_id: racedPost.user_id || user_id,
+          })
+          .eq('id', racedPost.id)
+          .select()
+          .single();
+        if (syncedErr) throw syncedErr;
+        post = synced;
+      } else {
+        post = newPost;
+      }
     }
 
     console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments, 'views:', views);
-    await supabase.from("post_metrics").insert({
+    const { error: metricsErr } = await supabase.from("post_metrics").insert({
       post_id: post.id,
       snapshot_at: new Date(),
       likes,
@@ -1033,9 +1803,10 @@ app.post("/api/posts", async (req, res) => {
       comments,
       other_json: { views: views ?? 0 },
     });
+    if (metricsErr) throw metricsErr;
 
     // For YouTube, save additional details
-    if (platform_id === 8) {
+    if (isYouTube) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1046,13 +1817,13 @@ app.post("/api/posts", async (req, res) => {
           views,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
       }
     }
 
     // For X (Twitter), save additional details
-    if (platform_id === 1) {
+    if (isX) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1062,13 +1833,13 @@ app.post("/api/posts", async (req, res) => {
           views: views ?? 0,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving X post details:', detailsError);
       }
     }
 
     // For Instagram, TikTok, Reddit — save author details + views
-    if ([3, 5, REDDIT_PLATFORM_ID].includes(platform_id)) {
+    if (isInstagram || isTikTok || isReddit) {
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: {
@@ -1078,7 +1849,7 @@ app.post("/api/posts", async (req, res) => {
           views: views ?? 0,
         },
       });
-      if (detailsError) {
+      if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
       }
     }
@@ -2334,7 +3105,7 @@ async function searchYouTube(query, maxResults = 10) {
 
 /**
  * POST /api/youtube/search
- * Body: { options: { channelDetails, channelVideos, videoDetails, transcript, videoComments, search },
+ * Body: { options: { channelDetails, channelVideos, videoDetails, videoComments, search },
  *         inputs: { channelUrl, videoUrl, searchQuery } }
  */
 app.post('/api/youtube/search', async (req, res) => {
@@ -2365,18 +3136,6 @@ app.post('/api/youtube/search', async (req, res) => {
       labels.push('videoDetails');
       tasks.push(fetchVideoDetails(videoId));
     }
-    if (options.transcript && videoId) {
-      labels.push('transcript');
-      tasks.push((async () => {
-        const pythonResult = await getTranscriptFromPython(videoId);
-        if (pythonResult?.success && pythonResult.transcript) {
-          return { available: true, language: pythonResult.language || 'en', text: pythonResult.transcript };
-        }
-        // Fallback: still return video metadata
-        const details = await fetchVideoDetails(videoId);
-        return { available: false, reason: pythonResult?.error || 'No transcript available', videoTitle: details.title };
-      })());
-    }
 
     // Search
     if (options.search && inputs.searchQuery) {
@@ -2403,72 +3162,6 @@ app.post('/api/youtube/search', async (req, res) => {
     return res.json({ success: true, results, errors });
   } catch (err) {
     console.error('YouTube search error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/youtube/transcript", async (req, res) => {
-  try {
-    const { video } = req.query;
-    const videoId = extractYouTubeVideoId(video);
-
-    if (!videoId) {
-      return res.status(400).json({ error: "Invalid YouTube URL or video ID" });
-    }
-
-    if (!process.env.YOUTUBE_API_KEY) {
-      return res.status(500).json({ error: "YOUTUBE_API_KEY not configured" });
-    }
-
-    // Fetch video metadata using official YouTube API
-    const videoMetaRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${videoId}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-    const videoMetaData = await videoMetaRes.json();
-
-    if (!videoMetaData.items?.length) {
-      return res.status(404).json({ error: "Video not found" });
-    }
-
-    const videoItem = videoMetaData.items[0];
-
-    const videoInfo = {
-      title: videoItem.snippet.title,
-      description: videoItem.snippet.description,
-      publishedAt: videoItem.snippet.publishedAt,
-      channelId: videoItem.snippet.channelId,
-      channelTitle: videoItem.snippet.channelTitle,
-      stats: {
-        views: Number(videoItem.statistics.viewCount || 0),
-        likes: Number(videoItem.statistics.likeCount || 0),
-        comments: Number(videoItem.statistics.commentCount || 0),
-      },
-    };
-
-    // Extract transcript using Python library
-    const pythonResult = await getTranscriptFromPython(videoId);
-
-    if (pythonResult.success && pythonResult.transcript) {
-      return res.json({
-        videoId,
-        video: videoInfo,
-        transcriptAvailable: true,
-        language: pythonResult.language || "en",
-        source: "youtube-transcript-api",
-        transcript: pythonResult.transcript,
-      });
-    }
-
-    // Failed to get transcript
-    return res.json({
-      videoId,
-      video: videoInfo,
-      transcriptAvailable: false,
-      transcript: "",
-      reason: pythonResult.error || "No transcript available",
-    });
-  } catch (err) {
-    console.error("YouTube transcript error:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });

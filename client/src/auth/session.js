@@ -1,29 +1,32 @@
 import { supabase } from "../supabaseClient";
+import { apiUrl } from "../utils/api";
 
 const STORAGE_KEY = "chibitek.auth.session";
-const ALLOWED_DOMAIN = "chibitek.com";
-const ALLOWED_EMAILS = new Set([
-  "puhalenthirv@gmail.com",
-  "matousposp8@gmail.com",
-  "evanchin0322@gmail.com",
-  "ethan.j.cha@gmail.com",
-  "davidpaul.villarosa@gmail.com",
-  "andreasbratu26@gmail.com",
-  "bergen.capstone.2025@gmail.com"
-]);
 
-export function isAuthorizedEmail(email) {
-  if (!email) return false;
-  const normalized = String(email).trim().toLowerCase();
-  if (ALLOWED_EMAILS.has(normalized)) return true;
-  const atIndex = normalized.lastIndexOf("@");
-  if (atIndex === -1) return false;
-  const domain = normalized.slice(atIndex + 1);
-  return domain === ALLOWED_DOMAIN;
+const ROLE_OWNER = "owner";
+const ROLE_ADMIN = "admin";
+const ROLE_USER = "user";
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+export function normalizeRole(role) {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized === "regular") return ROLE_USER;
+  if (normalized === ROLE_OWNER || normalized === ROLE_ADMIN || normalized === ROLE_USER) {
+    return normalized;
+  }
+  return ROLE_USER;
+}
+
+export function isAdminRole(role) {
+  const normalized = normalizeRole(role);
+  return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
 }
 
 export function isSessionAuthorized(session) {
-  return isAuthorizedEmail(session?.user?.email);
+  return Boolean(session?.access?.authorized);
 }
 
 export function getStoredSession() {
@@ -41,10 +44,11 @@ export function storeSession(session) {
   // The source of truth remains Supabase; this is just for page refresh + redirects.
   const snapshot = session
     ? {
-        access_token: session.access_token,
-        expires_at: session.expires_at,
-        user: session.user ? { id: session.user.id, email: session.user.email } : null,
-      }
+      access_token: session.access_token,
+      expires_at: session.expires_at,
+      user: session.user ? { id: session.user.id, email: session.user.email } : null,
+      access: session.access || null,
+    }
     : null;
 
   try {
@@ -69,8 +73,57 @@ export async function getSupabaseSession() {
   return data?.session ?? null;
 }
 
+export async function resolveSessionAccess(session) {
+  const email = normalizeEmail(session?.user?.email);
+  const localAccess = {
+    email,
+    authorized: false,
+    role: ROLE_USER,
+    isAdmin: false,
+    canManageRegularUsers: false,
+    canManageAdmins: false,
+  };
+
+  const token = session?.access_token;
+  if (!token) return localAccess;
+
+  try {
+    const response = await fetch(apiUrl("/api/auth/access"), {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) return localAccess;
+
+    const payload = await response.json();
+    const role = normalizeRole(payload?.role);
+    const isAdmin = Boolean(payload?.isAdmin) || isAdminRole(role);
+    const canManageRegularUsers =
+      typeof payload?.canManageRegularUsers === "boolean"
+        ? payload.canManageRegularUsers
+        : isAdmin;
+    const canManageAdmins =
+      typeof payload?.canManageAdmins === "boolean"
+        ? payload.canManageAdmins
+        : role === ROLE_OWNER;
+
+    return {
+      email: normalizeEmail(payload?.email || email),
+      authorized: Boolean(payload?.authorized),
+      role,
+      isAdmin,
+      canManageRegularUsers,
+      canManageAdmins,
+    };
+  } catch {
+    return localAccess;
+  }
+}
+
 export function onAuthStateChange(handler) {
-  if (!supabase) return { unsubscribe: () => {} };
+  if (!supabase) return { unsubscribe: () => { } };
   const { data } = supabase.auth.onAuthStateChange(handler);
-  return data?.subscription ?? { unsubscribe: () => {} };
+  return data?.subscription ?? { unsubscribe: () => { } };
 }
