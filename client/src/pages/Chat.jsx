@@ -258,7 +258,11 @@ export default function ChatInput() {
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-ype': 'application/json' },
+        body: JSON.stringify({
+          messages: payloadMessages,
+          attachments,
+          user_id: currentUserId || undefined,
         signal: controller.signal,
         body: JSON.stringify({
           messages: payloadMessages,
@@ -312,6 +316,7 @@ export default function ChatInput() {
         body: JSON.stringify({
           messages: [{ role: "user", content: SUMMARY_PROMPT }],
           user_id: currentUserId || undefined,
+          use_latest_posts: true,
           llmProvider: modelMeta?.provider,
           chatModel: aiModelChoice,
         }),
