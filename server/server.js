@@ -2568,23 +2568,28 @@ app.post('/api/instagram/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
-    // Auto-route when caller supplies a single freeform query and no options
+    // Auto-route when caller supplies a single freeform query and no options.
+    // For Instagram, only treat @handles as account lookups; plain text
+    // without @ should map to keyword search.
     if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm)) {
-      const free = inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm;
-      const detected = detectInputType(free);
-      if (detected.type === 'handle') {
+      const free = String(inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm || '').trim();
+      const isAtHandle = free.startsWith('@');
+      let isUrl = false;
+      try { new URL(free); isUrl = true; } catch { }
+
+      if (isAtHandle) {
+        const handleValue = free.replace(/^@/, '');
         options.profile = true;
         options.userPosts = true;
-        inputs.username = detected.value;
-        inputs.userPostsUsername = detected.value;
-      } else if (detected.type === 'url') {
-        const u = detected.value;
-        const shortcode = extractIgShortcode(u);
+        inputs.username = handleValue;
+        inputs.userPostsUsername = handleValue;
+      } else if (isUrl) {
+        const shortcode = extractIgShortcode(free);
         if (shortcode) {
           options.singlePost = true;
-          inputs.postUrl = u;
+          inputs.postUrl = free;
         } else {
-          const h = extractIgUsername(u);
+          const h = extractIgUsername(free);
           if (h) {
             options.profile = true;
             options.userPosts = true;
@@ -2592,9 +2597,9 @@ app.post('/api/instagram/search', async (req, res) => {
             inputs.userPostsUsername = h;
           }
         }
-      } else {
+      } else if (free) {
         options.reelsSearch = true;
-        inputs.reelsSearchTerm = detected.value;
+        inputs.reelsSearchTerm = free;
       }
     }
     const tasks = [];
@@ -2602,17 +2607,31 @@ app.post('/api/instagram/search', async (req, res) => {
 
     // ── Profile & Account ────────────────────────────────────────────────
     const handle = extractIgUsername(inputs.username);
+    const postsHandle = extractIgUsername(inputs.userPostsUsername || inputs.username);
+
+    // If both profile and userPosts/userReels are requested, fetch the
+    // profile first and only paginate posts/reels if the profile indicates
+    // there are media items. This avoids wasting pages on empty accounts
+    // and prevents downstream loops when profiles report zero media.
+    let deferUserPosts = false;
+    let deferUserReels = false;
 
     if (options.profile && handle) {
       labels.push('profile');
       tasks.push(scrapeCreators('/v1/instagram/profile', { handle }));
-    }
 
-    // ── Posts & Content ──────────────────────────────────────────────────
-    const postsHandle = extractIgUsername(inputs.userPostsUsername);
-    if (options.userPosts && postsHandle) {
-      labels.push('userPosts');
-      tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
+      if (options.userPosts && postsHandle) deferUserPosts = true;
+      if (options.userReels && postsHandle) deferUserReels = true;
+    } else {
+      // If profile not requested, behave as before and enqueue posts/reels directly
+      if (options.userPosts && postsHandle) {
+        labels.push('userPosts');
+        tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
+      }
+      if (options.userReels && postsHandle) {
+        labels.push('userReels');
+        tasks.push(scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: postsHandle }, limit));
+      }
     }
 
     // For single post & comments the API expects the full post URL
@@ -2656,6 +2675,7 @@ app.post('/api/instagram/search', async (req, res) => {
     const errors = [];
     let credits_remaining = null;
 
+    // Map immediate results (profile may be present)
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
         results[labels[i]] = s.value;
@@ -2666,6 +2686,51 @@ app.post('/api/instagram/search', async (req, res) => {
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
       }
     });
+
+    // If we deferred posts/reels because profile was requested, decide now
+    if (results.profile && (deferUserPosts || deferUserReels)) {
+      const profile = results.profile || {};
+      const mediaCount = Number(profile.media_count || profile.mediaCount || (Array.isArray(profile.posts) ? profile.posts.length : 0));
+
+      // If profile indicates zero media, return empty arrays instead of paginating
+      if (mediaCount <= 0) {
+        if (deferUserPosts) results.userPosts = { posts: [] };
+        if (deferUserReels) results.userReels = { reels: [] };
+      } else {
+        // There may be posts embedded in the profile response already
+        if (deferUserPosts) {
+          const existing = profile.posts || profile.items || profile.posts || profile.media || profile.timeline;
+          if (Array.isArray(existing) && existing.length > 0) {
+            results.userPosts = { posts: existing.slice(0, limit) };
+          } else {
+            try {
+              const postsResp = await scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle, trim: true }, limit);
+              results.userPosts = postsResp || { posts: [] };
+              if (postsResp?.credits_remaining != null) credits_remaining = postsResp.credits_remaining;
+            } catch (e) {
+              errors.push({ endpoint: 'userPosts', error: e?.message || String(e) });
+              results.userPosts = { posts: [] };
+            }
+          }
+        }
+
+        if (deferUserReels) {
+          const existingReels = profile.reels || profile.itemList || profile.reel_items;
+          if (Array.isArray(existingReels) && existingReels.length > 0) {
+            results.userReels = { reels: existingReels.slice(0, limit) };
+          } else {
+            try {
+              const reelsResp = await scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: postsHandle, trim: true }, limit);
+              results.userReels = reelsResp || { reels: [] };
+              if (reelsResp?.credits_remaining != null) credits_remaining = reelsResp.credits_remaining;
+            } catch (e) {
+              errors.push({ endpoint: 'userReels', error: e?.message || String(e) });
+              results.userReels = { reels: [] };
+            }
+          }
+        }
+      }
+    }
 
     return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {

@@ -1474,14 +1474,14 @@ export default function CompetitorLookup() {
 
     const isPostUrl = /instagram\.com\/(p|reel)\//i.test(q);
     const isProfileUrl = /instagram\.com\/(?!p\/|reel\/)[A-Za-z0-9._]+\/?$/i.test(q);
-    const isHandle = /^@?[A-Za-z0-9._]{2,30}$/.test(q);
+    const isHandleWithAt = /^@[A-Za-z0-9._]{2,30}$/.test(q);
     const handle = cleanHandle(q);
 
     setInstagramLoading(true);
     try {
       const payload = isPostUrl
         ? { options: { singlePost: true }, inputs: { postUrl: q }, limit: scrapePostCount }
-        : (isProfileUrl || isHandle)
+        : (isProfileUrl || isHandleWithAt)
           ? {
             options: { profile: true, userPosts: true, userReels: true },
             inputs: { username: handle, userPostsUsername: handle, userReelsUsername: handle },
