@@ -133,6 +133,60 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
       const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_${i}`, shortcode: `ABC${i}`, caption: `Demo IG post ${i} by ${handle}`, url: `https://www.instagram.com/p/ABC${i}/` }));
       return { username: handle, full_name: handle, biography: `Demo bio for ${handle}`, posts: posts, media_count: 123 };
     }
+    if (path.startsWith('/v1/twitter/profile')) {
+      const handle = params.handle || 'demo';
+      return {
+        rest_id: `1000${handle}`,
+        is_blue_verified: true,
+        legacy: {
+          screen_name: handle,
+          name: handle,
+          description: `Demo bio for ${handle}`,
+          followers_count: 12345,
+          friends_count: 321,
+          statuses_count: 456,
+          listed_count: 78,
+          location: 'Demo City',
+          created_at: 'Wed Dec 01 19:13:23 +0000 2010',
+          entities: {
+            url: { urls: [{ expanded_url: `https://x.com/${handle}` }] },
+          },
+        },
+        credits_remaining: 123,
+      };
+    }
+    if (path.startsWith('/v1/twitter/user-tweets')) {
+      const handle = params.handle || 'demo';
+      const tweets = Array.from({ length: 12 }).map((_, i) => ({
+        rest_id: `2000${i}`,
+        legacy: {
+          id_str: `2000${i}`,
+          full_text: `Demo tweet ${i} from ${handle}`,
+          created_at: 'Tue Aug 27 12:02:20 +0000 2024',
+          favorite_count: 10 + i,
+          retweet_count: 5 + i,
+          reply_count: 2 + i,
+          quote_count: 1 + i,
+          user_id_str: `1000${handle}`,
+        },
+      }));
+      return { tweets, credits_remaining: 123 };
+    }
+    if (path.startsWith('/v1/twitter/tweet')) {
+      return {
+        rest_id: '30001',
+        legacy: {
+          id_str: '30001',
+          full_text: 'Demo tweet details',
+          created_at: 'Thu Feb 23 14:52:10 +0000 2023',
+          favorite_count: 42,
+          retweet_count: 7,
+          reply_count: 3,
+          quote_count: 2,
+        },
+        credits_remaining: 123,
+      };
+    }
     if (path.startsWith('/v2/instagram/user/posts') || path.startsWith('/v1/instagram/user/posts')) {
       const handle = params.handle || 'demo';
       const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_post_${i}`, shortcode: `ABC${i}`, caption: `Demo post ${i}`, url: `https://www.instagram.com/p/ABC${i}/` }));
@@ -147,7 +201,16 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
       return { reels };
     }
     if (path.startsWith('/v1/google/search')) {
-      return { results: [{ url: `https://twitter.com/${params.query?.split(' ')[0] || 'demo'}` }] };
+      const baseUser = params.query?.split(' ')[0] || 'demo';
+      const results = Array.from({ length: 12 }).map((_, i) => ({
+        url: `https://twitter.com/${baseUser}/status/2000${i}`,
+        title: `Demo tweet ${i} from ${baseUser}`,
+        snippet: `Demo snippet ${i} for ${baseUser}`,
+      }));
+      return {
+        results,
+        credits_remaining: 123,
+      };
     }
   }
 

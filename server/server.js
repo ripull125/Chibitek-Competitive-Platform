@@ -824,7 +824,8 @@ app.get("/api/x/fetch/:username", async (req, res) => {
   try {
     const username = req.params.username;
     const user = await getUserIdByUsername(username);
-    const posts = await fetchPostsByUserId(user.id, 5);
+    const postsResult = await fetchPostsByUserId(user.id, 5);
+    const posts = Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
 
     res.json({ success: true, username: user.username || username, userId: user.id, posts });
   } catch (err) {
@@ -853,15 +854,22 @@ app.post('/api/x/search', async (req, res) => {
     const labels = [];
 
     // Auto-route when caller passes a single freeform `q` and no options.
+    // For X, only treat @handles as account lookups; plain text without @
+    // should map to keyword search.
     if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && inputs.q) {
-      const detected = detectInputType(inputs.q);
-      if (detected.type === 'handle') {
+      const raw = String(inputs.q || '').trim();
+      const isAtHandle = raw.startsWith('@');
+      let isUrl = false;
+      try { new URL(raw); isUrl = true; } catch { }
+
+      if (isAtHandle) {
+        const uname = raw.replace(/^@/, '');
         options.userLookup = true;
         options.userTweets = true;
-        inputs.username = detected.value;
-        inputs.tweetsUsername = detected.value;
-      } else if (detected.type === 'url') {
-        const u = String(detected.value || '');
+        inputs.username = uname;
+        inputs.tweetsUsername = uname;
+      } else if (isUrl) {
+        const u = raw;
         if (/status\//i.test(u)) {
           options.tweetLookup = true;
           inputs.tweetUrl = u;
@@ -879,9 +887,9 @@ app.post('/api/x/search', async (req, res) => {
             }
           } catch { }
         }
-      } else {
+      } else if (raw) {
         options.searchTweets = true;
-        inputs.searchQuery = detected.value;
+        inputs.searchQuery = raw;
       }
     }
 
@@ -956,14 +964,46 @@ app.post('/api/x/search', async (req, res) => {
     const errors = [];
 
     settled.forEach((s, i) => {
+      const label = labels[i];
       if (s.status === 'fulfilled') {
-        results[labels[i]] = s.value;
+        const value = s.value;
+
+        if (label === 'userTweets' && value && Array.isArray(value.tweets)) {
+          results.userTweets = value.tweets;
+          if (value.credits_remaining != null) credits_remaining = value.credits_remaining;
+          return;
+        }
+
+        results[label] = value;
+        if (value?.credits_remaining != null) {
+          credits_remaining = value.credits_remaining;
+        }
       } else {
-        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        errors.push({ endpoint: label, error: s.reason?.message || String(s.reason) });
       }
     });
 
-    return res.json({ success: true, results, errors });
+    // Debug: log metrics so it's easy to see if missing at source or UI
+    if (results.userLookup?.public_metrics) {
+      console.log('[X] userLookup metrics:', results.userLookup.public_metrics);
+    } else if (results.userLookup) {
+      console.log('[X] userLookup metrics: missing');
+    }
+    if (Array.isArray(results.userTweets) && results.userTweets[0]?.public_metrics) {
+      console.log('[X] first userTweet metrics:', results.userTweets[0].public_metrics);
+    } else if (Array.isArray(results.userTweets)) {
+      console.log('[X] first userTweet metrics: missing');
+    }
+    if (results.searchTweets?.tweets?.[0]?.public_metrics) {
+      console.log('[X] first searchTweet metrics:', results.searchTweets.tweets[0].public_metrics);
+    } else if (results.searchTweets?.tweets) {
+      console.log('[X] first searchTweet metrics: missing');
+    }
+    if (credits_remaining != null) {
+      console.log('[X] credits_remaining:', credits_remaining);
+    }
+
+    return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
     console.error('X search error:', err);
     return res.status(500).json({ error: err.message });
@@ -1493,7 +1533,9 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       competitor = newComp;
     }
 
-    const [tweet] = await fetchPostsByUserId(platformUserId);
+    const postsResult = await fetchPostsByUserId(platformUserId);
+    const posts = Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
+    const [tweet] = posts;
 
     if (!tweet) {
       return res.json({ saved: false, reason: "No tweet found" });
@@ -3841,7 +3883,10 @@ async function _executeWatchlistScrape(item) {
       const user = await getUserIdByUsername(username);
       switch (scrape_type) {
         case 'user_posts':
-          return fetchPostsByUserId(user.id, config.max_results || 10);
+          {
+            const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
+            return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
+          }
         case 'user_mentions':
           return fetchUserMentions(user.id, config.max_results || 10);
         case 'followers':

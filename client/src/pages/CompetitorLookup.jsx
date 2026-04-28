@@ -746,6 +746,7 @@ function XUserCard({ user, onSave }) {
   const { t } = useTranslation();
   if (!user) return null;
   const m = user.public_metrics || {};
+  const metricsUnavailable = user.metrics_unavailable === true;
 
   return (
     <Card withBorder radius="md" p="lg">
@@ -769,23 +770,29 @@ function XUserCard({ user, onSave }) {
         <Card withBorder radius="sm" p="sm" bg="gray.0">
           <Group gap="xl" justify="center" wrap="wrap">
             <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{(m.followers_count || 0).toLocaleString()}</Text>
+              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.followers_count || 0).toLocaleString()}</Text>
               <Text size="xs" c="dimmed">{t("competitorLookup.followers")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{(m.following_count || 0).toLocaleString()}</Text>
+              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.following_count || 0).toLocaleString()}</Text>
               <Text size="xs" c="dimmed">{t("competitorLookup.following")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{(m.tweet_count || 0).toLocaleString()}</Text>
+              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.tweet_count || 0).toLocaleString()}</Text>
               <Text size="xs" c="dimmed">{t("competitorLookup.tweets")}</Text>
             </div>
             <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{(m.listed_count || 0).toLocaleString()}</Text>
+              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.listed_count || 0).toLocaleString()}</Text>
               <Text size="xs" c="dimmed">{t("competitorLookup.listed")}</Text>
             </div>
           </Group>
         </Card>
+
+        {metricsUnavailable && (
+          <Text size="xs" c="dimmed">
+            {t("competitorLookup.metricsUnavailable", { defaultValue: "Metrics unavailable from fallback results." })}
+          </Text>
+        )}
 
         {user.description && (
           <div>
@@ -800,10 +807,27 @@ function XUserCard({ user, onSave }) {
           </Text>
         )}
 
-        {user.url && (
-          <Text size="sm" c="blue" component="a" href={user.url} target="_blank">
-            {user.url}
-          </Text>
+        {user.username && (
+          <Button
+            component="a"
+            href={`https://x.com/${user.username}`}
+            target="_blank"
+            variant="light"
+            size="xs"
+          >
+            {t("competitorLookup.viewProfile", { defaultValue: "View Profile" })}
+          </Button>
+        )}
+        {!user.username && user.url && (
+          <Button
+            component="a"
+            href={user.url}
+            target="_blank"
+            variant="light"
+            size="xs"
+          >
+            {t("competitorLookup.viewProfile", { defaultValue: "View Profile" })}
+          </Button>
         )}
       </Stack>
     </Card>
@@ -814,6 +838,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
   const { t } = useTranslation();
   if (!tweet) return null;
   const m = tweet.public_metrics || {};
+  const metricsUnavailable = tweet.metrics_unavailable === true;
   const date = tweet.created_at
     ? new Date(tweet.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
@@ -856,9 +881,9 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
 
         <Group justify="space-between" align="center">
           <Group gap="lg">
-            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{isHiddenCount(likeCount) ? "Hidden" : likeCount.toLocaleString()}</Text></Group>
-            <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{(m.retweet_count || 0).toLocaleString()}</Text></Group>
-            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{isHiddenCount(commentCount) ? "Hidden" : commentCount.toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(likeCount) ? "Hidden" : likeCount.toLocaleString())}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (m.retweet_count || 0).toLocaleString()}</Text></Group>
+            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(commentCount) ? "Hidden" : commentCount.toLocaleString())}</Text></Group>
             {m.quote_count > 0 && <Group gap={4} wrap="nowrap"><IconQuote size={14} color="#794bc4" /><Text size="xs" c="dimmed">{m.quote_count.toLocaleString()}</Text></Group>}
           </Group>
           <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
@@ -952,7 +977,12 @@ function XResults({ data, onSave }) {
           </Group>
           <Stack gap="xs">
             {results.userTweets.map((t, i) => (
-              <XTweetCard key={t.id || i} tweet={t} onSave={onSave} />
+              <XTweetCard
+                key={t.id || i}
+                tweet={t}
+                authorUsername={results.userLookup?.username || ""}
+                onSave={onSave}
+              />
             ))}
           </Stack>
         </div>
@@ -1373,14 +1403,14 @@ export default function CompetitorLookup() {
     }
 
     const isTweetUrl = /x\.com\/.+\/status\/\d+/i.test(q) || /twitter\.com\/.+\/status\/\d+/i.test(q);
-    const isHandle = /^@?[A-Za-z0-9_]{2,15}$/.test(q);
+    const isHandleWithAt = /^@[A-Za-z0-9_]{2,15}$/.test(q);
     const username = cleanHandle(q);
 
     setXLoading(true);
     try {
       const payload = isTweetUrl
         ? { options: { tweetLookup: true }, inputs: { tweetUrl: q }, limit: scrapePostCount }
-        : isHandle
+        : isHandleWithAt
           ? {
             options: { userLookup: true, userTweets: true },
             inputs: { username, tweetsUsername: username },
