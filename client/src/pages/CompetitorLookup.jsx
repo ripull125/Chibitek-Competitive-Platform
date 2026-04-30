@@ -1403,14 +1403,17 @@ export default function CompetitorLookup() {
     }
 
     const isTweetUrl = /x\.com\/.+\/status\/\d+/i.test(q) || /twitter\.com\/.+\/status\/\d+/i.test(q);
+    const isProfileUrl = /^https?:\/\/(www\.)?(x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/?$/i.test(q);
     const isHandleWithAt = /^@[A-Za-z0-9_]{2,15}$/.test(q);
-    const username = cleanHandle(q);
+    const username = isProfileUrl
+      ? (q.match(/\.com\/([A-Za-z0-9_]+)\/?$/)?.[1] || cleanHandle(q))
+      : cleanHandle(q);
 
     setXLoading(true);
     try {
       const payload = isTweetUrl
         ? { options: { tweetLookup: true }, inputs: { tweetUrl: q }, limit: scrapePostCount }
-        : isHandleWithAt
+        : (isHandleWithAt || isProfileUrl)
           ? {
             options: { userLookup: true, userTweets: true },
             inputs: { username, tweetsUsername: username },
@@ -1463,14 +1466,22 @@ export default function CompetitorLookup() {
     setLinkedinError(null);
     setLinkedinResult(null);
     if (!q) {
-      setLinkedinError("Please enter a LinkedIn profile/company/post URL or keywords.");
+      setLinkedinError("Please enter a LinkedIn @username, profile/company/post URL, or keywords.");
       return;
     }
 
     setLinkedinLoading(true);
     try {
-      // If looks like a LinkedIn URL, keep existing behavior
-      if (/linkedin\.com\//i.test(q)) {
+      const isHandleWithAt = /^@[A-Za-z0-9._-]{2,}$/.test(q);
+      if (isHandleWithAt) {
+        const handle = q.slice(1);
+        const json = await tryPostJson("/api/linkedin/search", {
+          options: { profile: true },
+          inputs: { profile: `https://www.linkedin.com/in/${handle}` },
+        });
+        setLinkedinResult(json);
+        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+      } else if (/linkedin\.com\//i.test(q)) {
         const isCompany = /\/company\//i.test(q);
         const isPost = /\/posts\//i.test(q) || /\/pulse\//i.test(q);
         const options = isCompany ? { company: true } : isPost ? { post: true } : { profile: true };
@@ -1479,7 +1490,6 @@ export default function CompetitorLookup() {
         setLinkedinResult(json);
         if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
       } else {
-        // Treat as keyword/username/company name — backend will perform discovery
         const options = { profile: true, company: true, post: true };
         const inputs = { keyword: q };
         const json = await tryPostJson("/api/linkedin/search", { options, inputs });
@@ -1540,14 +1550,21 @@ export default function CompetitorLookup() {
 
     const isVideoUrl = /tiktok\.com\/.+\/video\//i.test(q);
     const isHandle = /^@?[A-Za-z0-9._]{2,30}$/.test(q);
-    const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+/i.test(q);
+    const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+\/?$/i.test(q);
     const isHashtag = q.trim().startsWith("#");
     const handle = (isProfileUrl ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "") : cleanHandle(q));
+    const videoAuthor = isVideoUrl ? (q.match(/tiktok\.com\/@([A-Za-z0-9._]+)\//)?.[1] || null) : null;
 
     setTiktokLoading(true);
     try {
       const payload = isVideoUrl
-        ? { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
+        ? videoAuthor
+          ? {
+              options: { profile: true, transcript: true },
+              inputs: { username: videoAuthor, videoUrl: q },
+              limit: scrapePostCount,
+            }
+          : { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
         : (isHandle || isProfileUrl)
           ? {
             options: { profile: true, profileVideos: true },
@@ -1573,24 +1590,27 @@ export default function CompetitorLookup() {
     setRedditError(null);
     setRedditResult(null);
     if (!q) {
-      setRedditError("Please enter a subreddit, Reddit URL, or keyword.");
+      setRedditError("Please enter a Reddit @user, r/subreddit, URL, or keyword.");
       return;
     }
 
+    const isUserHandle = /^@[A-Za-z0-9_-]{2,}$/.test(q);
     const postUrl = /reddit\.com\/r\/.+\/comments\//i.test(q);
-    const subMatch = q.match(/^r\/([A-Za-z0-9_]+)/i) || q.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/i);
+    const subMatch = !isUserHandle && (q.match(/^r\/([A-Za-z0-9_]+)/i) || q.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/i));
 
     setRedditLoading(true);
     try {
-      const payload = postUrl
-        ? { options: { postComments: true }, inputs: { postUrl: q }, limit: scrapePostCount }
-        : subMatch?.[1]
-          ? {
-            options: { subredditDetails: true, subredditPosts: true },
-            inputs: { subreddit: subMatch[1] },
-            limit: scrapePostCount,
-          }
-          : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
+      const payload = isUserHandle
+        ? { options: { search: true }, inputs: { searchQuery: `author:${q.slice(1)}` }, limit: scrapePostCount }
+        : postUrl
+          ? { options: { postComments: true }, inputs: { postUrl: q }, limit: scrapePostCount }
+          : subMatch?.[1]
+            ? {
+              options: { subredditDetails: true, subredditPosts: true },
+              inputs: { subreddit: subMatch[1] },
+              limit: scrapePostCount,
+            }
+            : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
 
       const json = await tryPostJson("/api/reddit/search", payload);
       setRedditResult(json);
@@ -3341,11 +3361,11 @@ export default function CompetitorLookup() {
             {connectedPlatforms.x && (
               <Tabs.Panel value="x" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">One bar lookup for profile, tweet URL, or keyword search.</Text>
+                  <Text size="sm" c="dimmed">Use @username or a profile URL to fetch an account's recent posts, paste a tweet URL for single-tweet metrics, or enter keywords to search.</Text>
                   <Group align="end">
                     <TextInput
                       label="X Search"
-                      placeholder="@username, https://x.com/.../status/..., or keyword"
+                      placeholder="@username, x.com/username, tweet URL, or keyword"
                       value={simpleQueries.x}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, x: e.target.value }))}
                       style={{ flex: 1 }}
@@ -3383,11 +3403,11 @@ export default function CompetitorLookup() {
             {connectedPlatforms.linkedin && (
               <Tabs.Panel value="linkedin" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Paste a LinkedIn profile, company, or post URL.</Text>
+                  <Text size="sm" c="dimmed">Use @username to look up a profile, paste a LinkedIn URL, or enter keywords to search.</Text>
                   <Group align="end">
                     <TextInput
                       label="LinkedIn Search"
-                      placeholder="https://linkedin.com/in/... or /company/... or /posts/..."
+                      placeholder="@username, linkedin.com/in/..., /company/..., or keyword"
                       value={simpleQueries.linkedin}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, linkedin: e.target.value }))}
                       style={{ flex: 1 }}
@@ -3404,11 +3424,11 @@ export default function CompetitorLookup() {
             {connectedPlatforms.instagram && (
               <Tabs.Panel value="instagram" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username, profile/post URL, or a keyword.</Text>
+                  <Text size="sm" c="dimmed">Use @username to see an account's recent posts and metrics, paste a post/profile URL, or enter keywords to search.</Text>
                   <Group align="end">
                     <TextInput
                       label="Instagram Search"
-                      placeholder="@username, instagram URL, or keyword"
+                      placeholder="@username, instagram.com URL, or keyword"
                       value={simpleQueries.instagram}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, instagram: e.target.value }))}
                       style={{ flex: 1 }}
@@ -3425,11 +3445,11 @@ export default function CompetitorLookup() {
             {connectedPlatforms.tiktok && (
               <Tabs.Panel value="tiktok" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username, TikTok URL, #hashtag, or keyword.</Text>
+                  <Text size="sm" c="dimmed">Use @username to fetch an account's recent videos and metrics, paste a video URL for its stats, use #hashtag, or enter keywords to search.</Text>
                   <Group align="end">
                     <TextInput
                       label="TikTok Search"
-                      placeholder="@username, TikTok URL, #hashtag, or keyword"
+                      placeholder="@username, tiktok.com/video URL, #hashtag, or keyword"
                       value={simpleQueries.tiktok}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, tiktok: e.target.value }))}
                       style={{ flex: 1 }}
@@ -3446,11 +3466,11 @@ export default function CompetitorLookup() {
             {connectedPlatforms.reddit && (
               <Tabs.Panel value="reddit" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use r/subreddit, Reddit URL, or keyword.</Text>
+                  <Text size="sm" c="dimmed">Use @username to find a user's posts, r/subreddit for communities, paste a Reddit URL, or enter keywords.</Text>
                   <Group align="end">
                     <TextInput
                       label="Reddit Search"
-                      placeholder="r/startups, reddit URL, or keyword"
+                      placeholder="@username, r/startups, reddit URL, or keyword"
                       value={simpleQueries.reddit}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, reddit: e.target.value }))}
                       style={{ flex: 1 }}
