@@ -80,6 +80,7 @@ function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3,
       </Text>
       {isLong && (
         <Button
+          type="button"
           size="compact-xs"
           variant="subtle"
           px={0}
@@ -1050,6 +1051,16 @@ function LinkedinResults({ data, onSave }) {
   if (!data?.results) return null;
   const { results, errors } = data;
   const resultCount = Object.keys(results).length;
+  const profileResults = [];
+  const companyResults = [];
+  const postResults = [];
+
+  Object.entries(results).forEach(([key, value]) => {
+    if (!value) return;
+    if (key === "profile" || key.startsWith("keyword_profile_")) profileResults.push(value);
+    if (key === "company" || key.startsWith("keyword_company_")) companyResults.push(value);
+    if (key === "post" || key.startsWith("keyword_post_")) postResults.push(value);
+  });
 
   return (
     <Stack gap="md">
@@ -1069,9 +1080,15 @@ function LinkedinResults({ data, onSave }) {
         </Alert>
       )}
 
-      {results.profile && <LinkedinProfileCard profile={results.profile} onSave={onSave} />}
-      {results.company && <LinkedinCompanyCard company={results.company} onSave={onSave} />}
-      {results.post && <LinkedinPostCard post={results.post} onSave={onSave} />}
+      {profileResults.map((profile, i) => (
+        <LinkedinProfileCard key={`profile-${i}`} profile={profile} onSave={onSave} />
+      ))}
+      {companyResults.map((company, i) => (
+        <LinkedinCompanyCard key={`company-${i}`} company={company} onSave={onSave} />
+      ))}
+      {postResults.map((post, i) => (
+        <LinkedinPostCard key={`post-${i}`} post={post} onSave={onSave} />
+      ))}
     </Stack>
   );
 }
@@ -1549,10 +1566,12 @@ export default function CompetitorLookup() {
     }
 
     const isVideoUrl = /tiktok\.com\/.+\/video\//i.test(q);
-    const isHandle = /^@?[A-Za-z0-9._]{2,30}$/.test(q);
+    const isHandleWithAt = /^@[A-Za-z0-9._]{2,30}$/.test(q);
     const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+\/?$/i.test(q);
     const isHashtag = q.trim().startsWith("#");
-    const handle = (isProfileUrl ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "") : cleanHandle(q));
+    const handle = isProfileUrl
+      ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "")
+      : (isHandleWithAt ? cleanHandle(q) : "");
     const videoAuthor = isVideoUrl ? (q.match(/tiktok\.com\/@([A-Za-z0-9._]+)\//)?.[1] || null) : null;
 
     setTiktokLoading(true);
@@ -1560,12 +1579,12 @@ export default function CompetitorLookup() {
       const payload = isVideoUrl
         ? videoAuthor
           ? {
-              options: { profile: true, transcript: true },
-              inputs: { username: videoAuthor, videoUrl: q },
-              limit: scrapePostCount,
-            }
+            options: { profile: true, transcript: true },
+            inputs: { username: videoAuthor, videoUrl: q },
+            limit: scrapePostCount,
+          }
           : { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
-        : (isHandle || isProfileUrl)
+        : (isHandleWithAt || isProfileUrl)
           ? {
             options: { profile: true, profileVideos: true },
             inputs: { username: handle, videosUsername: handle },
@@ -2603,39 +2622,73 @@ export default function CompetitorLookup() {
     const postUrl = post.url || post.permalink || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
     const likeCount = post.like_count ?? post.likes;
     const commentCount = post.comment_count ?? post.comments;
+    const viewCount = post.play_count || post.video_view_count || post.view_count;
+    const authorHandle = post.user?.username
+      || post.owner?.username
+      || post.author?.username
+      || post.username
+      || post.user?.full_name
+      || post.owner?.full_name
+      || post.owner?.id
+      || "unknown";
+    const rawDate = post.taken_at || post.taken_at_timestamp || post.timestamp || post.created_at;
+    const date = rawDate
+      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : null;
+    const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
+    const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
 
     return (
-      <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <Group gap="xs">
-            {isVideo && <Badge size="xs" variant="light">{t("competitorLookup.video")}</Badge>}
-            {post.carousel_media_count > 1 && <Badge size="xs" variant="light">{t("competitorLookup.carouselCount", { count: post.carousel_media_count })}</Badge>}
+      <Card withBorder radius="md" p={compact ? "sm" : "md"} style={{ borderLeft: "3px solid #E1306C" }}>
+        <Stack gap="sm">
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: "#fde6ef",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 14, color: "#E1306C", flexShrink: 0,
+              }}>
+                {(authorHandle || "?")[0].toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Group gap="xs" wrap="wrap" mb={4}>
+                  <Text size="xs" fw={600}>@{authorHandle}</Text>
+                  {isVideo && <Badge size="xs" variant="light">{t("competitorLookup.video")}</Badge>}
+                  {post.carousel_media_count > 1 && (
+                    <Badge size="xs" variant="light">{t("competitorLookup.carouselCount", { count: post.carousel_media_count })}</Badge>
+                  )}
+                </Group>
+                <ExpandableText text={caption} size={compact ? "xs" : "sm"} collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />
+              </div>
+            </Group>
+            <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
+              <IconBrandInstagram size={16} style={{ opacity: 0.6 }} />
+              {onSave && (
+                <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("post", post)} />
+              )}
+            </Group>
           </Group>
-          <ExpandableText text={caption} size={compact ? "xs" : "sm"} collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />
-          <Text size="xs" c="dimmed">
-            Posted by {post.user?.username || post.owner?.username || "unknown"}
-            {post.taken_at ? " · " + new Date(post.taken_at * 1000).toLocaleDateString() : ""}
-          </Text>
-          <Group gap="xs">
-            {[
-              { label: "❤️", val: post.like_count ?? post.likes },
-              { label: "💬", val: post.comment_count ?? post.comments },
-              { label: "👁", val: post.play_count || post.video_view_count },
-            ].filter(x => x.val != null).map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
-            ))}
+
+          {date && <Text size="xs" c="dimmed">{date}</Text>}
+
+          <Divider my={0} />
+
+          <Group justify="space-between" align="center">
+            <Group gap="lg">
+              <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
+              {viewCount != null && (
+                <Group gap={4} wrap="nowrap"><IconEye size={14} color="#7a7a7a" /><Text size="xs" c="dimmed">{formatCount(viewCount)}</Text></Group>
+              )}
+            </Group>
+            {postUrl && (
+              <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                {t("competitorLookup.viewArrow")}
+              </Text>
+            )}
           </Group>
           <HiddenCountNote likes={likeCount} comments={commentCount} />
-          {onSave && (
-            <Group justify="flex-end">
-              {postUrl && (
-                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                  View Post
-                </Button>
-              )}
-              <SaveButton label="Save Post" onSave={() => onSave("post", post)} />
-            </Group>
-          )}
         </Stack>
       </Card>
     );
@@ -2648,31 +2701,64 @@ export default function CompetitorLookup() {
     const postUrl = reel.url || reel.permalink || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
     const likeCount = reel.like_count ?? reel.likes;
     const commentCount = reel.comment_count ?? reel.comments;
+    const viewCount = reel.play_count || reel.video_view_count || reel.view_count;
+    const authorHandle = reel.user?.username
+      || reel.owner?.username
+      || reel.author?.username
+      || reel.username
+      || reel.user?.full_name
+      || reel.owner?.full_name
+      || reel.owner?.id
+      || "unknown";
+    const rawDate = reel.taken_at || reel.taken_at_timestamp || reel.timestamp || reel.created_at;
+    const date = rawDate
+      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : null;
+    const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
+    const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
     return (
-      <Card withBorder radius="md" shadow="sm" p="xs">
-        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-          <ExpandableText text={caption} size="xs" collapsedLines={2} threshold={90} />
-          <Text size="xs" c="dimmed">Posted by {reel.user?.username || "unknown"}</Text>
-          <Group gap="xs">
-            {[
-              { label: "▶", val: reel.play_count || reel.video_view_count },
-              { label: "❤️", val: reel.like_count ?? reel.likes },
-              { label: "💬", val: reel.comment_count ?? reel.comments },
-            ].filter(x => x.val != null).map(({ label, val }) => (
-              <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
-            ))}
+      <Card withBorder radius="md" p={compact ? "sm" : "xs"} style={{ borderLeft: "3px solid #E1306C" }}>
+        <Stack gap="sm">
+          <Group justify="space-between" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: "50%",
+                background: "#fde6ef",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 700, fontSize: 12, color: "#E1306C", flexShrink: 0,
+              }}>
+                {(authorHandle || "?")[0].toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Text size="xs" fw={600} mb={4}>@{authorHandle}</Text>
+                <ExpandableText text={caption} size="xs" collapsedLines={2} threshold={90} />
+              </div>
+            </Group>
+            <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
+              <IconBrandInstagram size={14} style={{ opacity: 0.6 }} />
+              {onSave && (
+                <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("post", reel)} />
+              )}
+            </Group>
+          </Group>
+
+          {date && <Text size="xs" c="dimmed">{date}</Text>}
+
+          <Divider my={0} />
+
+          <Group justify="space-between" align="center">
+            <Group gap="lg">
+              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#7a7a7a" /><Text size="xs" c="dimmed">{viewCount == null ? "—" : formatCount(viewCount)}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
+            </Group>
+            {postUrl && (
+              <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                {t("competitorLookup.viewArrow")}
+              </Text>
+            )}
           </Group>
           <HiddenCountNote likes={likeCount} comments={commentCount} />
-          {onSave && (
-            <Group justify="flex-end">
-              {postUrl && (
-                <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                  View Post
-                </Button>
-              )}
-              <SaveButton label="Save Reel" onSave={() => onSave("post", reel)} />
-            </Group>
-          )}
         </Stack>
       </Card>
     );
@@ -3348,7 +3434,7 @@ export default function CompetitorLookup() {
                 <NumberInput
                   label={t("competitorLookup.scrapePostAmount")}
                   description={t("competitorLookup.scrapePostAmountDesc")}
-                  min={5}
+                  min={10}
                   max={100}
                   step={5}
                   value={scrapePostCount}
@@ -3627,7 +3713,7 @@ export default function CompetitorLookup() {
                     <NumberInput
                       label={t("competitorLookup.scrapePostAmount")}
                       description={t("competitorLookup.scrapePostAmountDesc")}
-                      min={5}
+                      min={10}
                       max={100}
                       step={5}
                       value={scrapePostCount}

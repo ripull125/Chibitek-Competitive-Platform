@@ -2060,12 +2060,17 @@ app.post('/api/linkedin/search', async (req, res) => {
           if (!/linkedin\.com\//i.test(url)) continue;
           if (added >= 3) break; // limit follow-ups to 3 links
           // Determine endpoint type
-          const endpoint = /\/company\//i.test(url)
-            ? '/v1/linkedin/company'
+          const endpointType = /\/company\//i.test(url)
+            ? 'company'
             : (/\/posts\//i.test(url) || /\/pulse\//i.test(url))
+              ? 'post'
+              : 'profile';
+          const endpoint = endpointType === 'company'
+            ? '/v1/linkedin/company'
+            : endpointType === 'post'
               ? '/v1/linkedin/post'
               : '/v1/linkedin/profile';
-          labels.push(`keyword_discovery_${added}`);
+          labels.push(`keyword_${endpointType}_${added}`);
           tasks.push(scrapeCreators(endpoint, { url }));
           added++;
         }
@@ -2725,7 +2730,11 @@ app.post('/api/instagram/search', async (req, res) => {
           credits_remaining = s.value.credits_remaining;
         }
       } else {
-        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        if (labels[i] === 'subredditDetails' && s.reason?.status === 404) {
+          results.subredditDetails = {};
+        } else {
+          errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        }
       }
     });
 
@@ -2828,16 +2837,21 @@ app.post('/api/tiktok/search', async (req, res) => {
     // If caller provided a single freeform query and no specific options,
     // auto-route based on whether it's an @handle, URL, or keyword.
     if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.keyword || inputs.videosUsername)) {
-      const free = inputs.query || inputs.username || inputs.videosUsername || inputs.keyword;
-      const detected = detectInputType(free);
-      if (detected.type === 'handle') {
+      const free = String(inputs.query || inputs.username || inputs.videosUsername || inputs.keyword || '').trim();
+      const isAtHandle = free.startsWith('@');
+      const isHashtag = free.startsWith('#');
+      let isUrl = false;
+      try { new URL(free); isUrl = true; } catch { }
+
+      if (isAtHandle) {
+        const handle = free.replace(/^@/, '');
         options.profile = true;
         options.profileVideos = true;
-        inputs.username = detected.value;
-        inputs.videosUsername = detected.value;
-      } else if (detected.type === 'url') {
+        inputs.username = handle;
+        inputs.videosUsername = handle;
+      } else if (isUrl) {
         // If the URL looks like a video, route to video-specific endpoints
-        const u = String(detected.value || '');
+        const u = free;
         if (/\/video\/|\/v\//i.test(u) || /video/i.test(u)) {
           options.transcript = true;
           inputs.videoUrl = u;
@@ -2851,9 +2865,12 @@ app.post('/api/tiktok/search', async (req, res) => {
             inputs.videosUsername = h;
           }
         }
-      } else {
+      } else if (isHashtag) {
+        options.searchHashtag = true;
+        inputs.hashtag = free;
+      } else if (free) {
         options.searchKeyword = true;
-        inputs.keyword = detected.value;
+        inputs.keyword = free;
       }
     }
     const tasks = [];
