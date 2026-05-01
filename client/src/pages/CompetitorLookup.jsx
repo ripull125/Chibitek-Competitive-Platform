@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
+  Avatar,
   Badge,
   Button,
   Card,
@@ -80,10 +81,15 @@ function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3,
 
       {isLong && (
         <Button
+          type="button"
           variant="subtle"
           size="compact-sm"
           px={0}
-          onClick={() => setExpanded((prev) => !prev)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
           style={{ alignSelf: "flex-start" }}
         >
           {expanded ? "Less" : "More"}
@@ -742,23 +748,115 @@ function LinkedinPostCard({ post, onSave }) {
 
 /* ─── X / Twitter Result Components ──────────────────────────────────────── */
 
-function XUserCard({ user, onSave }) {
-  const { t } = useTranslation();
-  if (!user) return null;
-  const m = user.public_metrics || {};
-  const metricsUnavailable = user.metrics_unavailable === true;
+function bestVideoVariant(variants = []) {
+  if (!Array.isArray(variants)) return null;
+
+  const mp4s = variants
+    .filter((v) => v?.url && String(v.content_type || "").includes("mp4"))
+    .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
+
+  return mp4s[0]?.url || null;
+}
+
+function XMediaPreview({ media }) {
+  const items = Array.isArray(media) ? media.filter(Boolean).slice(0, 4) : [];
+
+  if (!items.length) return null;
 
   return (
-    <Card withBorder radius="md" p="lg">
+    <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
+      {items.map((item, index) => {
+        const key = item.media_key || item.url || item.preview_image_url || index;
+        const isVideo = item.type === "video" || item.type === "animated_gif";
+        const videoUrl = bestVideoVariant(item.variants);
+        const imageUrl = item.url || item.preview_image_url;
+
+        if (isVideo && videoUrl) {
+          return (
+            <video
+              key={key}
+              controls
+              playsInline
+              poster={item.preview_image_url || undefined}
+              style={{
+                width: "100%",
+                maxHeight: 360,
+                objectFit: "cover",
+                borderRadius: 12,
+                background: "#000",
+              }}
+            >
+              <source src={videoUrl} type="video/mp4" />
+            </video>
+          );
+        }
+
+        if (imageUrl) {
+          return (
+            <img
+              key={key}
+              src={imageUrl}
+              alt=""
+              loading="lazy"
+              style={{
+                width: "100%",
+                maxHeight: 360,
+                objectFit: "cover",
+                borderRadius: 12,
+                display: "block",
+              }}
+            />
+          );
+        }
+
+        return null;
+      })}
+    </SimpleGrid>
+  );
+}
+
+function cleanXImageUrl(url) {
+  if (!url || typeof url !== "string") return null;
+
+  return url.replace("_normal", "_400x400");
+}
+
+function XUserCard({ user, onSave }) {
+  const { t } = useTranslation();
+
+  if (!user) return null;
+
+  const m = user.public_metrics || {};
+  const metricsUnavailable = user.metrics_unavailable === true;
+  const avatarUrl = cleanXImageUrl(user.profile_image_url);
+  const profileUrl = user.username ? `https://x.com/${user.username}` : user.url;
+
+  return (
+    <Card withBorder radius="md" p="md">
       <Stack gap="md">
-        <Group justify="space-between" align="start">
-          <Group align="center" gap="md">
-            <div>
-              <Group gap="xs" align="center">
-                <Text fw={700} size="xl">{user.name}</Text>
-                {user.verified && <Badge size="xs" color="blue" variant="filled">✓</Badge>}
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Group gap="md" align="center" wrap="nowrap">
+            <Avatar
+              src={avatarUrl}
+              alt={user.name || user.username || "X profile"}
+              radius="xl"
+              size={56}
+            >
+              {(user.name || user.username || "?").charAt(0).toUpperCase()}
+            </Avatar>
+
+            <Stack gap={2}>
+              <Group gap={6}>
+                <Text fw={700}>{user.name || user.username}</Text>
+                {user.verified && <Badge size="xs">✓</Badge>}
               </Group>
-              <Text size="sm" c="dimmed">@{user.username}</Text>
+
+              {user.username && (
+                <Text size="sm" c="dimmed">
+                  @{user.username}
+                </Text>
+              )}
+
               {user.location && (
                 <Text size="xs" c="dimmed">
                   {typeof user.location === "string"
@@ -766,69 +864,80 @@ function XUserCard({ user, onSave }) {
                     : user.location?.location || ""}
                 </Text>
               )}
-            </div>
+            </Stack>
           </Group>
-          <Badge color="dark" variant="light" size="lg">
-            <IconBrandX size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.profile")}
-          </Badge>
+
+          {onSave && <SaveButton onSave={() => onSave("user", user)} />}
         </Group>
 
-        <Card withBorder radius="sm" p="sm" bg="gray.0">
-          <Group gap="xl" justify="center" wrap="wrap">
-            <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.followers_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">{t("competitorLookup.followers")}</Text>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.following_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">{t("competitorLookup.following")}</Text>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.tweet_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">{t("competitorLookup.tweets")}</Text>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <Text fw={700} size="xl" c="blue">{metricsUnavailable ? "—" : (m.listed_count || 0).toLocaleString()}</Text>
-              <Text size="xs" c="dimmed">{t("competitorLookup.listed")}</Text>
-            </div>
-          </Group>
-        </Card>
+        <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+          <Card withBorder p="sm" radius="md">
+            <Text fw={700}>
+              {metricsUnavailable ? "—" : (m.followers_count || 0).toLocaleString()}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t("competitorLookup.followers")}
+            </Text>
+          </Card>
+
+          <Card withBorder p="sm" radius="md">
+            <Text fw={700}>
+              {metricsUnavailable ? "—" : (m.following_count || 0).toLocaleString()}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t("competitorLookup.following")}
+            </Text>
+          </Card>
+
+          <Card withBorder p="sm" radius="md">
+            <Text fw={700}>
+              {metricsUnavailable ? "—" : (m.tweet_count || 0).toLocaleString()}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t("competitorLookup.tweets")}
+            </Text>
+          </Card>
+
+          <Card withBorder p="sm" radius="md">
+            <Text fw={700}>
+              {metricsUnavailable ? "—" : (m.listed_count || 0).toLocaleString()}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t("competitorLookup.listed")}
+            </Text>
+          </Card>
+        </SimpleGrid>
 
         {metricsUnavailable && (
           <Text size="xs" c="dimmed">
-            {t("competitorLookup.metricsUnavailable", { defaultValue: "Metrics unavailable from fallback results." })}
+            {t("competitorLookup.metricsUnavailable", {
+              defaultValue: "Metrics unavailable from fallback results.",
+            })}
           </Text>
         )}
 
         {user.description && (
-          <div>
-            <Text fw={600} size="sm" mb={4}>{t("competitorLookup.bio")}</Text>
-            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{user.description}</Text>
-          </div>
+          <Text size="sm">
+            <strong>{t("competitorLookup.bio")}</strong> {user.description}
+          </Text>
         )}
 
         {user.created_at && (
           <Text size="xs" c="dimmed">
-            {t("competitorLookup.joined")} {new Date(user.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+            {t("competitorLookup.joined")}{" "}
+            {new Date(user.created_at).toLocaleDateString(undefined, {
+              month: "long",
+              year: "numeric",
+            })}
           </Text>
         )}
 
-        {user.username && (
+        {profileUrl && (
           <Button
             component="a"
-            href={`https://x.com/${user.username}`}
+            href={profileUrl}
             target="_blank"
-            variant="light"
-            size="xs"
-          >
-            {t("competitorLookup.viewProfile", { defaultValue: "View Profile" })}
-          </Button>
-        )}
-        {!user.username && user.url && (
-          <Button
-            component="a"
-            href={user.url}
-            target="_blank"
+            rel="noopener noreferrer"
             variant="light"
             size="xs"
           >
@@ -842,74 +951,151 @@ function XUserCard({ user, onSave }) {
 
 function XTweetCard({ tweet, authorUsername, onSave }) {
   const { t } = useTranslation();
+
   if (!tweet) return null;
+
   const m = tweet.public_metrics || {};
   const metricsUnavailable = tweet.metrics_unavailable === true;
+
   const date = tweet.created_at
-    ? new Date(tweet.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(tweet.created_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
     : null;
+
   const likeCount = m.like_count ?? 0;
+  const shareCount = m.retweet_count ?? 0;
   const commentCount = m.reply_count ?? 0;
+
   const author = tweet.author || {};
   const displayName = author.name || "";
   const username = author.username || tweet._authorUsername || authorUsername || "";
-  const authorLabel = displayName && username
-    ? `${displayName} @${username}`
-    : username
-      ? `@${username}`
-      : "";
-  {
-    authorLabel && (
-      <Text size="sm" fw={600}>
-        Posted by {authorLabel}
-      </Text>
-    )
-  }
+  const avatarUrl = cleanXImageUrl(author.profile_image_url || tweet._authorProfileImageUrl);
+  const mediaItems = Array.isArray(tweet.media) ? tweet.media : [];
+
+  const authorLabel =
+    displayName && username
+      ? `${displayName} @${username}`
+      : username
+        ? `@${username}`
+        : "";
+
+  const initials = String(displayName || username || "?")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+
+  const postUrl =
+    tweet.url ||
+    (tweet.id
+      ? username
+        ? `https://x.com/${username}/status/${tweet.id}`
+        : `https://x.com/i/web/status/${tweet.id}`
+      : null);
 
   return (
-    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
+    <Card withBorder radius="md" p="md">
       <Stack gap="sm">
-        <Group justify="space-between" wrap="nowrap">
-          <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            {authorUsername && (
-              <div style={{
-                width: 36, height: 36, borderRadius: "50%",
-                background: "#e8f5fd",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 700, fontSize: 14, color: "#1d9bf0", flexShrink: 0,
-              }}>
-                {(authorUsername || "?")[0].toUpperCase()}
-              </div>
-            )}
-            <div style={{ minWidth: 0, flex: 1 }}>
-              {authorUsername && (
-                <Text size="xs" c="dimmed" mb={4}>Posted by @{authorUsername}</Text>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <Group gap="sm" align="center" wrap="nowrap">
+            <Avatar
+              src={avatarUrl}
+              alt={displayName || username || "X author"}
+              radius="xl"
+              size={38}
+            >
+              {initials}
+            </Avatar>
+
+            <Stack gap={0}>
+              {authorLabel ? (
+                <Text size="sm" fw={600}>
+                  Posted by {authorLabel}
+                </Text>
+              ) : (
+                <Text size="sm" fw={600}>
+                  X post
+                </Text>
               )}
-              <ExpandableText text={tweet.text} size="sm" collapsedLines={4} threshold={220} />
-            </div>
+
+              {date && (
+                <Text size="xs" c="dimmed">
+                  {date}
+                </Text>
+              )}
+            </Stack>
           </Group>
-          <Group gap={6} wrap="nowrap" style={{ flexShrink: 0 }}>
-            <IconBrandX size={16} style={{ opacity: 0.5 }} />
-            {onSave && (
-              <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("tweet", { ...tweet, _authorUsername: authorUsername })} />
-            )}
-          </Group>
+
+          {onSave && (
+            <SaveButton
+              onSave={() =>
+                onSave("tweet", {
+                  ...tweet,
+                  _authorUsername: username,
+                  _authorProfileImageUrl: avatarUrl,
+                })
+              }
+            />
+          )}
         </Group>
 
-        {date && <Text size="xs" c="dimmed">{date}</Text>}
+        <ExpandableText
+          text={tweet.text || ""}
+          size="sm"
+          collapsedLines={3}
+          threshold={180}
+        />
 
-        <Divider my={0} />
+        <XMediaPreview media={mediaItems} />
 
         <Group justify="space-between" align="center">
-          <Group gap="lg">
-            <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(likeCount) ? "Hidden" : likeCount.toLocaleString())}</Text></Group>
-            <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (m.retweet_count || 0).toLocaleString()}</Text></Group>
-            <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(commentCount) ? "Hidden" : commentCount.toLocaleString())}</Text></Group>
+          <Group gap="lg" c="dimmed">
+            <Group gap={4}>
+              <IconHeart size={16} />
+              <Text size="sm">
+                {metricsUnavailable
+                  ? "—"
+                  : isHiddenCount(likeCount)
+                    ? "Hidden"
+                    : likeCount.toLocaleString()}
+              </Text>
+            </Group>
+
+            <Group gap={4}>
+              <IconRepeat size={16} />
+              <Text size="sm">
+                {metricsUnavailable ? "—" : shareCount.toLocaleString()}
+              </Text>
+            </Group>
+
+            <Group gap={4}>
+              <IconMessage size={16} />
+              <Text size="sm">
+                {metricsUnavailable
+                  ? "—"
+                  : isHiddenCount(commentCount)
+                    ? "Hidden"
+                    : commentCount.toLocaleString()}
+              </Text>
+            </Group>
           </Group>
-          <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
-            {t("competitorLookup.viewArrow")}
-          </Text>
+
+          {postUrl && (
+            <Button
+              component="a"
+              href={postUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="subtle"
+              size="xs"
+            >
+              {t("competitorLookup.viewArrow", { defaultValue: "View →" })}
+            </Button>
+          )}
         </Group>
+
         <HiddenCountNote likes={likeCount} comments={commentCount} />
       </Stack>
     </Card>

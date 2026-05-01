@@ -33,6 +33,19 @@ const TWEET_FIELDS = [
   "conversation_id",
   "referenced_tweets",
   "entities",
+  "attachments",
+].join(",");
+
+const MEDIA_FIELDS = [
+  "media_key",
+  "type",
+  "url",
+  "preview_image_url",
+  "width",
+  "height",
+  "duration_ms",
+  "public_metrics",
+  "variants",
 ].join(",");
 
 const RESERVED_PROFILE_PATHS = new Set([
@@ -227,53 +240,109 @@ function tweetUrl(tweet, fallbackHandle = null) {
   return handle ? `https://x.com/${handle}/status/${tweet.id}` : `https://x.com/i/web/status/${tweet.id}`;
 }
 
-function normalizeUser(user) {
-  if (!user) return null;
+function normalizeMedia(media) {
+  if (!media) return null;
+
   return {
-    id: String(user.id || ""),
-    name: user.name || user.username || "",
-    username: user.username || "",
-    description: user.description || "",
-    location: user.location || "",
-    profile_image_url: user.profile_image_url || null,
-    created_at: user.created_at || null,
-    verified: Boolean(user.verified),
-    url: user.url || userUrl(user.username),
-    public_metrics: {
-      followers_count: user.public_metrics?.followers_count ?? null,
-      following_count: user.public_metrics?.following_count ?? null,
-      tweet_count: user.public_metrics?.tweet_count ?? null,
-      listed_count: user.public_metrics?.listed_count ?? null,
-    },
-    metrics_unavailable: user.metrics_unavailable === true,
-    source: user.source || "x_api",
+    media_key: media.media_key || media.id || "",
+    type: media.type || "photo",
+    url: media.url || media.media_url_https || media.media_url || null,
+    preview_image_url:
+      media.preview_image_url ||
+      media.media_url_https ||
+      media.media_url ||
+      null,
+    width: media.width ?? media.sizes?.large?.w ?? null,
+    height: media.height ?? media.sizes?.large?.h ?? null,
+    duration_ms: media.duration_ms ?? media.video_info?.duration_millis ?? null,
+    public_metrics: media.public_metrics || {},
+    variants: Array.isArray(media.variants)
+      ? media.variants
+      : Array.isArray(media.video_info?.variants)
+        ? media.video_info.variants.map((v) => ({
+            bitrate: v.bitrate ?? null,
+            content_type: v.content_type || v.contentType || "",
+            url: v.url || "",
+          }))
+        : [],
   };
 }
 
-function normalizeTweet(tweet, users = [], fallbackHandle = null) {
+function normalizeTweet(tweet, users = [], fallbackHandle = null, media = []) {
   if (!tweet) return null;
-  const author = users.find((u) => String(u.id) === String(tweet.author_id)) || tweet.author || null;
-  const authorUsername = author?.username || tweet._authorUsername || fallbackHandle || "";
+
+  const author =
+    users.find((u) => String(u.id) === String(tweet.author_id)) ||
+    tweet.author ||
+    null;
+
+  const authorUsername =
+    author?.username || tweet._authorUsername || fallbackHandle || "";
+
+  const mediaByKey = new Map(
+    (media || [])
+      .filter(Boolean)
+      .map((m) => [String(m.media_key || m.id || ""), m])
+  );
+
+  const mediaKeys = tweet.attachments?.media_keys || [];
+
+  const mediaItemsFromAttachments = mediaKeys
+    .map((key) => mediaByKey.get(String(key)))
+    .filter(Boolean)
+    .map(normalizeMedia)
+    .filter(Boolean);
+
+  const mediaItemsFromTweet = Array.isArray(tweet.media)
+    ? tweet.media.map(normalizeMedia).filter(Boolean)
+    : [];
+
+  const mediaItems = mediaItemsFromAttachments.length
+    ? mediaItemsFromAttachments
+    : mediaItemsFromTweet;
+
   const normalized = {
     ...tweet,
     id: String(tweet.id || tweet.rest_id || tweet.legacy?.id_str || ""),
     text: tweet.text || tweet.full_text || tweet.legacy?.full_text || "",
     created_at: tweet.created_at || tweet.legacy?.created_at || null,
     author_id: tweet.author_id || tweet.legacy?.user_id_str || author?.id || null,
+    media: mediaItems,
     public_metrics: {
-      retweet_count: tweet.public_metrics?.retweet_count ?? tweet.legacy?.retweet_count ?? 0,
-      reply_count: tweet.public_metrics?.reply_count ?? tweet.legacy?.reply_count ?? 0,
-      like_count: tweet.public_metrics?.like_count ?? tweet.legacy?.favorite_count ?? 0,
-      quote_count: tweet.public_metrics?.quote_count ?? tweet.legacy?.quote_count ?? 0,
-      bookmark_count: tweet.public_metrics?.bookmark_count ?? tweet.legacy?.bookmark_count ?? 0,
-      impression_count: tweet.public_metrics?.impression_count ?? tweet.legacy?.impression_count ?? 0,
+      retweet_count:
+        tweet.public_metrics?.retweet_count ??
+        tweet.legacy?.retweet_count ??
+        0,
+      reply_count:
+        tweet.public_metrics?.reply_count ??
+        tweet.legacy?.reply_count ??
+        0,
+      like_count:
+        tweet.public_metrics?.like_count ??
+        tweet.legacy?.favorite_count ??
+        0,
+      quote_count:
+        tweet.public_metrics?.quote_count ??
+        tweet.legacy?.quote_count ??
+        0,
+      bookmark_count:
+        tweet.public_metrics?.bookmark_count ??
+        tweet.legacy?.bookmark_count ??
+        0,
+      impression_count:
+        tweet.public_metrics?.impression_count ??
+        tweet.legacy?.impression_count ??
+        0,
     },
     author: author ? normalizeUser(author) : null,
     _authorUsername: authorUsername,
+    _authorProfileImageUrl: author?.profile_image_url || null,
     metrics_unavailable: tweet.metrics_unavailable === true,
     source: tweet.source || "x_api",
   };
+
   normalized.url = tweet.url || tweetUrl(normalized, authorUsername);
+
   return normalized;
 }
 
@@ -282,12 +351,38 @@ function tweetTime(tweet) {
     const time = new Date(tweet.created_at).getTime();
     if (Number.isFinite(time)) return time;
   }
-  const id = BigInt(String(tweet?.id || "0").replace(/\D/g, "") || "0");
-  return Number(id > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : id);
+  try {
+    const rawId = String(tweet?.id || "").replace(/\D/g, "");
+    if (rawId) {
+      const id = BigInt(rawId);
+      const twitterEpoch = 1288834974657n;
+      const timestamp = Number((id >> 22n) + twitterEpoch);
+
+      if (Number.isFinite(timestamp) && timestamp > 0) {
+        return timestamp;
+      }
+    }
+  } catch {
+  }
+
+  return 0;
 }
 
 function sortTweetsNewestFirst(tweets = []) {
   return [...tweets].sort((a, b) => tweetTime(b) - tweetTime(a));
+}
+
+function isFreshTweet(tweet, daysBack = 45) {
+  const time = tweetTime(tweet);
+
+  if (!time) return true;
+
+  const now = Date.now();
+  const cutoff = now - daysBack * 24 * 60 * 60 * 1000;
+
+  const futureBuffer = now + 24 * 60 * 60 * 1000;
+
+  return time >= cutoff && time <= futureBuffer;
 }
 
 function recentGoogleDate(daysBack = 14) {
@@ -322,29 +417,122 @@ function mapScrapeCreatorsProfile(resp) {
   });
 }
 
+function extractScrapeCreatorsCardMedia(tweet, tweetId = "") {
+  const bindingValues =
+    tweet?.card?.legacy?.binding_values ||
+    tweet?.card?.binding_values ||
+    [];
+
+  if (!Array.isArray(bindingValues)) return [];
+
+  return bindingValues
+    .map((item, index) => {
+      const key = String(item?.key || "").toLowerCase();
+      const value = item?.value || {};
+
+      const imageUrl =
+        value?.image_value?.url ||
+        value?.string_value ||
+        value?.scribe_key;
+
+      if (!imageUrl || !key.includes("image")) return null;
+
+      return normalizeMedia({
+        media_key: `${tweetId || "card"}-${index}`,
+        type: "photo",
+        url: imageUrl,
+        preview_image_url: imageUrl,
+      });
+    })
+    .filter(Boolean);
+}
+
+function extractScrapeCreatorsMedia(tweet, legacy = {}, tweetId = "") {
+  const rawMedia =
+    legacy?.extended_entities?.media ||
+    tweet?.extended_entities?.media ||
+    legacy?.entities?.media ||
+    tweet?.entities?.media ||
+    [];
+
+  const attachedMedia = rawMedia
+    .map((m, index) =>
+      normalizeMedia({
+        media_key: m.media_key || m.id_str || m.id || `${tweetId || "media"}-${index}`,
+        type: m.type || "photo",
+        url: m.media_url_https || m.media_url || m.url || null,
+        preview_image_url:
+          m.preview_image_url ||
+          m.media_url_https ||
+          m.media_url ||
+          null,
+        width: m.width ?? m.sizes?.large?.w ?? null,
+        height: m.height ?? m.sizes?.large?.h ?? null,
+        duration_ms: m.video_info?.duration_millis ?? null,
+        variants: m.video_info?.variants || m.variants || [],
+      })
+    )
+    .filter(Boolean);
+
+  const cardMedia = extractScrapeCreatorsCardMedia(tweet, tweetId);
+
+  return [...attachedMedia, ...cardMedia];
+}
+
 function mapScrapeCreatorsTweet(rawTweet, fallbackHandle = null) {
   const tweet = rawTweet?.tweet || rawTweet?.data || rawTweet;
   const legacy = tweet?.legacy || {};
   const id = tweet?.rest_id || legacy.id_str || tweet?.id;
-  const handle = fallbackHandle || tweet?.core?.user_results?.result?.legacy?.screen_name || tweet?.user?.screen_name || tweet?.user?.username || "";
 
-  return normalizeTweet({
-    id,
-    text: legacy.full_text || tweet?.text || tweet?.full_text || "",
-    created_at: legacy.created_at || tweet?.created_at || null,
-    author_id: legacy.user_id_str || tweet?.author_id || null,
-    public_metrics: {
-      retweet_count: legacy.retweet_count ?? tweet?.retweet_count ?? 0,
-      reply_count: legacy.reply_count ?? tweet?.reply_count ?? 0,
-      like_count: legacy.favorite_count ?? tweet?.favorite_count ?? tweet?.like_count ?? 0,
-      quote_count: legacy.quote_count ?? tweet?.quote_count ?? 0,
-      bookmark_count: legacy.bookmark_count ?? tweet?.bookmark_count ?? 0,
-      impression_count: legacy.view_count ?? legacy.impression_count ?? tweet?.impression_count ?? 0,
+  const userResult = tweet?.core?.user_results?.result || tweet?.user_results?.result || {};
+  const userLegacy = userResult?.legacy || tweet?.user?.legacy || tweet?.user || {};
+
+  const handle =
+    fallbackHandle ||
+    userLegacy?.screen_name ||
+    tweet?.user?.screen_name ||
+    tweet?.user?.username ||
+    "";
+
+  const media = extractScrapeCreatorsMedia(tweet, legacy, id);
+
+  const author = handle
+    ? {
+        id: userResult?.rest_id || legacy.user_id_str || handle,
+        username: handle,
+        name: userLegacy?.name || handle,
+        profile_image_url:
+          userLegacy?.profile_image_url_https ||
+          userLegacy?.profile_image_url ||
+          tweet?.user?.profile_image_url ||
+          null,
+      }
+    : null;
+
+  return normalizeTweet(
+    {
+      id,
+      text: legacy.full_text || tweet?.text || tweet?.full_text || "",
+      created_at: legacy.created_at || tweet?.created_at || null,
+      author_id: legacy.user_id_str || tweet?.author_id || author?.id || null,
+      author,
+      media,
+      public_metrics: {
+        retweet_count: legacy.retweet_count ?? tweet?.retweet_count ?? 0,
+        reply_count: legacy.reply_count ?? tweet?.reply_count ?? 0,
+        like_count: legacy.favorite_count ?? tweet?.favorite_count ?? tweet?.like_count ?? 0,
+        quote_count: legacy.quote_count ?? tweet?.quote_count ?? 0,
+        bookmark_count: legacy.bookmark_count ?? tweet?.bookmark_count ?? 0,
+        impression_count: legacy.view_count ?? legacy.impression_count ?? tweet?.impression_count ?? 0,
+      },
+      url: tweet?.url || (id ? `https://x.com/${handle || "i/web"}/status/${id}` : null),
+      _authorUsername: handle,
+      source: "scrape_creators",
     },
-    url: tweet?.url || (id ? `https://x.com/${handle || "i/web"}/status/${id}` : null),
-    _authorUsername: handle,
-    source: "scrape_creators",
-  }, [], handle);
+    author ? [author] : [],
+    handle,
+    media
+  );
 }
 
 async function scrapeCreatorsProfile(handle) {
@@ -376,45 +564,69 @@ async function scrapeCreatorsTweetByUrl(url, fallbackHandle = null) {
 
 async function googleTweetFallback(query, limit = 10) {
   const target = clampInt(limit, 1, 20, 10);
-  const since = recentGoogleDate(14);
+  const daysBack = 45;
+  const since = recentGoogleDate(daysBack);
+
   const searches = [
     `${query} after:${since} site:x.com/*/status`,
     `${query} after:${since} site:twitter.com/*/status`,
   ];
+
   const seen = new Set();
   const tweets = [];
   let credits_remaining = null;
 
   for (const search of searches) {
     const resp = await scrapeCreators("/v1/google/search", { query: search });
-    if (credits_remaining == null && resp?.credits_remaining != null) credits_remaining = resp.credits_remaining;
+
+    if (credits_remaining == null && resp?.credits_remaining != null) {
+      credits_remaining = resp.credits_remaining;
+    }
+
     const hits = resp?.results || resp?.data || [];
 
     for (const hit of hits) {
       const url = hit.url || hit.link || "";
       const parsed = parseXInput(url);
+
       if (parsed.type !== "post" || seen.has(parsed.tweetId)) continue;
       seen.add(parsed.tweetId);
 
       try {
         const detailed = await scrapeCreatorsTweetByUrl(url, parsed.handle);
-        if (detailed?.tweet) tweets.push(detailed.tweet);
-        if (detailed?.credits_remaining != null) credits_remaining = detailed.credits_remaining;
-      } catch {
-        tweets.push(normalizeTweet({
-          id: parsed.tweetId,
-          text: hit.title || hit.snippet || "",
-          url,
-          _authorUsername: parsed.handle,
-          public_metrics: {},
-          metrics_unavailable: true,
-          source: "google_fallback",
-        }, [], parsed.handle));
-      }
 
-      if (tweets.length >= target) return { tweets, users: [], credits_remaining, metrics_unavailable: false };
+        if (detailed?.tweet && isFreshTweet(detailed.tweet, daysBack)) {
+          tweets.push(detailed.tweet);
+        }
+
+        if (detailed?.credits_remaining != null) {
+          credits_remaining = detailed.credits_remaining;
+        }
+      } catch {
+        const fallbackTweet = normalizeTweet(
+          {
+            id: parsed.tweetId,
+            text: hit.title || hit.snippet || "",
+            url,
+            _authorUsername: parsed.handle,
+            public_metrics: {},
+            metrics_unavailable: true,
+            source: "google_fallback",
+          },
+          [],
+          parsed.handle
+        );
+
+        if (fallbackTweet && isFreshTweet(fallbackTweet, daysBack)) {
+          tweets.push(fallbackTweet);
+        }
+      }
+      if (tweets.length >= target * 2) break;
     }
+
+    if (tweets.length >= target * 2) break;
   }
+
   return {
     tweets: sortTweetsNewestFirst(tweets).slice(0, target),
     users: [],
@@ -459,14 +671,18 @@ export async function fetchPostsByUserId(userIdOrHandle, maxResults = 10, handle
       params: {
         max_results: target,
         "tweet.fields": TWEET_FIELDS,
-        expansions: "author_id",
+        expansions: "author_id,attachments.media_keys",
         "user.fields": USER_FIELDS,
+        "media.fields": MEDIA_FIELDS,
       },
     });
 
     const users = data?.includes?.users || [];
+    const media = data?.includes?.media || [];
     return sortTweetsNewestFirst(
-      (data?.data || []).map((tweet) => normalizeTweet(tweet, users, handleHint)).filter(Boolean)
+      (data?.data || [])
+        .map((tweet) => normalizeTweet(tweet, users, handleHint, media))
+        .filter(Boolean)
     ).slice(0, target);
   } catch (err) {
     if (!shouldFallbackToScrapeCreators(err)) throw err;
@@ -486,14 +702,16 @@ export async function fetchTweetById(tweetIdOrUrl) {
       url: `/tweets/${encodeURIComponent(tweetId)}`,
       params: {
         "tweet.fields": TWEET_FIELDS,
-        expansions: "author_id",
+        expansions: "author_id,attachments.media_keys",
         "user.fields": USER_FIELDS,
+        "media.fields": MEDIA_FIELDS,
       },
     });
 
     const users = data?.includes?.users || [];
+    const media = data?.includes?.media || [];
     return {
-      tweet: normalizeTweet(data?.data, users),
+      tweet: normalizeTweet(data?.data, users, null, media),
       users: users.map(normalizeUser).filter(Boolean),
       tweets: [],
     };
@@ -521,15 +739,19 @@ export async function searchRecentTweets(query, maxResults = 10) {
         max_results: target,
         sort_order: "recency",
         "tweet.fields": TWEET_FIELDS,
-        expansions: "author_id",
+        expansions: "author_id,attachments.media_keys",
         "user.fields": USER_FIELDS,
+        "media.fields": MEDIA_FIELDS,
       },
     });
 
     const users = data?.includes?.users || [];
+    const media = data?.includes?.media || [];
     return {
       tweets: sortTweetsNewestFirst(
-        (data?.data || []).map((tweet) => normalizeTweet(tweet, users)).filter(Boolean)
+        (data?.data || [])
+          .map((tweet) => normalizeTweet(tweet, users, null, media))
+          .filter(Boolean)
       ).slice(0, target),
       users: users.map(normalizeUser).filter(Boolean),
       meta: data?.meta || {},
@@ -601,13 +823,17 @@ export async function fetchUserMentions(userId, maxResults = 10) {
     params: {
       max_results: target,
       "tweet.fields": TWEET_FIELDS,
-      expansions: "author_id",
+      expansions: "author_id,attachments.media_keys",
       "user.fields": USER_FIELDS,
+      "media.fields": MEDIA_FIELDS,
     },
   });
   const users = data?.includes?.users || [];
+  const media = data?.includes?.media || [];
   return {
-    tweets: (data?.data || []).map((tweet) => normalizeTweet(tweet, users)).filter(Boolean),
+    tweets: (data?.data || [])
+      .map((tweet) => normalizeTweet(tweet, users, null, media))
+      .filter(Boolean),
     users: users.map(normalizeUser).filter(Boolean),
   };
 }
