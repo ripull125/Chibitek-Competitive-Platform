@@ -1,508 +1,633 @@
 import "dotenv/config";
 import axios from "axios";
-import { normalizeXPost } from "./utils/normalizeXPost.js";
-import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
+import { scrapeCreators } from "./utils/scrapeCreators.js";
+
+const X_API_BASE_URLS = [
+  process.env.X_API_BASE_URL || "https://api.x.com/2",
+  "https://api.twitter.com/2",
+].filter((value, index, arr) => value && arr.indexOf(value) === index);
+
+const USER_FIELDS = [
+  "id",
+  "name",
+  "username",
+  "created_at",
+  "description",
+  "location",
+  "profile_image_url",
+  "public_metrics",
+  "verified",
+  "url",
+  "pinned_tweet_id",
+].join(",");
+
+// Do not include impression_count as a top-level tweet field. It comes back
+// inside public_metrics when your X access tier supports it.
+const TWEET_FIELDS = [
+  "id",
+  "text",
+  "author_id",
+  "created_at",
+  "public_metrics",
+  "lang",
+  "conversation_id",
+  "referenced_tweets",
+  "entities",
+].join(",");
+
+const RESERVED_PROFILE_PATHS = new Set([
+  "home",
+  "explore",
+  "notifications",
+  "messages",
+  "i",
+  "search",
+  "settings",
+  "compose",
+  "intent",
+]);
+
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
 
 function loadBearerTokens() {
   const tokens = [];
 
   if (process.env.X_BEARER_TOKENS) {
-    tokens.push(
-      ...process.env.X_BEARER_TOKENS.split(",").map((s) => s.trim()).filter(Boolean)
-    );
+    tokens.push(...process.env.X_BEARER_TOKENS.split(",").map((s) => s.trim()).filter(Boolean));
   }
 
-  if (process.env.X_BEARER_TOKEN) tokens.push(process.env.X_BEARER_TOKEN);
+  if (process.env.X_BEARER_TOKEN) tokens.push(process.env.X_BEARER_TOKEN.trim());
 
-  // Support individually numbered vars: X_BEARER_TOKEN_1 ... X_BEARER_TOKEN_10
+  // Support both common styles:
+  // X_BEARER_TOKEN1 ... X_BEARER_TOKEN10
+  // X_BEARER_TOKEN_1 ... X_BEARER_TOKEN_10
   for (let i = 1; i <= 10; i++) {
-    const k = `X_BEARER_TOKEN${i}`;
-    if (process.env[k]) tokens.push(process.env[k]);
+    const compact = process.env[`X_BEARER_TOKEN${i}`];
+    const underscored = process.env[`X_BEARER_TOKEN_${i}`];
+    if (compact) tokens.push(compact.trim());
+    if (underscored) tokens.push(underscored.trim());
   }
 
-  // dedupe and filter
   return Array.from(new Set(tokens.filter(Boolean)));
 }
 
-// Note: Despite rebranding, the official v2 API host remains api.twitter.com
-const xClient = axios.create({
-  baseURL: "https://api.twitter.com/2",
-  headers: {
-    "User-Agent": "Chibitek-App",
-    Accept: "application/json",
-  },
-  timeout: 15000,
-});
-
-async function requestWithTokenFallback(requestConfig) {
-  const tokens = loadBearerTokens();
-  if (!tokens.length) {
-    throw new Error("No X bearer tokens found in environment (X_BEARER_TOKENS, X_BEARER_TOKEN or X_BEARER_TOKEN_1..).");
-  }
-  const attempts = [];
-
-  function mask(tok) {
-    if (!tok) return '(<missing>)';
-    if (tok.length <= 8) return tok.replace(/./g, '*');
-    return `${tok.slice(0, 4)}...${tok.slice(-4)}`;
-  }
-
-  let lastError = null;
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const attempt = { index: i, token: mask(token), url: requestConfig.url };
-    try {
-      const res = await xClient.request({
-        ...requestConfig,
-        headers: {
-          ...(requestConfig.headers || {}),
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      attempt.success = true;
-      attempt.status = res.status;
-      attempts.push(attempt);
-      return res;
-    } catch (err) {
-      lastError = err;
-      attempt.success = false;
-      attempt.errorCode = err.code || null;
-      if (err.response) {
-        attempt.status = err.response.status;
-        try {
-          attempt.body = JSON.stringify(err.response.data);
-        } catch (e) {
-          attempt.body = String(err.response.data);
-        }
-      } else {
-        attempt.message = err.message;
-      }
-      attempts.push(attempt);
-      // continue to next token
-    }
-  }
-
-  const summary = attempts.map(a => ({ index: a.index, token: a.token, success: a.success, status: a.status || null, errorCode: a.errorCode || null, body: a.body || a.message || null }));
-  const agg = new Error(`All bearer tokens failed for request ${requestConfig.method || 'GET'} ${requestConfig.url}. Attempts: ${JSON.stringify(summary, null, 2)}`);
-  // attach attempts array for programmatic access if caller wants it
-  agg.attempts = summary;
-  agg.lastError = lastError;
-  throw agg;
+function maskToken(token) {
+  if (!token) return "<missing>";
+  if (token.length <= 10) return "***";
+  return `${token.slice(0, 5)}...${token.slice(-5)}`;
 }
 
-export async function getUserIdByUsername(username) {
-  try {
-    const res = await requestWithTokenFallback({
-      method: "get",
-      url: `/users/by/username/${encodeURIComponent(username)}`,
-      params: {
-        "user.fields": "created_at,description,location,name,profile_image_url,public_metrics,verified,url,pinned_tweet_id",
+function normalizeAxiosError(err, context = {}) {
+  const status = err?.response?.status ?? null;
+  const body = err?.response?.data ?? null;
+  const message = body?.detail || body?.title || body?.error || body?.message || err?.message || "X API request failed";
+  const out = new Error(`${message}${status ? ` (${status})` : ""}`);
+  out.status = status;
+  out.body = body;
+  out.code = err?.code;
+  out.context = context;
+  return out;
+}
+
+function shouldTryNextToken(status) {
+  return status === 401 || status === 403 || status === 429 || status >= 500;
+}
+
+function shouldFallbackToScrapeCreators(err) {
+  return (
+    err?.code === "NO_X_TOKENS" ||
+    err?.attempts?.length > 0 ||
+    err?.status === 401 ||
+    err?.status === 403 ||
+    err?.status === 429 ||
+    err?.status >= 500 ||
+    ["ENOTFOUND", "ECONNRESET", "ETIMEDOUT", "ECONNABORTED"].includes(err?.code)
+  );
+}
+
+async function xRequest(config) {
+  const tokens = loadBearerTokens();
+  if (!tokens.length) {
+    const err = new Error("No X bearer token configured. Set X_BEARER_TOKEN or X_BEARER_TOKENS.");
+    err.code = "NO_X_TOKENS";
+    throw err;
+  }
+
+  const attempts = [];
+  let lastError = null;
+
+  for (const baseURL of X_API_BASE_URLS) {
+    const client = axios.create({
+      baseURL,
+      timeout: 20_000,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Chibitek-Competitive-Platform",
       },
     });
 
-    if (!res.data?.data?.id) {
-      throw new Error(`No user found for username ${username}`);
-    }
-
-    return res.data.data;
-  } catch (err) {
-    // If the bearer-token attempts failed (network/blocking), try a best-effort
-    // fallback using ScrapeCreators: perform a lightweight Google search to
-    // find a twitter.com profile URL and return minimal metadata so the UI
-    // can still show something useful.
-    const isAllBearerFailures = err && (
-      err.attempts ||
-      err.message?.includes('All bearer tokens failed') ||
-      err.message?.includes('No X bearer tokens found')
-    );
-    if (isAllBearerFailures) {
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
       try {
-        const scProfile = await scrapeCreatorsProfile(username);
-        return {
-          ...scProfile.user,
-          credits_remaining: scProfile.credits_remaining,
-          note: 'Returned via ScrapeCreators Twitter profile endpoint',
-        };
-      } catch (gErr) {
-        // If ScrapeCreators profile fails, fall back to Google search
-        if (err.attempts) {
-          const summary = err.attempts;
-          const ex = new Error(`All bearer tokens failed for X user lookup and fallback also failed: ${gErr?.message || gErr}`);
-          ex.attempts = summary;
-          throw ex;
-        }
-        const google = await scrapeCreators('/v1/google/search', { query: `${username} site:twitter.com` });
-        const hits = google?.results || google?.data || [];
-        const twitterUrl = (hits.find(h => /twitter\.com\//i.test(h.url || h.link || ''))?.url) || null;
-        const title = hits.find(h => h.title)?.title || '';
-        const nameGuess = title.split('(')[0]?.replace(/\s+\/\s*X$/i, '').trim() || username;
-        return {
-          id: String(username),
-          username,
-          name: nameGuess,
-          fallback_url: twitterUrl,
-          public_metrics: {
-            followers_count: null,
-            following_count: null,
-            tweet_count: null,
-            listed_count: null,
+        const response = await client.request({
+          ...config,
+          headers: {
+            ...(config.headers || {}),
+            Authorization: `Bearer ${token}`,
           },
-          metrics_unavailable: true,
-          credits_remaining: google?.credits_remaining ?? null,
-          note: 'Returned via ScrapeCreators Google fallback — not authoritative',
-        };
+        });
+        return response.data;
+      } catch (rawErr) {
+        const err = normalizeAxiosError(rawErr, { baseURL, url: config.url });
+        lastError = err;
+        attempts.push({
+          baseURL,
+          url: config.url,
+          token: maskToken(token),
+          status: err.status,
+          code: err.code,
+          body: err.body,
+          message: err.message,
+        });
+
+        if (!shouldTryNextToken(err.status)) {
+          err.attempts = attempts;
+          throw err;
+        }
       }
     }
-
-    if (err.response) {
-      throw new Error(
-        `X API user lookup failed: ${err.response.status} ${JSON.stringify(
-          err.response.data
-        )}`
-      );
-    }
-    if (err.code === 'ECONNRESET' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-      throw new Error(`Network error contacting X API (${err.code}). Check internet connectivity, DNS, or firewall settings.`);
-    }
-    throw err;
   }
+
+  const err = new Error(`All X bearer token attempts failed for ${config.method || "GET"} ${config.url}.`);
+  err.attempts = attempts;
+  err.lastError = lastError;
+  err.status = lastError?.status ?? null;
+  err.code = lastError?.code ?? null;
+  throw err;
 }
 
-const TWEET_FIELDS = "created_at,public_metrics,lang,conversation_id,in_reply_to_user_id,referenced_tweets,entities,source,impression_count";
+export function parseXInput(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return { type: "empty", raw };
 
-function mapScrapeCreatorsProfile(profile) {
-  const legacy = profile?.legacy || {};
-  const username = legacy.screen_name || profile?.screen_name || profile?.username || "";
-  const name = legacy.name || profile?.name || username;
-  const urlEntity = legacy?.entities?.url?.urls?.[0]?.expanded_url || null;
+  const atHandle = raw.match(/^@([A-Za-z0-9_]{1,15})$/);
+  if (atHandle) return { type: "account", raw, handle: atHandle[1], source: "handle" };
 
+  try {
+    const url = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^mobile\./, "");
+    if (host === "x.com" || host === "twitter.com") {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const statusIndex = parts.findIndex((p) => p.toLowerCase() === "status");
+
+      if (statusIndex >= 0 && /^\d+$/.test(parts[statusIndex + 1] || "")) {
+        return {
+          type: "post",
+          raw,
+          tweetId: parts[statusIndex + 1],
+          handle: parts[statusIndex - 1] && !RESERVED_PROFILE_PATHS.has(parts[statusIndex - 1].toLowerCase())
+            ? parts[statusIndex - 1]
+            : null,
+          url: raw,
+        };
+      }
+
+      const possibleHandle = parts[0]?.replace(/^@/, "");
+      if (possibleHandle && /^[A-Za-z0-9_]{1,15}$/.test(possibleHandle) && !RESERVED_PROFILE_PATHS.has(possibleHandle.toLowerCase())) {
+        return { type: "account", raw, handle: possibleHandle, source: "profile_url", url: raw };
+      }
+    }
+  } catch {
+    // Not a URL; treat it as a keyword query below.
+  }
+
+  // Important: a bare single word is still a keyword search. Per the product
+  // behavior, only @handle or profile URLs trigger account lookup.
+  return { type: "keyword", raw, query: raw };
+}
+
+function extractTweetId(input) {
+  const parsed = parseXInput(input);
+  if (parsed.type === "post") return parsed.tweetId;
+  const direct = String(input || "").trim().match(/^\d{5,}$/);
+  return direct ? direct[0] : null;
+}
+
+function userUrl(username) {
+  return username ? `https://x.com/${username}` : null;
+}
+
+function tweetUrl(tweet, fallbackHandle = null) {
+  if (!tweet?.id) return null;
+  const handle = tweet._authorUsername || tweet.author?.username || fallbackHandle;
+  return handle ? `https://x.com/${handle}/status/${tweet.id}` : `https://x.com/i/web/status/${tweet.id}`;
+}
+
+function normalizeUser(user) {
+  if (!user) return null;
   return {
-    id: String(profile?.rest_id || legacy?.id_str || username || ""),
+    id: String(user.id || ""),
+    name: user.name || user.username || "",
+    username: user.username || "",
+    description: user.description || "",
+    location: user.location || "",
+    profile_image_url: user.profile_image_url || null,
+    created_at: user.created_at || null,
+    verified: Boolean(user.verified),
+    url: user.url || userUrl(user.username),
+    public_metrics: {
+      followers_count: user.public_metrics?.followers_count ?? null,
+      following_count: user.public_metrics?.following_count ?? null,
+      tweet_count: user.public_metrics?.tweet_count ?? null,
+      listed_count: user.public_metrics?.listed_count ?? null,
+    },
+    metrics_unavailable: user.metrics_unavailable === true,
+    source: user.source || "x_api",
+  };
+}
+
+function normalizeTweet(tweet, users = [], fallbackHandle = null) {
+  if (!tweet) return null;
+  const author = users.find((u) => String(u.id) === String(tweet.author_id)) || tweet.author || null;
+  const authorUsername = author?.username || tweet._authorUsername || fallbackHandle || "";
+  const normalized = {
+    ...tweet,
+    id: String(tweet.id || tweet.rest_id || tweet.legacy?.id_str || ""),
+    text: tweet.text || tweet.full_text || tweet.legacy?.full_text || "",
+    created_at: tweet.created_at || tweet.legacy?.created_at || null,
+    author_id: tweet.author_id || tweet.legacy?.user_id_str || author?.id || null,
+    public_metrics: {
+      retweet_count: tweet.public_metrics?.retweet_count ?? tweet.legacy?.retweet_count ?? 0,
+      reply_count: tweet.public_metrics?.reply_count ?? tweet.legacy?.reply_count ?? 0,
+      like_count: tweet.public_metrics?.like_count ?? tweet.legacy?.favorite_count ?? 0,
+      quote_count: tweet.public_metrics?.quote_count ?? tweet.legacy?.quote_count ?? 0,
+      bookmark_count: tweet.public_metrics?.bookmark_count ?? tweet.legacy?.bookmark_count ?? 0,
+      impression_count: tweet.public_metrics?.impression_count ?? tweet.legacy?.impression_count ?? 0,
+    },
+    author: author ? normalizeUser(author) : null,
+    _authorUsername: authorUsername,
+    metrics_unavailable: tweet.metrics_unavailable === true,
+    source: tweet.source || "x_api",
+  };
+  normalized.url = tweet.url || tweetUrl(normalized, authorUsername);
+  return normalized;
+}
+
+function tweetTime(tweet) {
+  if (tweet?.created_at) {
+    const time = new Date(tweet.created_at).getTime();
+    if (Number.isFinite(time)) return time;
+  }
+  const id = BigInt(String(tweet?.id || "0").replace(/\D/g, "") || "0");
+  return Number(id > BigInt(Number.MAX_SAFE_INTEGER) ? BigInt(Number.MAX_SAFE_INTEGER) : id);
+}
+
+function sortTweetsNewestFirst(tweets = []) {
+  return [...tweets].sort((a, b) => tweetTime(b) - tweetTime(a));
+}
+
+function recentGoogleDate(daysBack = 14) {
+  const d = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function mapScrapeCreatorsProfile(resp) {
+  const profile = resp?.data || resp?.user || resp;
+  const legacy = profile?.legacy || {};
+  const username = legacy.screen_name || profile?.screen_name || profile?.username || profile?.handle || "";
+  const name = legacy.name || profile?.name || username;
+  const expandedUrl = legacy?.entities?.url?.urls?.[0]?.expanded_url || null;
+
+  return normalizeUser({
+    id: profile?.rest_id || legacy.id_str || username,
     username,
     name,
-    description: legacy.description || "",
-    location: legacy.location || "",
-    created_at: legacy.created_at || null,
-    verified: legacy.verified || profile?.is_blue_verified || false,
-    url: urlEntity,
+    description: legacy.description || profile?.description || "",
+    location: legacy.location || profile?.location || "",
+    profile_image_url: legacy.profile_image_url_https || profile?.profile_image_url || null,
+    created_at: legacy.created_at || profile?.created_at || null,
+    verified: legacy.verified || profile?.is_blue_verified || profile?.verified || false,
+    url: expandedUrl || userUrl(username),
     public_metrics: {
-      followers_count: legacy.followers_count ?? null,
-      following_count: legacy.friends_count ?? null,
-      tweet_count: legacy.statuses_count ?? null,
-      listed_count: legacy.listed_count ?? null,
+      followers_count: legacy.followers_count ?? profile?.followers_count ?? null,
+      following_count: legacy.friends_count ?? profile?.following_count ?? null,
+      tweet_count: legacy.statuses_count ?? profile?.tweet_count ?? null,
+      listed_count: legacy.listed_count ?? profile?.listed_count ?? null,
     },
-    metrics_unavailable: false,
-  };
+    source: "scrape_creators",
+  });
 }
 
-function mapScrapeCreatorsTweet(tweet) {
+function mapScrapeCreatorsTweet(rawTweet, fallbackHandle = null) {
+  const tweet = rawTweet?.tweet || rawTweet?.data || rawTweet;
   const legacy = tweet?.legacy || {};
-  return {
-    id: tweet?.rest_id || legacy?.id_str,
-    text: legacy.full_text || "",
-    created_at: legacy.created_at || null,
+  const id = tweet?.rest_id || legacy.id_str || tweet?.id;
+  const handle = fallbackHandle || tweet?.core?.user_results?.result?.legacy?.screen_name || tweet?.user?.screen_name || tweet?.user?.username || "";
+
+  return normalizeTweet({
+    id,
+    text: legacy.full_text || tweet?.text || tweet?.full_text || "",
+    created_at: legacy.created_at || tweet?.created_at || null,
+    author_id: legacy.user_id_str || tweet?.author_id || null,
     public_metrics: {
-      like_count: legacy.favorite_count ?? null,
-      retweet_count: legacy.retweet_count ?? null,
-      reply_count: legacy.reply_count ?? null,
-      quote_count: legacy.quote_count ?? null,
+      retweet_count: legacy.retweet_count ?? tweet?.retweet_count ?? 0,
+      reply_count: legacy.reply_count ?? tweet?.reply_count ?? 0,
+      like_count: legacy.favorite_count ?? tweet?.favorite_count ?? tweet?.like_count ?? 0,
+      quote_count: legacy.quote_count ?? tweet?.quote_count ?? 0,
+      bookmark_count: legacy.bookmark_count ?? tweet?.bookmark_count ?? 0,
+      impression_count: legacy.view_count ?? legacy.impression_count ?? tweet?.impression_count ?? 0,
     },
-    metrics_unavailable: false,
-  };
+    url: tweet?.url || (id ? `https://x.com/${handle || "i/web"}/status/${id}` : null),
+    _authorUsername: handle,
+    source: "scrape_creators",
+  }, [], handle);
 }
 
 async function scrapeCreatorsProfile(handle) {
-  const resp = await scrapeCreators('/v1/twitter/profile', { handle });
+  const resp = await scrapeCreators("/v1/twitter/profile", { handle });
   return {
     user: mapScrapeCreatorsProfile(resp),
     credits_remaining: resp?.credits_remaining ?? null,
   };
 }
 
-async function scrapeCreatorsUserTweets(handle, maxResults) {
-  const resp = await scrapeCreators('/v1/twitter/user-tweets', { handle });
-  const tweets = Array.isArray(resp?.tweets) ? resp.tweets.map(mapScrapeCreatorsTweet) : [];
+async function scrapeCreatorsUserTweets(handle, limit = 10) {
+  const resp = await scrapeCreators("/v1/twitter/user-tweets", { handle, trim: "false" });
+  const rawTweets = resp?.tweets || resp?.data?.tweets || resp?.items || [];
   return {
-    tweets: tweets.slice(0, Math.min(Math.max(maxResults, 10), 100)),
+    tweets: sortTweetsNewestFirst(
+      rawTweets.map((t) => mapScrapeCreatorsTweet(t, handle)).filter(Boolean)
+    ).slice(0, clampInt(limit, 1, 100, 10)),
     credits_remaining: resp?.credits_remaining ?? null,
   };
 }
 
-async function scrapeCreatorsTweetByUrl(url) {
-  const resp = await scrapeCreators('/v1/twitter/tweet', { url });
+async function scrapeCreatorsTweetByUrl(url, fallbackHandle = null) {
+  const resp = await scrapeCreators("/v1/twitter/tweet", { url });
   return {
-    tweet: mapScrapeCreatorsTweet(resp),
+    tweet: mapScrapeCreatorsTweet(resp, fallbackHandle),
     credits_remaining: resp?.credits_remaining ?? null,
   };
 }
 
-async function collectGoogleTweetFallback(queries, maxResults) {
-  const tweets = [];
+async function googleTweetFallback(query, limit = 10) {
+  const target = clampInt(limit, 1, 20, 10);
+  const since = recentGoogleDate(14);
+  const searches = [
+    `${query} after:${since} site:x.com/*/status`,
+    `${query} after:${since} site:twitter.com/*/status`,
+  ];
   const seen = new Set();
+  const tweets = [];
   let credits_remaining = null;
 
-  for (const q of queries) {
-    const google = await scrapeCreators('/v1/google/search', { query: q });
-    if (credits_remaining == null && google?.credits_remaining != null) {
-      credits_remaining = google.credits_remaining;
-    }
-    const hits = google?.results || google?.data || [];
-    for (const h of hits) {
-      const url = h.url || h.link || '';
-      if (!/twitter\.com\/.+\/status\//i.test(url) && !/x\.com\/.+\/status\//i.test(url)) continue;
-      if (seen.has(url)) continue;
-      seen.add(url);
-      tweets.push({
-        id: url.split('/').pop(),
-        url,
-        text: h.title || h.snippet || '',
-        public_metrics: {
-          like_count: null,
-          reply_count: null,
-          retweet_count: null,
-          quote_count: null,
-        },
-        metrics_unavailable: true,
-      });
-      if (tweets.length >= maxResults) return { tweets, credits_remaining };
-    }
-  }
+  for (const search of searches) {
+    const resp = await scrapeCreators("/v1/google/search", { query: search });
+    if (credits_remaining == null && resp?.credits_remaining != null) credits_remaining = resp.credits_remaining;
+    const hits = resp?.results || resp?.data || [];
 
-  return { tweets, credits_remaining };
-}
+    for (const hit of hits) {
+      const url = hit.url || hit.link || "";
+      const parsed = parseXInput(url);
+      if (parsed.type !== "post" || seen.has(parsed.tweetId)) continue;
+      seen.add(parsed.tweetId);
 
-async function enrichTweetsWithScrapeCreators(tweets) {
-  let credits_remaining = null;
-  const enriched = [];
-
-  for (const t of tweets) {
-    if (!t?.url) {
-      enriched.push(t);
-      continue;
-    }
-    try {
-      const sc = await scrapeCreatorsTweetByUrl(t.url);
-      if (sc?.credits_remaining != null) credits_remaining = sc.credits_remaining;
-      enriched.push({
-        ...t,
-        ...sc.tweet,
-        url: t.url,
-        metrics_unavailable: false,
-      });
-    } catch {
-      enriched.push(t);
-    }
-  }
-
-  return { tweets: enriched, credits_remaining };
-}
-
-export async function fetchPostsByUserId(userId, maxResults = 10) {
-  // If a non-numeric userId is supplied (from fallback), treat it as a
-  // username and return best-effort search results via ScrapeCreators.
-  if (!userId || (typeof userId === 'string' && !/^[0-9]+$/.test(userId))) {
-    const username = String(userId || '').trim();
-    try {
-      const scTweets = await scrapeCreatorsUserTweets(username, maxResults);
-      return { ...scTweets, metrics_unavailable: false };
-    } catch (gErr) {
-      const ex = new Error(`X tweet lookup fallback failed: ${gErr?.message || gErr}`);
-      throw ex;
-    }
-  }
-
-  try {
-    const target = Math.min(Math.max(maxResults, 10), 100);
-    const tweets = [];
-    let paginationToken = null;
-
-    for (let page = 0; page < 5 && tweets.length < target; page++) {
-      const res = await requestWithTokenFallback({
-        method: "get",
-        url: `/users/${userId}/tweets`,
-        params: {
-          max_results: Math.min(Math.max(target - tweets.length, 10), 100),
-          exclude: "replies,retweets",
-          "tweet.fields": TWEET_FIELDS,
-          ...(paginationToken ? { pagination_token: paginationToken } : {}),
-        },
-      });
-      const pageTweets = res.data?.data || [];
-      tweets.push(...pageTweets);
-      paginationToken = res.data?.meta?.next_token || null;
-      if (!paginationToken || pageTweets.length === 0) break;
-    }
-
-    // If we still have fewer than target tweets, try once without exclusions
-    // to backfill (some users may only have replies/retweets recently).
-    if (tweets.length < target) {
-      const res = await requestWithTokenFallback({
-        method: "get",
-        url: `/users/${userId}/tweets`,
-        params: {
-          max_results: Math.min(Math.max(target - tweets.length, 10), 100),
-          "tweet.fields": TWEET_FIELDS,
-        },
-      });
-      const pageTweets = res.data?.data || [];
-      tweets.push(...pageTweets);
-    }
-
-    return tweets.slice(0, target);
-  } catch (err) {
-    // If bearer tokens all failed, attempt a best-effort ScrapeCreators fallback
-    const isAllBearerFailures = err && (
-      err.attempts ||
-      err.message?.includes('All bearer tokens failed') ||
-      err.message?.includes('No X bearer tokens found')
-    );
-    if (isAllBearerFailures) {
       try {
-        const scTweets = await scrapeCreatorsUserTweets(String(userId), Math.min(Math.max(maxResults, 10), 100));
-        return { ...scTweets, metrics_unavailable: false };
-      } catch (gErr) {
-        const ex = new Error(`X tweet lookup failed and fallback also failed: ${gErr?.message || gErr}`);
-        ex.original = err;
-        throw ex;
+        const detailed = await scrapeCreatorsTweetByUrl(url, parsed.handle);
+        if (detailed?.tweet) tweets.push(detailed.tweet);
+        if (detailed?.credits_remaining != null) credits_remaining = detailed.credits_remaining;
+      } catch {
+        tweets.push(normalizeTweet({
+          id: parsed.tweetId,
+          text: hit.title || hit.snippet || "",
+          url,
+          _authorUsername: parsed.handle,
+          public_metrics: {},
+          metrics_unavailable: true,
+          source: "google_fallback",
+        }, [], parsed.handle));
       }
-    }
-    throw err;
-  }
-}
 
-export async function fetchUserMentions(userId, maxResults = 10) {
-  const res = await requestWithTokenFallback({
-    method: "get",
-    url: `/users/${userId}/mentions`,
-    params: {
-      max_results: Math.min(Math.max(maxResults, 5), 100),
-      "tweet.fields": TWEET_FIELDS,
-      "expansions": "author_id",
-      "user.fields": "username,name,profile_image_url",
-    },
-  });
+      if (tweets.length >= target) return { tweets, users: [], credits_remaining, metrics_unavailable: false };
+    }
+  }
   return {
-    tweets: res.data?.data || [],
-    users: res.data?.includes?.users || [],
+    tweets: sortTweetsNewestFirst(tweets).slice(0, target),
+    users: [],
+    credits_remaining,
+    metrics_unavailable: false,
   };
 }
 
-export async function fetchFollowers(userId, maxResults = 20) {
-  const res = await requestWithTokenFallback({
-    method: "get",
-    url: `/users/${userId}/followers`,
-    params: {
-      max_results: Math.min(Math.max(maxResults, 1), 1000),
-      "user.fields": "created_at,description,public_metrics,profile_image_url,verified,location",
-    },
-  });
-  return res.data?.data || [];
-}
+export async function getUserIdByUsername(username) {
+  const handle = String(username || "").trim().replace(/^@/, "");
+  if (!handle) throw new Error("Username is required.");
 
-export async function fetchFollowing(userId, maxResults = 20) {
-  const res = await requestWithTokenFallback({
-    method: "get",
-    url: `/users/${userId}/following`,
-    params: {
-      max_results: Math.min(Math.max(maxResults, 1), 1000),
-      "user.fields": "created_at,description,public_metrics,profile_image_url,verified,location",
-    },
-  });
-  return res.data?.data || [];
-}
-
-export async function fetchTweetById(tweetId) {
   try {
-    const res = await requestWithTokenFallback({
-      method: "get",
-      url: `/tweets/${tweetId}`,
+    const data = await xRequest({
+      method: "GET",
+      url: `/users/by/username/${encodeURIComponent(handle)}`,
+      params: { "user.fields": USER_FIELDS },
+    });
+    const user = normalizeUser(data?.data);
+    if (!user?.id) throw new Error(`No X account found for @${handle}.`);
+    return user;
+  } catch (err) {
+    if (!shouldFallbackToScrapeCreators(err)) throw err;
+    const fallback = await scrapeCreatorsProfile(handle);
+    return { ...fallback.user, credits_remaining: fallback.credits_remaining };
+  }
+}
+
+export async function fetchPostsByUserId(userIdOrHandle, maxResults = 10, handleHint = null) {
+  const target = clampInt(maxResults, 5, 100, 10);
+  const value = String(userIdOrHandle || "").trim();
+
+  if (!/^\d+$/.test(value)) {
+    const sc = await scrapeCreatorsUserTweets(value || handleHint, target);
+    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining };
+  }
+
+  try {
+    const data = await xRequest({
+      method: "GET",
+      url: `/users/${encodeURIComponent(value)}/tweets`,
       params: {
+        max_results: target,
         "tweet.fields": TWEET_FIELDS,
-        "expansions": "author_id,referenced_tweets.id",
-        "user.fields": "username,name,profile_image_url,public_metrics",
+        expansions: "author_id",
+        "user.fields": USER_FIELDS,
       },
     });
+
+    const users = data?.includes?.users || [];
+    return sortTweetsNewestFirst(
+      (data?.data || []).map((tweet) => normalizeTweet(tweet, users, handleHint)).filter(Boolean)
+    ).slice(0, target);
+  } catch (err) {
+    if (!shouldFallbackToScrapeCreators(err)) throw err;
+    const handle = handleHint || value;
+    const sc = await scrapeCreatorsUserTweets(handle, target);
+    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining };
+  }
+}
+
+export async function fetchTweetById(tweetIdOrUrl) {
+  const tweetId = extractTweetId(tweetIdOrUrl) || String(tweetIdOrUrl || "").trim();
+  if (!/^\d+$/.test(tweetId)) throw new Error("Valid X post URL or numeric post id is required.");
+
+  try {
+    const data = await xRequest({
+      method: "GET",
+      url: `/tweets/${encodeURIComponent(tweetId)}`,
+      params: {
+        "tweet.fields": TWEET_FIELDS,
+        expansions: "author_id",
+        "user.fields": USER_FIELDS,
+      },
+    });
+
+    const users = data?.includes?.users || [];
     return {
-      tweet: res.data?.data || null,
-      users: res.data?.includes?.users || [],
-      tweets: res.data?.includes?.tweets || [],
+      tweet: normalizeTweet(data?.data, users),
+      users: users.map(normalizeUser).filter(Boolean),
+      tweets: [],
     };
   } catch (err) {
-    const isAllBearerFailures = err && (
-      err.attempts ||
-      err.message?.includes('All bearer tokens failed') ||
-      err.message?.includes('No X bearer tokens found')
-    );
-    if (!isAllBearerFailures) throw err;
-
-    // Try ScrapeCreators tweet endpoint using a constructed URL
-    const url = `https://x.com/i/web/status/${tweetId}`;
-    const sc = await scrapeCreatorsTweetByUrl(url);
-    return { tweet: sc.tweet || null, users: [], tweets: [], credits_remaining: sc.credits_remaining };
+    if (!shouldFallbackToScrapeCreators(err)) throw err;
+    const parsed = parseXInput(tweetIdOrUrl);
+    const url = parsed.type === "post" ? parsed.raw : `https://x.com/i/web/status/${tweetId}`;
+    const sc = await scrapeCreatorsTweetByUrl(url, parsed.handle);
+    return { tweet: sc.tweet, users: [], tweets: [], credits_remaining: sc.credits_remaining };
   }
 }
 
 export async function searchRecentTweets(query, maxResults = 10) {
+  const q = String(query || "").trim();
+  const searchQuery = `${q} -is:retweet`;
+  if (!q) throw new Error("Search query is required.");
+  const target = clampInt(maxResults, 10, 100, 10);
+
   try {
-    const target = Math.min(Math.max(maxResults, 10), 100);
-    const tweets = [];
-    const usersById = new Map();
-    let nextToken = null;
+    const data = await xRequest({
+      method: "GET",
+      url: "/tweets/search/recent",
+      params: {
+        query: searchQuery,
+        max_results: target,
+        sort_order: "recency",
+        "tweet.fields": TWEET_FIELDS,
+        expansions: "author_id",
+        "user.fields": USER_FIELDS,
+      },
+    });
 
-    for (let page = 0; page < 5 && tweets.length < target; page++) {
-      const res = await requestWithTokenFallback({
-        method: "get",
-        url: `/tweets/search/recent`,
-        params: {
-          query,
-          max_results: Math.min(Math.max(target - tweets.length, 10), 100),
-          "tweet.fields": TWEET_FIELDS,
-          "expansions": "author_id",
-          "user.fields": "username,name,profile_image_url,public_metrics",
-          ...(nextToken ? { next_token: nextToken } : {}),
-        },
-      });
-      const pageTweets = res.data?.data || [];
-      tweets.push(...pageTweets);
-      for (const u of res.data?.includes?.users || []) {
-        if (u?.id) usersById.set(u.id, u);
-      }
-      nextToken = res.data?.meta?.next_token || null;
-      if (!nextToken || pageTweets.length === 0) break;
-    }
-
+    const users = data?.includes?.users || [];
     return {
-      tweets: tweets.slice(0, target),
-      users: Array.from(usersById.values()),
+      tweets: sortTweetsNewestFirst(
+        (data?.data || []).map((tweet) => normalizeTweet(tweet, users)).filter(Boolean)
+      ).slice(0, target),
+      users: users.map(normalizeUser).filter(Boolean),
+      meta: data?.meta || {},
     };
   } catch (err) {
-    const isAllBearerFailures = err && (
-      err.attempts ||
-      err.message?.includes('All bearer tokens failed') ||
-      err.message?.includes('No X bearer tokens found')
-    );
-    if (isAllBearerFailures) {
-      try {
-        // Best-effort fallback: use Google search to find recent tweet URLs matching the query
-        const queries = [
-          `${query} site:twitter.com`,
-          `${query} site:x.com`,
-          `${query} "twitter.com"`,
-          `${query} "x.com"`,
-        ];
-        const fallback = await collectGoogleTweetFallback(queries, Math.min(Math.max(maxResults, 10), 100));
-        const enriched = await enrichTweetsWithScrapeCreators(fallback.tweets);
-        return {
-          tweets: enriched.tweets,
-          users: [],
-          credits_remaining: enriched.credits_remaining ?? fallback.credits_remaining,
-          metrics_unavailable: false,
-        };
-      } catch (gErr) {
-        throw new Error(`X search failed and fallback also failed: ${gErr?.message || gErr}`);
-      }
-    }
-    throw err;
+    if (!shouldFallbackToScrapeCreators(err)) throw err;
+    return googleTweetFallback(q, target);
   }
+}
+
+export async function lookupXInput(input, maxResults = 10) {
+  const parsed = parseXInput(input);
+  const limit = clampInt(maxResults, 10, 100, 10);
+
+  if (parsed.type === "empty") throw new Error("Please enter an X @handle, profile URL, post URL, or keyword search.");
+
+  if (parsed.type === "account") {
+    const user = await getUserIdByUsername(parsed.handle);
+    const postsResult = await fetchPostsByUserId(user.id, limit, user.username || parsed.handle);
+    const tweets = Array.isArray(postsResult) ? postsResult : postsResult?.tweets || [];
+    return {
+      success: true,
+      platform: "x",
+      mode: "account",
+      input: parsed,
+      results: {
+        userLookup: user,
+        userTweets: tweets.slice(0, limit),
+      },
+      errors: [],
+      credits_remaining: user?.credits_remaining ?? postsResult?.credits_remaining ?? null,
+    };
+  }
+
+  if (parsed.type === "post") {
+    const result = await fetchTweetById(parsed.raw);
+    return {
+      success: true,
+      platform: "x",
+      mode: "post",
+      input: parsed,
+      results: {
+        tweetLookup: result,
+      },
+      errors: [],
+      credits_remaining: result?.credits_remaining ?? null,
+    };
+  }
+
+  const result = await searchRecentTweets(parsed.query, limit);
+  return {
+    success: true,
+    platform: "x",
+    mode: "keyword",
+    input: parsed,
+    results: {
+      searchTweets: result,
+    },
+    errors: [],
+    credits_remaining: result?.credits_remaining ?? null,
+  };
+}
+
+export async function fetchUserMentions(userId, maxResults = 10) {
+  const target = clampInt(maxResults, 5, 100, 10);
+  const data = await xRequest({
+    method: "GET",
+    url: `/users/${encodeURIComponent(userId)}/mentions`,
+    params: {
+      max_results: target,
+      "tweet.fields": TWEET_FIELDS,
+      expansions: "author_id",
+      "user.fields": USER_FIELDS,
+    },
+  });
+  const users = data?.includes?.users || [];
+  return {
+    tweets: (data?.data || []).map((tweet) => normalizeTweet(tweet, users)).filter(Boolean),
+    users: users.map(normalizeUser).filter(Boolean),
+  };
+}
+
+export async function fetchFollowers(userId, maxResults = 20) {
+  const target = clampInt(maxResults, 1, 1000, 20);
+  const data = await xRequest({
+    method: "GET",
+    url: `/users/${encodeURIComponent(userId)}/followers`,
+    params: { max_results: target, "user.fields": USER_FIELDS },
+  });
+  return (data?.data || []).map(normalizeUser).filter(Boolean);
+}
+
+export async function fetchFollowing(userId, maxResults = 20) {
+  const target = clampInt(maxResults, 1, 1000, 20);
+  const data = await xRequest({
+    method: "GET",
+    url: `/users/${encodeURIComponent(userId)}/following`,
+    params: { max_results: target, "user.fields": USER_FIELDS },
+  });
+  return (data?.data || []).map(normalizeUser).filter(Boolean);
 }

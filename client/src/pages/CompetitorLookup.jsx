@@ -36,7 +36,6 @@ import {
   IconHeart,
   IconInfoCircle,
   IconMessage,
-  IconQuote,
   IconRepeat,
   IconSearch,
   IconUser,
@@ -73,19 +72,19 @@ function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3,
       <Text
         size={size}
         c={dimmed ? "dimmed" : undefined}
-        style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}
         lineClamp={!expanded && isLong ? collapsedLines : undefined}
+        style={{ whiteSpace: "pre-wrap" }}
       >
         {value}
       </Text>
+
       {isLong && (
         <Button
-          type="button"
-          size="compact-xs"
           variant="subtle"
+          size="compact-sm"
           px={0}
-          style={{ alignSelf: "flex-start" }}
           onClick={() => setExpanded((prev) => !prev)}
+          style={{ alignSelf: "flex-start" }}
         >
           {expanded ? "Less" : "More"}
         </Button>
@@ -760,7 +759,13 @@ function XUserCard({ user, onSave }) {
                 {user.verified && <Badge size="xs" color="blue" variant="filled">✓</Badge>}
               </Group>
               <Text size="sm" c="dimmed">@{user.username}</Text>
-              {user.location && <Text size="xs" c="dimmed">{user.location}</Text>}
+              {user.location && (
+                <Text size="xs" c="dimmed">
+                  {typeof user.location === "string"
+                    ? user.location
+                    : user.location?.location || ""}
+                </Text>
+              )}
             </div>
           </Group>
           <Badge color="dark" variant="light" size="lg">
@@ -845,6 +850,21 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
     : null;
   const likeCount = m.like_count ?? 0;
   const commentCount = m.reply_count ?? 0;
+  const author = tweet.author || {};
+  const displayName = author.name || "";
+  const username = author.username || tweet._authorUsername || authorUsername || "";
+  const authorLabel = displayName && username
+    ? `${displayName} @${username}`
+    : username
+      ? `@${username}`
+      : "";
+  {
+    authorLabel && (
+      <Text size="sm" fw={600}>
+        Posted by {authorLabel}
+      </Text>
+    )
+  }
 
   return (
     <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
@@ -885,7 +905,6 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
             <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(likeCount) ? "Hidden" : likeCount.toLocaleString())}</Text></Group>
             <Group gap={4} wrap="nowrap"><IconRepeat size={14} color="#17bf63" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (m.retweet_count || 0).toLocaleString()}</Text></Group>
             <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{metricsUnavailable ? "—" : (isHiddenCount(commentCount) ? "Hidden" : commentCount.toLocaleString())}</Text></Group>
-            {m.quote_count > 0 && <Group gap={4} wrap="nowrap"><IconQuote size={14} color="#794bc4" /><Text size="xs" c="dimmed">{m.quote_count.toLocaleString()}</Text></Group>}
           </Group>
           <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank">
             {t("competitorLookup.viewArrow")}

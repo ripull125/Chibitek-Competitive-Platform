@@ -1,4 +1,4 @@
-import { getUserIdByUsername, fetchPostsByUserId, fetchUserMentions, fetchFollowers, fetchFollowing, fetchTweetById, searchRecentTweets } from "./xApi.js";
+import xRoutes from "./routes/xRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
@@ -78,12 +78,16 @@ async function ensureRedditPlatform() {
 }
 
 const app = express();
+
 app.use(cors({
   origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 }));
+
 app.use(express.json({ limit: '10mb' }));
+
+app.use('/api/x', xRoutes);
 
 const {
   GITHUB_TOKEN,
@@ -820,195 +824,7 @@ async function fetchLatestPostsContext(userId) {
   }
 }
 
-app.get("/api/x/fetch/:username", async (req, res) => {
-  try {
-    const username = req.params.username;
-    const user = await getUserIdByUsername(username);
-    const postsResult = await fetchPostsByUserId(user.id, 5);
-    const posts = Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
 
-    res.json({ success: true, username: user.username || username, userId: user.id, posts });
-  } catch (err) {
-    console.error("X fetch error:", err.message);
-
-    if (String(err.message).includes("Rate limit")) {
-      return res.status(429).json({ error: err.message });
-    }
-
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/x/search
- * Body: { options: { userLookup, followers, following, userTweets, userMentions, tweetLookup, searchTweets },
- *         inputs: { username, tweetsUsername, tweetUrl, searchQuery } }
- * Calls the relevant X API v2 endpoints in parallel and returns combined results.
- */
-app.post('/api/x/search', async (req, res) => {
-  try {
-    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
-    let credits_remaining = null;
-    const tasks = [];
-    const labels = [];
-
-    // Auto-route when caller passes a single freeform `q` and no options.
-    // For X, only treat @handles as account lookups; plain text without @
-    // should map to keyword search.
-    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && inputs.q) {
-      const raw = String(inputs.q || '').trim();
-      const isAtHandle = raw.startsWith('@');
-      let isUrl = false;
-      try { new URL(raw); isUrl = true; } catch { }
-
-      if (isAtHandle) {
-        const uname = raw.replace(/^@/, '');
-        options.userLookup = true;
-        options.userTweets = true;
-        inputs.username = uname;
-        inputs.tweetsUsername = uname;
-      } else if (isUrl) {
-        const u = raw;
-        if (/status\//i.test(u)) {
-          options.tweetLookup = true;
-          inputs.tweetUrl = u;
-        } else {
-          // Try to extract username from URL
-          try {
-            const parsed = new URL(u);
-            const m = parsed.pathname.match(/\/@?([\w.]+)/);
-            if (m) {
-              const uname = m[1];
-              options.userLookup = true;
-              options.userTweets = true;
-              inputs.username = uname;
-              inputs.tweetsUsername = uname;
-            }
-          } catch { }
-        }
-      } else if (raw) {
-        options.searchTweets = true;
-        inputs.searchQuery = raw;
-      }
-    }
-
-    // Resolve user IDs where needed
-    const cleanUsername = (u) => String(u || '').trim().replace(/^@/, '');
-    const extractTweetId = (urlOrId) => {
-      const m = String(urlOrId || '').match(/status\/(\d+)/);
-      return m ? m[1] : String(urlOrId || '').trim();
-    };
-
-    // Profile-related (need username → user object)
-    const profileUsername = cleanUsername(inputs.username);
-    const tweetsUsername = cleanUsername(inputs.tweetsUsername || inputs.username);
-
-    // User Lookup
-    if (options.userLookup && profileUsername) {
-      labels.push('userLookup');
-      tasks.push(getUserIdByUsername(profileUsername));
-    }
-
-    // Followers
-    if (options.followers && profileUsername) {
-      labels.push('followers');
-      tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, limit))
-      );
-    }
-
-    // Following
-    if (options.following && profileUsername) {
-      labels.push('following');
-      tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, limit))
-      );
-    }
-
-    // User Tweets
-    if (options.userTweets && tweetsUsername) {
-      labels.push('userTweets');
-      tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, limit))
-      );
-    }
-
-    // User Mentions
-    if (options.userMentions && tweetsUsername) {
-      labels.push('userMentions');
-      tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, limit))
-      );
-    }
-
-    // Single Tweet Lookup
-    if (options.tweetLookup && inputs.tweetUrl) {
-      labels.push('tweetLookup');
-      const tweetId = extractTweetId(inputs.tweetUrl);
-      tasks.push(fetchTweetById(tweetId));
-    }
-
-    // Search
-    if (options.searchTweets && inputs.searchQuery) {
-      labels.push('searchTweets');
-      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), limit));
-    }
-
-    if (!tasks.length) {
-      return res.status(400).json({ error: 'No X options selected or inputs provided.' });
-    }
-
-    const settled = await Promise.allSettled(tasks);
-    const results = {};
-    const errors = [];
-
-    settled.forEach((s, i) => {
-      const label = labels[i];
-      if (s.status === 'fulfilled') {
-        const value = s.value;
-
-        if (label === 'userTweets' && value && Array.isArray(value.tweets)) {
-          results.userTweets = value.tweets;
-          if (value.credits_remaining != null) credits_remaining = value.credits_remaining;
-          return;
-        }
-
-        results[label] = value;
-        if (value?.credits_remaining != null) {
-          credits_remaining = value.credits_remaining;
-        }
-      } else {
-        errors.push({ endpoint: label, error: s.reason?.message || String(s.reason) });
-      }
-    });
-
-    // Debug: log metrics so it's easy to see if missing at source or UI
-    if (results.userLookup?.public_metrics) {
-      console.log('[X] userLookup metrics:', results.userLookup.public_metrics);
-    } else if (results.userLookup) {
-      console.log('[X] userLookup metrics: missing');
-    }
-    if (Array.isArray(results.userTweets) && results.userTweets[0]?.public_metrics) {
-      console.log('[X] first userTweet metrics:', results.userTweets[0].public_metrics);
-    } else if (Array.isArray(results.userTweets)) {
-      console.log('[X] first userTweet metrics: missing');
-    }
-    if (results.searchTweets?.tweets?.[0]?.public_metrics) {
-      console.log('[X] first searchTweet metrics:', results.searchTweets.tweets[0].public_metrics);
-    } else if (results.searchTweets?.tweets) {
-      console.log('[X] first searchTweet metrics: missing');
-    }
-    if (credits_remaining != null) {
-      console.log('[X] credits_remaining:', credits_remaining);
-    }
-
-    return res.json({ success: true, results, errors, credits_remaining });
-  } catch (err) {
-    console.error('X search error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
 
 // ─── Helper: Update tone in posts table ───────────────────────────────────
 /**
