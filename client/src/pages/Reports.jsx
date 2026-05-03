@@ -19,6 +19,7 @@ import "../utils/ui.css";
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { useTranslation } from "react-i18next";
+import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
 
 // ── Layout manager ────────────────────────────────────────────────────────────
 import {
@@ -475,12 +476,19 @@ export default function Reports() {
     if (!topKeywords.length || summaryLoading) return;
     setSummaryLoading(true);
     try {
-      const kwList = topKeywords.slice(0, 5).map((kw) => kw.term).join(", ");
+      const kwList = topKeywords.slice(0, 5).map(kw => kw.term).join(", ");
+
+      const prompt = `My top keywords are: ${kwList}. In 2-3 sentences, summarize what these keywords say about the content that performs best and any common theme. Be concise.`;
+      const aiSettings = loadAiSettings();
+      const modelMeta = getModelMeta(aiSettings?.modelChoice);
+
       const response = await fetch(apiUrl("/api/chat"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "user", content: `My top keywords are: ${kwList}. In 2-3 sentences, summarize what these keywords say about the content that performs best and any common theme. Be concise.` }],
           user_id: currentUserId || undefined,
+          llmProvider: modelMeta?.provider,
+          chatModel: aiSettings?.modelChoice,
         }),
       });
       if (!response.ok) throw new Error("Chat request failed");
@@ -968,8 +976,68 @@ export default function Reports() {
                 </div>
                 <Text size="xs" c="dimmed">{filteredToneData.length} / {toneEngagementData.length} posts</Text>
               </Group>
-            </Stack>
-          )}
+            )}
+
+            {/* Tone chip filters */}
+            <Group gap={6} wrap="wrap">
+              <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Tones:</Text>
+              {activeTones.map(tone => (
+                <Chip
+                  key={tone}
+                  size="xs"
+                  variant="light"
+                  color={TONE_COLOR[tone]}
+                  checked={toneFilter.length === 0 || toneFilter.includes(tone)}
+                  onChange={(checked) => {
+                    setToneFilter(prev => {
+                      if (prev.length === 0) {
+                        // selecting one = filter to only that one
+                        return [tone];
+                      }
+                      if (checked) {
+                        const next = [...prev, tone];
+                        // if all are selected, reset to show-all
+                        return next.length >= activeTones.length ? [] : next;
+                      }
+                      return prev.filter(t => t !== tone);
+                    });
+                  }}
+                >
+                  {tone}
+                </Chip>
+              ))}
+              <Chip
+                size="xs"
+                variant="light"
+                color="gray"
+                checked={showUnlabeled}
+                onChange={setShowUnlabeled}
+              >
+                Unlabeled
+              </Chip>
+              {toneFilter.length > 0 && (
+                <Button size="compact-xs" variant="subtle" onClick={() => setToneFilter([])}>Reset</Button>
+              )}
+            </Group>
+
+            {/* Engagement range slider */}
+            <Group gap="sm" align="center">
+              <Text size="xs" fw={600} c="dimmed" style={{ minWidth: 50 }}>Range:</Text>
+              <div style={{ flex: 1, maxWidth: 300 }}>
+                <RangeSlider
+                  size="xs"
+                  min={0}
+                  max={100}
+                  value={engRange}
+                  onChange={setEngRange}
+                  label={(v) => `${v}%`}
+                  marks={[{ value: 0, label: 'Low' }, { value: 50, label: 'Mid' }, { value: 100, label: 'High' }]}
+                />
+              </div>
+              <Text size="xs" c="dimmed">{filteredToneData.length} / {toneEngagementData.length} posts</Text>
+            </Group>
+          </Stack>
+        )}
 
           {filteredToneData.length > 0 ? (
             chartView === "scatter" ? (

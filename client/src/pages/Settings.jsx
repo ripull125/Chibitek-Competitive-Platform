@@ -22,6 +22,13 @@ import { useAppTour } from "../tour/AppTourProvider.jsx";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
+import {
+  AI_MODEL_OPTIONS,
+  getAiSettingsEventName,
+  getModelMeta,
+  loadAiSettings,
+  saveAiSettings,
+} from "../utils/aiModelSettings";
 
 import classes from "./Settings.module.css";
 import "../utils/ui.css";
@@ -61,6 +68,8 @@ export default function Settings() {
   const [deletingAdminEmail, setDeletingAdminEmail] = useState("");
   const [deletingEmail, setDeletingEmail] = useState("");
   const [adminBanner, setAdminBanner] = useState(null);
+  const initialAiSettings = useMemo(() => loadAiSettings(), []);
+  const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
 
   const languageLabel = useMemo(
     () => t(`languages.${language}`),
@@ -179,6 +188,21 @@ export default function Settings() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    saveAiSettings({ modelChoice: aiModelChoice });
+  }, [aiModelChoice]);
+
+  useEffect(() => {
+    const eventName = getAiSettingsEventName();
+    const syncSettings = (event) => {
+      const nextChoice = event?.detail?.modelChoice || loadAiSettings().modelChoice;
+      setAiModelChoice(nextChoice);
+    };
+
+    window.addEventListener(eventName, syncSettings);
+    return () => window.removeEventListener(eventName, syncSettings);
   }, []);
 
   async function handleCreateUser(e) {
@@ -429,6 +453,44 @@ export default function Settings() {
                 {t("common.start")}
               </Button>
             </Box>
+          </SettingsCard>
+
+          <SettingsCard
+            label="AI"
+            title="Chat Model"
+            description="Choose a model from one shared list. This setting is synced with Chat."
+          >
+            <Select
+              value={aiModelChoice}
+              onChange={(value) => value && setAiModelChoice(value)}
+              data={AI_MODEL_OPTIONS}
+              placeholder="Choose AI model"
+              radius="md"
+              size="md"
+              searchable
+              classNames={{
+                root: classes.selectRoot,
+                input: classes.selectInput,
+                dropdown: classes.selectDropdown,
+                option: classes.selectOption,
+                section: classes.selectSection,
+              }}
+              comboboxProps={{
+                transitionProps: { transition: "pop", duration: 140 },
+                shadow: "md",
+                radius: "md",
+              }}
+              aria-label="Chat model"
+            />
+
+            <Group gap={8}>
+              <Text size="sm" c="dimmed">
+                Current:
+              </Text>
+              <Text size="sm" fw={700}>
+                {getModelMeta(aiModelChoice)?.label || aiModelChoice}
+              </Text>
+            </Group>
           </SettingsCard>
 
           {loadingAdmin ? (

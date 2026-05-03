@@ -170,12 +170,10 @@ function XPostCard({ post, onDelete }) {
 
 function YouTubePostCard({ post, onDelete }) {
   const { t } = useTranslation();
-  const [showTranscript, setShowTranscript] = useState(false);
   const [showDesc, setShowDesc] = useState(false);
   const title = post.extra?.title || t("savedPosts.untitledVideo");
   const channel = post.extra?.channelTitle || post.extra?.username || post.username || t("savedPosts.unknownChannel");
   const description = post.extra?.description || "";
-  const transcript = post.content || "";
   const descLong = description.length > 200;
   const tone = post.tone;
   const postUrl = getPostUrl(post);
@@ -234,23 +232,6 @@ function YouTubePostCard({ post, onDelete }) {
                 {showDesc ? t("savedPosts.showLess") : t("savedPosts.showMore")}
               </Button>
             )}
-          </div>
-        )}
-
-        {transcript && transcript !== description && (
-          <div>
-            <Button variant="subtle" size="xs" p={0} h="auto"
-              leftSection={showTranscript ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-              onClick={() => setShowTranscript(!showTranscript)}
-            >
-              {showTranscript ? t("savedPosts.hideTranscript") : t("savedPosts.showTranscript")}
-            </Button>
-            <Collapse in={showTranscript}>
-              <Paper p="sm" mt="xs" radius="sm"
-                style={{ background: "var(--mantine-color-gray-0)", maxHeight: 300, overflow: "auto" }}>
-                <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>{transcript}</Text>
-              </Paper>
-            </Collapse>
           </div>
         )}
 
