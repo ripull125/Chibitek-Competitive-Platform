@@ -28,6 +28,13 @@
  *   applyLayoutToPDF(pdf, layout, { keywordChart: imgDataUrl, toneChart: imgDataUrl2 });
  */
 
+// Helper to center an element of given width/height on the page
+function centerElement(width, height) {
+  const x = Math.round((PAGE.WIDTH_PT - width) / 2);
+  const y = Math.round((PAGE.HEIGHT_PT - height) / 2);
+  return { x, y, width, height };
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const PAGE = {
@@ -44,37 +51,29 @@ export const STORAGE_KEY_PREFIX = 'chibitek-pdf-layout:';
 
 const DEFAULT_LAYOUTS = {
   executive: {
-    id: 'executive',
-    label: 'Executive Summary',
+    id: "executive",
+    label: "Executive Summary",
     elements: {
-      title:        { x: 36,  y: 36,  width: 540, height: 24,  type: 'text'  },
-      summary:      { x: 36,  y: 72,  width: 540, height: 80,  type: 'text'  },
-      keywordChart: { x: 36,  y: 168, width: 540, height: 240, type: 'image' },
-      toneChart:    { x: 36,  y: 424, width: 540, height: 220, type: 'image' },
-      stats:        { x: 36,  y: 660, width: 540, height: 80,  type: 'text'  },
+      keywordChart: { x: 36, y: 80,  width: 540, height: 240 },
+      toneChart:    { x: 36, y: 340, width: 540, height: 240 },
     },
   },
 
   visual: {
-    id: 'visual',
-    label: 'Visual Report',
+    id: "visual",
+    label: "Visual Report",
     elements: {
-      title:        { x: 36,  y: 36,  width: 540, height: 24,  type: 'text'  },
-      keywordChart: { x: 36,  y: 72,  width: 540, height: 300, type: 'image' },
-      toneChart:    { x: 36,  y: 388, width: 540, height: 300, type: 'image' },
-      summary:      { x: 36,  y: 704, width: 540, height: 52,  type: 'text'  },
+      keywordChart: { x: 36,  y: 60,  width: 540, height: 300 },
+      toneChart:    { x: 36,  y: 380, width: 540, height: 300 },
     },
   },
 
   compact: {
-    id: 'compact',
-    label: 'Compact Data',
+    id: "compact",
+    label: "Compact Data",
     elements: {
-      title:        { x: 36,  y: 36,  width: 540, height: 20,  type: 'text'  },
-      keywordChart: { x: 36,  y: 66,  width: 258, height: 200, type: 'image' }, // left col
-      toneChart:    { x: 318, y: 66,  width: 258, height: 200, type: 'image' }, // right col
-      summary:      { x: 36,  y: 280, width: 540, height: 60,  type: 'text'  },
-      stats:        { x: 36,  y: 356, width: 540, height: 60,  type: 'text'  },
+      keywordChart: { x: 36,  y: 80, width: 258, height: 220 },
+      toneChart:    { x: 318, y: 80, width: 258, height: 220 },
     },
   },
 };

@@ -155,6 +155,7 @@ function TemplatePicker({ onSelect, onCancel }) {
 function PDFPreviewCanvas({ layout, images, onLayoutChange }) {
   const canvasRef = useRef(null);
   const [dragging, setDragging] = useState(null); // { name, offsetX, offsetY }
+  const [selected, setSelected] = useState(null); // name of selected chart
 
   // Local px rects derived from layout pt coords
   const [rects, setRects] = useState(() => ptRectsToPixels(layout, images));
@@ -180,6 +181,20 @@ function PDFPreviewCanvas({ layout, images, onLayoutChange }) {
     setRects(ptRectsToPixels(layout, images));
   }, [layout, images]);
 
+  // Deselect if chart disappears
+  useEffect(() => {
+    if (selected && !rects[selected]) setSelected(null);
+  }, [rects, selected]);
+
+  // Helper: get/set percent width/height for selected
+  function getPercentWH(name) {
+    if (!rects[name]) return { w: 0, h: 0 };
+    return {
+      w: Math.round((rects[name].width / PREVIEW_W) * 100),
+      h: Math.round((rects[name].height / PREVIEW_H) * 100),
+    };
+  }
+
   const handleMouseDown = (name, e) => {
     e.preventDefault();
     const canvasRect = canvasRef.current.getBoundingClientRect();
@@ -189,6 +204,7 @@ function PDFPreviewCanvas({ layout, images, onLayoutChange }) {
       offsetX: e.clientX - canvasRect.left - r.x,
       offsetY: e.clientY - canvasRect.top  - r.y,
     });
+    setSelected(name);
   };
 
   useEffect(() => {
@@ -230,82 +246,140 @@ function PDFPreviewCanvas({ layout, images, onLayoutChange }) {
   const tpl = PDF_TEMPLATES.find((t) => t.id === layout.id);
 
   return (
-    <div
-      ref={canvasRef}
-      style={{
-        position: "relative",
-        width:  PREVIEW_W,
-        height: PREVIEW_H,
-        background: "#fff",
-        border: "1px solid #dee2e6",
-        borderRadius: 4,
-        boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
-        overflow: "hidden",
-        flexShrink: 0,
-      }}
-    >
-      {/* Template colour border */}
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", border: `2px solid ${tpl?.accent ?? "#ccc"}22` }} />
+    <div style={{ display: "flex", gap: 24 }}>
+      <div
+        ref={canvasRef}
+        style={{
+          position: "relative",
+          width:  PREVIEW_W,
+          height: PREVIEW_H,
+          background: "#fff",
+          border: "1px solid #dee2e6",
+          borderRadius: 4,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}
+      >
+        {/* Template colour border */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", border: `2px solid ${tpl?.accent ?? "#ccc"}22` }} />
 
-      {/* Margin guides */}
-      <div style={{
-        position: "absolute",
-        top:    PAGE.MARGIN_PT * PREVIEW_SCALE,
-        left:   PAGE.MARGIN_PT * PREVIEW_SCALE,
-        right:  PAGE.MARGIN_PT * PREVIEW_SCALE,
-        bottom: PAGE.MARGIN_PT * PREVIEW_SCALE,
-        border: "1px dashed #e0e0e0",
-        pointerEvents: "none",
-      }} />
+        {/* Margin guides */}
+        <div style={{
+          position: "absolute",
+          top:    PAGE.MARGIN_PT * PREVIEW_SCALE,
+          left:   PAGE.MARGIN_PT * PREVIEW_SCALE,
+          right:  PAGE.MARGIN_PT * PREVIEW_SCALE,
+          bottom: PAGE.MARGIN_PT * PREVIEW_SCALE,
+          border: "1px dashed #e0e0e0",
+          pointerEvents: "none",
+        }} />
 
-      {/* Chart images */}
-      {Object.entries(images).map(([name, src]) => {
-        if (!src || !rects[name]) return null;
-        const r = rects[name];
-        const isDragging = dragging?.name === name;
-        const label = name === "keywordChart" ? "Keyword Chart" : "Tone Chart";
-        return (
-          <div
-            key={name}
-            onMouseDown={(e) => handleMouseDown(name, e)}
-            style={{
-              position: "absolute",
-              left: r.x, top: r.y,
-              width: r.width, height: r.height,
-              cursor: isDragging ? "grabbing" : "grab",
-              zIndex: isDragging ? 10 : 1,
-              userSelect: "none",
-              outline: isDragging
-                ? `2px solid ${tpl?.accent ?? "#2f6fdb"}`
-                : `1px solid ${tpl?.accent ?? "#2f6fdb"}44`,
-              borderRadius: 2,
-            }}
-          >
-            <img
-              src={src} alt={label}
-              style={{ width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", display: "block" }}
-            />
-            <div style={{
-              position: "absolute", top: 2, left: 4,
-              background: tpl?.accent ?? "#2f6fdb", color: "#fff",
-              fontSize: 9, fontWeight: 700,
-              padding: "1px 5px", borderRadius: 3, pointerEvents: "none",
-            }}>
-              {label}
+        {/* Chart images */}
+        {Object.entries(images).map(([name, src]) => {
+          if (!src || !rects[name]) return null;
+          const r = rects[name];
+          const isDragging = dragging?.name === name;
+          const isSelected = selected === name;
+          const label = name === "keywordChart" ? "Keyword Chart" : name === "toneChart" ? "Tone Chart" : name;
+          return (
+            <div
+              key={name}
+              onMouseDown={(e) => handleMouseDown(name, e)}
+              onClick={(e) => { e.stopPropagation(); setSelected(name); }}
+              style={{
+                position: "absolute",
+                left: r.x, top: r.y,
+                width: r.width, height: r.height,
+                cursor: isDragging ? "grabbing" : "grab",
+                zIndex: isDragging ? 10 : isSelected ? 5 : 1,
+                userSelect: "none",
+                outline: isDragging
+                  ? `2px solid ${tpl?.accent ?? "#2f6fdb"}`
+                  : isSelected
+                    ? `2px solid #20c997`
+                    : `1px solid ${tpl?.accent ?? "#2f6fdb"}44`,
+                borderRadius: 2,
+                boxShadow: isSelected ? "0 0 0 2px #20c99744" : undefined,
+              }}
+            >
+              <img
+                src={src} alt={label}
+                style={{ width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", display: "block" }}
+              />
+              <div style={{
+                position: "absolute", top: 2, left: 4,
+                background: tpl?.accent ?? "#2f6fdb", color: "#fff",
+                fontSize: 9, fontWeight: 700,
+                padding: "1px 5px", borderRadius: 3, pointerEvents: "none",
+              }}>
+                {label}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
 
-      {Object.values(images).every((v) => !v) && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Text size="sm" c="dimmed">No charts available.</Text>
+        {Object.values(images).every((v) => !v) && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Text size="sm" c="dimmed">No charts available.</Text>
+          </div>
+        )}
+
+        <div style={{ position: "absolute", bottom: 4, right: 6, fontSize: 9, color: "#aaa", pointerEvents: "none" }}>
+          8.5 × 11 in
+        </div>
+      </div>
+      {/* Controls for selected chart */}
+      {selected && rects[selected] && (
+        <div style={{ minWidth: 180, maxWidth: 220, background: "#f8f9fa", border: "1px solid #e9ecef", borderRadius: 8, padding: 16, marginLeft: 8 }}>
+          <Text fw={700} size="sm" mb={8}>Edit "{selected}"</Text>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label>
+              <Text size="xs" c="dimmed">Width (%)</Text>
+              <input
+                type="number"
+                min={5}
+                max={100}
+                value={getPercentWH(selected).w}
+                style={{ width: "100%", padding: 4, borderRadius: 4, border: "1px solid #ccc" }}
+                onChange={e => {
+                  let percent = Math.max(5, Math.min(100, Number(e.target.value)));
+                  // Convert percent to px, then to pt for layout
+                  const px = (percent / 100) * PREVIEW_W;
+                  // Find the scale factor between preview px and layout pt
+                  const scale = PREVIEW_W / PAGE.WIDTH_PT;
+                  const widthPt = px / scale;
+                  layout.setElement(selected, { width: widthPt });
+                  setRects(ptRectsToPixels(layout, images));
+                  onLayoutChange(layout);
+                }}
+              />
+            </label>
+            <label>
+              <Text size="xs" c="dimmed">Height (%)</Text>
+              <input
+                type="number"
+                min={5}
+                max={100}
+                value={getPercentWH(selected).h}
+                style={{ width: "100%", padding: 4, borderRadius: 4, border: "1px solid #ccc" }}
+                onChange={e => {
+                  let percent = Math.max(5, Math.min(100, Number(e.target.value)));
+                  const px = (percent / 100) * PREVIEW_H;
+                  const scale = PREVIEW_H / PAGE.HEIGHT_PT;
+                  const heightPt = px / scale;
+                  layout.setElement(selected, { height: heightPt });
+                  setRects(ptRectsToPixels(layout, images));
+                  onLayoutChange(layout);
+                }}
+              />
+            </label>
+            <Button size="xs" variant="outline" color="gray" mt={8} onClick={() => setSelected(null)}>
+              Deselect
+            </Button>
+          </div>
         </div>
       )}
-
-      <div style={{ position: "absolute", bottom: 4, right: 6, fontSize: 9, color: "#aaa", pointerEvents: "none" }}>
-        8.5 × 11 in
-      </div>
     </div>
   );
 }
@@ -645,18 +719,10 @@ export default function Reports() {
   return (
     <Container size="lg" style={{ padding: "1rem", position: "relative" }}>
 
+
       {/* ── 1. Template Picker Modal ───────────────────────────────────────── */}
-      <Modal
-        opened={templatePickerOpen}
-        onClose={() => setTemplatePickerOpen(false)}
-        title={<Group gap="xs"><IconDownload size={18} /><Text fw={700}>Choose a PDF Template</Text></Group>}
-        centered size="xl"
-      >
-        <TemplatePicker
-          onCancel={() => setTemplatePickerOpen(false)}
-          onSelect={handleTemplateSelected}
-        />
-      </Modal>
+
+      
 
       {/* ── 2. Preview + Download Modal ────────────────────────────────────── */}
       <Modal
@@ -746,8 +812,8 @@ export default function Reports() {
 
       <Title order={1} mb="lg">{t("reports.title")}</Title>
 
-      <Button mb="lg" leftSection={<IconDownload size={16} />} onClick={() => setTemplatePickerOpen(true)}>
-        Create PDF
+      <Button mb="lg" leftSection={<IconDownload size={16} />} onClick={() => handleTemplateSelected("executive")}>
+        Edit & Download PDF
       </Button>
 
       <Group gap="lg" mb="lg">
