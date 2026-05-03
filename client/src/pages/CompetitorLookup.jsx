@@ -1008,7 +1008,6 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
             >
               {initials}
             </Avatar>
-
             <Stack gap={0}>
               {authorLabel ? (
                 <Text size="sm" fw={600}>
@@ -1025,6 +1024,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
                   {date}
                 </Text>
               )}
+
             </Stack>
           </Group>
 
@@ -1615,43 +1615,31 @@ export default function CompetitorLookup() {
 
   const cleanHandle = (value) => String(value || "").trim().replace(/^@/, "");
 
-  async function handleSimpleXSubmit() {
-    const q = String(simpleQueries.x || "").trim();
-    setXError(null);
-    setXResult(null);
-    if (!q) {
-      setXError("Please enter an X username, tweet URL, or keyword.");
-      return;
-    }
+async function handleSimpleXSubmit() {
+  const q = String(simpleQueries.x || "").trim();
+  setXError(null);
+  setXResult(null);
 
-    const isTweetUrl = /x\.com\/.+\/status\/\d+/i.test(q) || /twitter\.com\/.+\/status\/\d+/i.test(q);
-    const isProfileUrl = /^https?:\/\/(www\.)?(x|twitter)\.com\/([A-Za-z0-9_]{1,15})\/?$/i.test(q);
-    const isHandleWithAt = /^@[A-Za-z0-9_]{2,15}$/.test(q);
-    const username = isProfileUrl
-      ? (q.match(/\.com\/([A-Za-z0-9_]+)\/?$/)?.[1] || cleanHandle(q))
-      : cleanHandle(q);
-
-    setXLoading(true);
-    try {
-      const payload = isTweetUrl
-        ? { options: { tweetLookup: true }, inputs: { tweetUrl: q }, limit: scrapePostCount }
-        : (isHandleWithAt || isProfileUrl)
-          ? {
-            options: { userLookup: true, userTweets: true },
-            inputs: { username, tweetsUsername: username },
-            limit: scrapePostCount,
-          }
-          : { options: { searchTweets: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
-
-      const json = await tryPostJson("/api/x/search", payload);
-      setXResult(json);
-      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
-    } catch (e) {
-      setXError(e?.message || "Unknown error");
-    } finally {
-      setXLoading(false);
-    }
+  if (!q) {
+    setXError("Please enter an X username, tweet URL, or keyword.");
+    return;
   }
+
+  setXLoading(true);
+  try {
+    const json = await tryPostJson("/api/x/search", {
+      q,
+      limit: scrapePostCount,
+    });
+
+    setXResult(json);
+    if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+  } catch (e) {
+    setXError(e?.message || "Unknown error");
+  } finally {
+    setXLoading(false);
+  }
+}
 
   async function handleSimpleYoutubeSubmit() {
     const q = String(simpleQueries.youtube || "").trim();

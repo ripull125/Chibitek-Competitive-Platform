@@ -240,6 +240,71 @@ function tweetUrl(tweet, fallbackHandle = null) {
   return handle ? `https://x.com/${handle}/status/${tweet.id}` : `https://x.com/i/web/status/${tweet.id}`;
 }
 
+function normalizeUser(user) {
+  if (!user) return null;
+
+  const legacy = user.legacy || {};
+  const username = user.username || legacy.screen_name || user.screen_name || user.handle || "";
+  const name = user.name || legacy.name || username;
+
+  const followers =
+    user.public_metrics?.followers_count ??
+    legacy.followers_count ??
+    user.followers_count ??
+    user.normal_followers_count ??
+    null;
+
+  const following =
+    user.public_metrics?.following_count ??
+    legacy.friends_count ??
+    user.following_count ??
+    user.friends_count ??
+    null;
+
+  const tweetCount =
+    user.public_metrics?.tweet_count ??
+    legacy.statuses_count ??
+    user.tweet_count ??
+    user.statuses_count ??
+    null;
+
+  const listed =
+    user.public_metrics?.listed_count ??
+    legacy.listed_count ??
+    user.listed_count ??
+    null;
+
+  const expandedUrl =
+    user.url ||
+    legacy?.entities?.url?.urls?.[0]?.expanded_url ||
+    userUrl(username);
+
+  return {
+    ...user,
+    id: String(user.id || user.rest_id || legacy.id_str || username || ""),
+    username,
+    name,
+    description: user.description || legacy.description || "",
+    location: user.location || legacy.location || "",
+    profile_image_url:
+      user.profile_image_url ||
+      user.profile_image_url_https ||
+      legacy.profile_image_url_https ||
+      legacy.profile_image_url ||
+      null,
+    created_at: user.created_at || legacy.created_at || null,
+    verified: Boolean(user.verified || user.is_blue_verified || legacy.verified),
+    url: expandedUrl,
+    public_metrics: {
+      followers_count: followers,
+      following_count: following,
+      tweet_count: tweetCount,
+      listed_count: listed,
+    },
+    source: user.source || "x_api",
+  };
+}
+
 function normalizeMedia(media) {
   if (!media) return null;
 
@@ -260,10 +325,10 @@ function normalizeMedia(media) {
       ? media.variants
       : Array.isArray(media.video_info?.variants)
         ? media.video_info.variants.map((v) => ({
-            bitrate: v.bitrate ?? null,
-            content_type: v.content_type || v.contentType || "",
-            url: v.url || "",
-          }))
+          bitrate: v.bitrate ?? null,
+          content_type: v.content_type || v.contentType || "",
+          url: v.url || "",
+        }))
         : [],
   };
 }
@@ -498,15 +563,15 @@ function mapScrapeCreatorsTweet(rawTweet, fallbackHandle = null) {
 
   const author = handle
     ? {
-        id: userResult?.rest_id || legacy.user_id_str || handle,
-        username: handle,
-        name: userLegacy?.name || handle,
-        profile_image_url:
-          userLegacy?.profile_image_url_https ||
-          userLegacy?.profile_image_url ||
-          tweet?.user?.profile_image_url ||
-          null,
-      }
+      id: userResult?.rest_id || legacy.user_id_str || handle,
+      username: handle,
+      name: userLegacy?.name || handle,
+      profile_image_url:
+        userLegacy?.profile_image_url_https ||
+        userLegacy?.profile_image_url ||
+        tweet?.user?.profile_image_url ||
+        null,
+    }
     : null;
 
   return normalizeTweet(
@@ -555,7 +620,11 @@ async function scrapeCreatorsUserTweets(handle, limit = 10) {
 }
 
 async function scrapeCreatorsTweetByUrl(url, fallbackHandle = null) {
-  const resp = await scrapeCreators("/v1/twitter/tweet", { url });
+  const resp = await scrapeCreators("/v1/twitter/tweet", {
+    url,
+    trim: "false",
+  });
+
   return {
     tweet: mapScrapeCreatorsTweet(resp, fallbackHandle),
     credits_remaining: resp?.credits_remaining ?? null,
@@ -602,25 +671,17 @@ async function googleTweetFallback(query, limit = 10) {
         if (detailed?.credits_remaining != null) {
           credits_remaining = detailed.credits_remaining;
         }
-      } catch {
-        const fallbackTweet = normalizeTweet(
-          {
-            id: parsed.tweetId,
-            text: hit.title || hit.snippet || "",
-            url,
-            _authorUsername: parsed.handle,
-            public_metrics: {},
-            metrics_unavailable: true,
-            source: "google_fallback",
-          },
-          [],
-          parsed.handle
-        );
+      } catch (detailErr) {
+        console.warn("[X google fallback] Skipping placeholder result because tweet detail failed:", {
+          url,
+          message: detailErr?.message,
+          status: detailErr?.response?.status,
+          body: detailErr?.response?.data,
+        });
 
-        if (fallbackTweet && isFreshTweet(fallbackTweet, daysBack)) {
-          tweets.push(fallbackTweet);
-        }
+        continue;
       }
+
       if (tweets.length >= target * 2) break;
     }
 
@@ -755,10 +816,39 @@ export async function searchRecentTweets(query, maxResults = 10) {
       ).slice(0, target),
       users: users.map(normalizeUser).filter(Boolean),
       meta: data?.meta || {},
+      source: "x_api",
     };
   } catch (err) {
+    console.warn("[X searchRecentTweets] X API recent search failed:", {
+      message: err?.message,
+      status: err?.status,
+      code: err?.code,
+      body: err?.body,
+      attempts: err?.attempts,
+    });
+
     if (!shouldFallbackToScrapeCreators(err)) throw err;
-    return googleTweetFallback(q, target);
+
+    const fallback = await googleTweetFallback(q, target);
+
+    if (!fallback.tweets?.length) {
+      const out = new Error(
+        "X keyword search failed. Your X API recent-search call failed, and the fallback could not retrieve full tweet details. Check X_BEARER_TOKEN access or ScrapeCreators /v1/twitter/tweet."
+      );
+      // Prefer a gateway error here so the UI treats it as a backend data-source problem,
+      // not as a user's form/input mistake.
+      out.status = 502;
+      out.originalStatus = err?.status || null;
+      out.originalCode = err?.code || null;
+      out.originalBody = err?.body || null;
+      out.attempts = err?.attempts || null;
+      throw out;
+    }
+
+    return {
+      ...fallback,
+      source: "scrape_creators_fallback",
+    };
   }
 }
 
@@ -766,7 +856,9 @@ export async function lookupXInput(input, maxResults = 10) {
   const parsed = parseXInput(input);
   const limit = clampInt(maxResults, 10, 100, 10);
 
-  if (parsed.type === "empty") throw new Error("Please enter an X @handle, profile URL, post URL, or keyword search.");
+  if (parsed.type === "empty") {
+    throw new Error("Please enter an X @handle, profile URL, post URL, or keyword search.");
+  }
 
   if (parsed.type === "account") {
     const user = await getUserIdByUsername(parsed.handle);
