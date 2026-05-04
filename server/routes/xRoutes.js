@@ -87,11 +87,12 @@ router.post("/search", async (req, res) => {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body || {};
     const limit = normalizeLimit(rawLimit, 10);
     const q = req.body?.q ?? req.body?.query ?? inputs.q;
+    const paginationToken = req.body?.pagination_token ?? req.body?.next_token ?? inputs.pagination_token ?? null;
 
     // Preferred: one-bar behavior.
     const noOptionsSelected = !options || Object.keys(options).length === 0 || Object.values(options).every((v) => !v);
     if (q && noOptionsSelected) {
-      const result = await lookupXInput(q, limit);
+      const result = await lookupXInput(q, limit, { paginationToken });
       return res.json(result);
     }
 
@@ -137,11 +138,11 @@ router.post("/search", async (req, res) => {
 
     if (options.searchTweets && inputs.searchQuery) {
       labels.push("searchTweets");
-      tasks.push(searchRecentTweets(inputs.searchQuery, limit));
+      tasks.push(searchRecentTweets(inputs.searchQuery, limit, paginationToken));
     }
 
     if (!tasks.length && q) {
-      const result = await lookupXInput(q, limit);
+      const result = await lookupXInput(q, limit, { paginationToken });
       return res.json(result);
     }
 
@@ -178,7 +179,8 @@ router.post("/lookup", async (req, res) => {
   try {
     const q = req.body?.q ?? req.body?.query ?? req.body?.inputs?.q;
     const limit = normalizeLimit(req.body?.limit, 10);
-    const result = await lookupXInput(q, limit);
+    const paginationToken = req.body?.pagination_token ?? req.body?.next_token ?? null;
+    const result = await lookupXInput(q, limit, { paginationToken });
     return res.json(result);
   } catch (err) {
     console.error("[X /lookup]", err);

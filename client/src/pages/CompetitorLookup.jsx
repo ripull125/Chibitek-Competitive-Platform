@@ -45,7 +45,7 @@ import { convertXInput } from "./DataConverter";
 import { apiBase, apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
-import { Checkbox, NumberInput, Transition } from "@mantine/core";
+import { Checkbox, Transition } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
 function LabelWithInfo({ label, info }) {
@@ -758,13 +758,80 @@ function bestVideoVariant(variants = []) {
   return mp4s[0]?.url || null;
 }
 
+function normalizeMediaUrlKey(url) {
+  if (!url || typeof url !== "string") return "";
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("format");
+    parsed.searchParams.delete("name");
+    parsed.searchParams.delete("tag");
+    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return String(url).split("?")[0].toLowerCase();
+  }
+}
+
+function mediaQualityScore(item = {}) {
+  const width = Number(item.width || 0);
+  const height = Number(item.height || 0);
+  const url = String(item.url || item.preview_image_url || "");
+  let score = width * height;
+  if (/name=(orig|4096x4096|large)/i.test(url)) score += 1_000_000;
+  if (item.type === "video" || item.type === "animated_gif") score += 500_000;
+  return score;
+}
+
+function dedupeMediaForDisplay(media = []) {
+  const byKey = new Map();
+
+  for (const item of Array.isArray(media) ? media : []) {
+    if (!item) continue;
+    const urlKey = normalizeMediaUrlKey(item.url || item.preview_image_url);
+    const key = item.media_key || urlKey;
+    if (!key) continue;
+
+    const existing = byKey.get(key);
+    if (!existing || mediaQualityScore(item) > mediaQualityScore(existing)) {
+      byKey.set(key, item);
+    }
+  }
+
+  const values = Array.from(byKey.values());
+  const looksLikeCardPreviewSet =
+    values.length > 1 &&
+    values.every((item) => {
+      const url = String(item.url || item.preview_image_url || "");
+      const key = String(item.media_key || "");
+      return /card_img|card-image|thumbnail_image|player_image|summary/i.test(url + " " + key);
+    });
+
+  if (looksLikeCardPreviewSet) {
+    return values.sort((a, b) => mediaQualityScore(b) - mediaQualityScore(a)).slice(0, 1);
+  }
+
+  return values.slice(0, 4);
+}
+
+function cleanDisplayTextForMedia(text = "", mediaItems = []) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (!mediaItems?.length) return raw;
+
+  return raw
+    .replace(/(?:\s|^)https?:\/\/t\.co\/[A-Za-z0-9_]+/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function XMediaPreview({ media }) {
-  const items = Array.isArray(media) ? media.filter(Boolean).slice(0, 4) : [];
+  const items = dedupeMediaForDisplay(media);
 
   if (!items.length) return null;
 
   return (
-    <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
+    <div style={{ maxWidth: items.length === 1 ? 560 : 760 }}>
+      <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
       {items.map((item, index) => {
         const key = item.media_key || item.url || item.preview_image_url || index;
         const isVideo = item.type === "video" || item.type === "animated_gif";
@@ -780,10 +847,11 @@ function XMediaPreview({ media }) {
               poster={item.preview_image_url || undefined}
               style={{
                 width: "100%",
-                maxHeight: 360,
-                objectFit: "cover",
+                maxHeight: 280,
+                objectFit: "contain",
                 borderRadius: 12,
                 background: "#000",
+                border: "1px solid #edf2f7",
               }}
             >
               <source src={videoUrl} type="video/mp4" />
@@ -800,10 +868,12 @@ function XMediaPreview({ media }) {
               loading="lazy"
               style={{
                 width: "100%",
-                maxHeight: 360,
-                objectFit: "cover",
+                maxHeight: 280,
+                objectFit: "contain",
                 borderRadius: 12,
                 display: "block",
+                background: "#f8f9fa",
+                border: "1px solid #edf2f7",
               }}
             />
           );
@@ -811,7 +881,8 @@ function XMediaPreview({ media }) {
 
         return null;
       })}
-    </SimpleGrid>
+      </SimpleGrid>
+    </div>
   );
 }
 
@@ -820,6 +891,20 @@ function cleanXImageUrl(url) {
 
   return url.replace("_normal", "_400x400");
 }
+
+function getFullTweetText(tweet = {}) {
+  return (
+    tweet.note_tweet?.text ||
+    tweet.note_tweet?.note_tweet_results?.result?.text ||
+    tweet.note_tweet_results?.result?.text ||
+    tweet.legacy?.note_tweet?.note_tweet_results?.result?.text ||
+    tweet.full_text ||
+    tweet.legacy?.full_text ||
+    tweet.text ||
+    ""
+  );
+}
+
 
 function XUserCard({ user, onSave }) {
   const { t } = useTranslation();
@@ -973,7 +1058,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
   const displayName = author.name || "";
   const username = author.username || tweet._authorUsername || authorUsername || "";
   const avatarUrl = cleanXImageUrl(author.profile_image_url || tweet._authorProfileImageUrl);
-  const mediaItems = Array.isArray(tweet.media) ? tweet.media : [];
+  const mediaItems = dedupeMediaForDisplay(tweet.media);
 
   const authorLabel =
     displayName && username
@@ -1042,7 +1127,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
         </Group>
 
         <ExpandableText
-          text={tweet.text || ""}
+          text={cleanDisplayTextForMedia(tweet.text || "", mediaItems)}
           size="sm"
           collapsedLines={3}
           threshold={180}
@@ -1363,6 +1448,7 @@ export default function CompetitorLookup() {
   const [linkedinError, setLinkedinError] = useState(null);
   const [xResult, setXResult] = useState(cached.xResult || null);
   const [xLoading, setXLoading] = useState(false);
+  const [xLoadingMore, setXLoadingMore] = useState(false);
   const [xError, setXError] = useState(null);
   const [youtubeResult, setYoutubeResult] = useState(cached.youtubeResult || null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
@@ -1629,7 +1715,7 @@ async function handleSimpleXSubmit() {
   try {
     const json = await tryPostJson("/api/x/search", {
       q,
-      limit: scrapePostCount,
+      limit: 10,
     });
 
     setXResult(json);
@@ -1638,6 +1724,67 @@ async function handleSimpleXSubmit() {
     setXError(e?.message || "Unknown error");
   } finally {
     setXLoading(false);
+  }
+}
+
+function mergeXSearchResults(previous, nextPage) {
+  if (!previous?.results?.searchTweets || !nextPage?.results?.searchTweets) {
+    return nextPage;
+  }
+
+  const existingTweets = previous.results.searchTweets.tweets || [];
+  const nextTweets = nextPage.results.searchTweets.tweets || [];
+  const seen = new Set(existingTweets.map((tweet) => String(tweet.id || "")).filter(Boolean));
+  const mergedTweets = [...existingTweets];
+
+  for (const tweet of nextTweets) {
+    const key = String(tweet.id || "");
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    mergedTweets.push(tweet);
+  }
+
+  const usersById = new Map();
+  for (const user of previous.results.searchTweets.users || []) {
+    if (user?.id) usersById.set(String(user.id), user);
+  }
+  for (const user of nextPage.results.searchTweets.users || []) {
+    if (user?.id) usersById.set(String(user.id), user);
+  }
+
+  return {
+    ...nextPage,
+    results: {
+      ...nextPage.results,
+      searchTweets: {
+        ...nextPage.results.searchTweets,
+        tweets: mergedTweets,
+        users: Array.from(usersById.values()),
+      },
+    },
+  };
+}
+
+async function handleLoadMoreX() {
+  const q = String(simpleQueries.x || "").trim();
+  const nextToken = xResult?.results?.searchTweets?.meta?.next_token;
+  if (!q || !nextToken) return;
+
+  setXError(null);
+  setXLoadingMore(true);
+  try {
+    const json = await tryPostJson("/api/x/search", {
+      q,
+      limit: 10,
+      pagination_token: nextToken,
+    });
+
+    setXResult((prev) => mergeXSearchResults(prev, json));
+    if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
+  } catch (e) {
+    setXError(e?.message || "Unknown error");
+  } finally {
+    setXLoadingMore(false);
   }
 }
 
@@ -1911,26 +2058,44 @@ async function handleSimpleXSubmit() {
       setXError("Please sign in to save data.");
       return;
     }
-    // Save posts via the existing /api/posts endpoint
+
+    // Save X posts via the existing /api/posts endpoint. Keep the full author
+    // object and media array so Saved Posts can render the card the same way
+    // Competitor Lookup does.
     if (type === "tweet" && data) {
       const metrics = data.public_metrics || {};
+      const author = data.author || {};
+      const authorHandle = author.username || data._authorUsername || "";
+      const authorName = author.name || authorHandle || "X user";
+      const authorProfileImageUrl = author.profile_image_url || data._authorProfileImageUrl || "";
+      const postUrl =
+        data.url ||
+        (data.id
+          ? authorHandle
+            ? `https://x.com/${authorHandle}/status/${data.id}`
+            : `https://x.com/i/web/status/${data.id}`
+          : null);
+
       const resp = await fetch(apiUrl("/api/posts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          platform_name: "x",
           platform_id: platformIds.x,
-          platform_user_id: String(data.author_id || data._authorUsername || "unknown"),
-          username: data._authorUsername || "",
+          platform_user_id: String(author.id || data.author_id || authorHandle || "unknown"),
+          username: authorHandle,
           platform_post_id: String(data.id || Date.now()),
-          content: data.text,
-          published_at: data.created_at,
+          url: postUrl,
+          content: data.text || getFullTweetText(data),
+          published_at: data.created_at || null,
           likes: metrics.like_count ?? 0,
           shares: metrics.retweet_count ?? 0,
           comments: metrics.reply_count ?? 0,
-          views: metrics.impression_count ?? 0,
           user_id: currentUserId,
-          author_name: data._authorUsername || "",
-          author_handle: data._authorUsername || "",
+          author_name: authorName,
+          author_handle: authorHandle,
+          author_profile_image_url: authorProfileImageUrl,
+          media: dedupeMediaForDisplay(data.media),
         }),
       });
       if (!resp.ok) {
@@ -3622,20 +3787,6 @@ async function handleSimpleXSubmit() {
               {connectedPlatforms.youtube && <Tabs.Tab value="youtube" leftSection={<IconBrandYoutube size={16} color="#FF0000" />}>YouTube</Tabs.Tab>}
             </Tabs.List>
 
-            <Card withBorder radius="md" p="sm" mt="md">
-              <Group gap="sm" align="flex-end">
-                <NumberInput
-                  label={t("competitorLookup.scrapePostAmount")}
-                  description={t("competitorLookup.scrapePostAmountDesc")}
-                  min={10}
-                  max={100}
-                  step={5}
-                  value={scrapePostCount}
-                  onChange={(val) => setScrapePostCount(val || 10)}
-                  style={{ maxWidth: 220 }}
-                />
-              </Group>
-            </Card>
 
             {connectedPlatforms.x && (
               <Tabs.Panel value="x" pt="md">
@@ -3654,6 +3805,13 @@ async function handleSimpleXSubmit() {
                   </Group>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
                   {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                  {xResult?.mode === "keyword" && xResult?.results?.searchTweets?.meta?.next_token && (
+                    <Group justify="center">
+                      <Button variant="light" loading={xLoadingMore} onClick={handleLoadMoreX}>
+                        Load next 10 results
+                      </Button>
+                    </Group>
+                  )}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -3901,20 +4059,6 @@ async function handleSimpleXSubmit() {
                   )}
                 </Tabs.List>
 
-                <Card withBorder radius="md" p="sm" mt="md">
-                  <Group gap="sm" align="flex-end">
-                    <NumberInput
-                      label={t("competitorLookup.scrapePostAmount")}
-                      description={t("competitorLookup.scrapePostAmountDesc")}
-                      min={10}
-                      max={100}
-                      step={5}
-                      value={scrapePostCount}
-                      onChange={(val) => setScrapePostCount(val || 10)}
-                      style={{ maxWidth: 200 }}
-                    />
-                  </Group>
-                </Card>
 
                 {connectedPlatforms.x && (
                   <Tabs.Panel value="x" pt="md">

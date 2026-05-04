@@ -34,6 +34,7 @@ const TWEET_FIELDS = [
   "referenced_tweets",
   "entities",
   "attachments",
+  "note_tweet",
 ].join(",");
 
 const MEDIA_FIELDS = [
@@ -240,6 +241,20 @@ function tweetUrl(tweet, fallbackHandle = null) {
   return handle ? `https://x.com/${handle}/status/${tweet.id}` : `https://x.com/i/web/status/${tweet.id}`;
 }
 
+function getFullTweetText(tweet = {}) {
+  return (
+    tweet.note_tweet?.text ||
+    tweet.note_tweet?.note_tweet_results?.result?.text ||
+    tweet.note_tweet_results?.result?.text ||
+    tweet.legacy?.note_tweet?.note_tweet_results?.result?.text ||
+    tweet.full_text ||
+    tweet.legacy?.full_text ||
+    tweet.text ||
+    ""
+  );
+}
+
+
 function normalizeUser(user) {
   if (!user) return null;
 
@@ -333,6 +348,76 @@ function normalizeMedia(media) {
   };
 }
 
+
+function stripImageUrlNoise(url) {
+  if (!url || typeof url !== "string") return "";
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("format");
+    parsed.searchParams.delete("name");
+    parsed.searchParams.delete("tag");
+    parsed.searchParams.delete("large");
+    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return String(url).split("?")[0].toLowerCase();
+  }
+}
+
+function mediaQualityScore(item = {}) {
+  const width = Number(item.width || item.sizes?.large?.w || 0);
+  const height = Number(item.height || item.sizes?.large?.h || 0);
+  const url = String(item.url || item.preview_image_url || "");
+  let score = width * height;
+  if (/name=(orig|4096x4096|large)/i.test(url)) score += 1_000_000;
+  if (item.type === "video" || item.type === "animated_gif") score += 500_000;
+  return score;
+}
+
+function dedupeMediaItems(mediaItems = []) {
+  const byKey = new Map();
+
+  for (const raw of mediaItems || []) {
+    const item = normalizeMedia(raw);
+    if (!item) continue;
+
+    const urlKey = stripImageUrlNoise(item.url || item.preview_image_url);
+    const key = item.media_key || urlKey;
+    if (!key) continue;
+
+    const existing = byKey.get(key);
+    if (!existing || mediaQualityScore(item) > mediaQualityScore(existing)) {
+      byKey.set(key, item);
+    }
+  }
+
+  const values = Array.from(byKey.values());
+  const looksLikeCardPreviewSet =
+    values.length > 1 &&
+    values.every((item) => {
+      const url = String(item.url || item.preview_image_url || "");
+      const key = String(item.media_key || "");
+      return /card_img|card-image|thumbnail_image|player_image|summary/i.test(url + " " + key);
+    });
+
+  if (looksLikeCardPreviewSet) {
+    return values.sort((a, b) => mediaQualityScore(b) - mediaQualityScore(a)).slice(0, 1);
+  }
+
+  return values;
+}
+
+function cleanTweetDisplayText(text = "", mediaItems = []) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (!mediaItems?.length) return raw;
+
+  return raw
+    .replace(/(?:\s|^)https?:\/\/t\.co\/[A-Za-z0-9_]+/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function normalizeTweet(tweet, users = [], fallbackHandle = null, media = []) {
   if (!tweet) return null;
 
@@ -362,14 +447,17 @@ function normalizeTweet(tweet, users = [], fallbackHandle = null, media = []) {
     ? tweet.media.map(normalizeMedia).filter(Boolean)
     : [];
 
-  const mediaItems = mediaItemsFromAttachments.length
-    ? mediaItemsFromAttachments
-    : mediaItemsFromTweet;
+  const mediaItems = dedupeMediaItems(
+    mediaItemsFromAttachments.length ? mediaItemsFromAttachments : mediaItemsFromTweet
+  );
+
+  const fullText = getFullTweetText(tweet);
 
   const normalized = {
     ...tweet,
     id: String(tweet.id || tweet.rest_id || tweet.legacy?.id_str || ""),
-    text: tweet.text || tweet.full_text || tweet.legacy?.full_text || "",
+    text: cleanTweetDisplayText(fullText, mediaItems),
+    full_text_original: fullText,
     created_at: tweet.created_at || tweet.legacy?.created_at || null,
     author_id: tweet.author_id || tweet.legacy?.user_id_str || author?.id || null,
     media: mediaItems,
@@ -490,26 +578,33 @@ function extractScrapeCreatorsCardMedia(tweet, tweetId = "") {
 
   if (!Array.isArray(bindingValues)) return [];
 
-  return bindingValues
-    .map((item, index) => {
+  const candidates = bindingValues
+    .map((item) => {
       const key = String(item?.key || "").toLowerCase();
       const value = item?.value || {};
+
+      // Card payloads often include the same image under several keys
+      // (thumbnail_image, player_image, summary_large_image, etc.). Keep only
+      // one best card image so the UI does not show the same preview 4 times.
+      if (!key.includes("image")) return null;
 
       const imageUrl =
         value?.image_value?.url ||
         value?.string_value ||
         value?.scribe_key;
 
-      if (!imageUrl || !key.includes("image")) return null;
+      if (!imageUrl || !/^https?:\/\//i.test(String(imageUrl))) return null;
 
       return normalizeMedia({
-        media_key: `${tweetId || "card"}-${index}`,
+        media_key: `${tweetId || "card"}-card-image`,
         type: "photo",
         url: imageUrl,
         preview_image_url: imageUrl,
       });
     })
     .filter(Boolean);
+
+  return dedupeMediaItems(candidates).slice(0, 1);
 }
 
 function extractScrapeCreatorsMedia(tweet, legacy = {}, tweetId = "") {
@@ -577,7 +672,7 @@ function mapScrapeCreatorsTweet(rawTweet, fallbackHandle = null) {
   return normalizeTweet(
     {
       id,
-      text: legacy.full_text || tweet?.text || tweet?.full_text || "",
+      text: getFullTweetText({ ...tweet, legacy }),
       created_at: legacy.created_at || tweet?.created_at || null,
       author_id: legacy.user_id_str || tweet?.author_id || author?.id || null,
       author,
@@ -785,25 +880,31 @@ export async function fetchTweetById(tweetIdOrUrl) {
   }
 }
 
-export async function searchRecentTweets(query, maxResults = 10) {
+export async function searchRecentTweets(query, maxResults = 10, paginationToken = null) {
   const q = String(query || "").trim();
   const searchQuery = `${q} -is:retweet`;
   if (!q) throw new Error("Search query is required.");
   const target = clampInt(maxResults, 10, 100, 10);
 
   try {
+    const params = {
+      query: searchQuery,
+      max_results: target,
+      sort_order: "recency",
+      "tweet.fields": TWEET_FIELDS,
+      expansions: "author_id,attachments.media_keys",
+      "user.fields": USER_FIELDS,
+      "media.fields": MEDIA_FIELDS,
+    };
+
+    if (paginationToken) {
+      params.pagination_token = paginationToken;
+    }
+
     const data = await xRequest({
       method: "GET",
       url: "/tweets/search/recent",
-      params: {
-        query: searchQuery,
-        max_results: target,
-        sort_order: "recency",
-        "tweet.fields": TWEET_FIELDS,
-        expansions: "author_id,attachments.media_keys",
-        "user.fields": USER_FIELDS,
-        "media.fields": MEDIA_FIELDS,
-      },
+      params,
     });
 
     const users = data?.includes?.users || [];
@@ -852,7 +953,7 @@ export async function searchRecentTweets(query, maxResults = 10) {
   }
 }
 
-export async function lookupXInput(input, maxResults = 10) {
+export async function lookupXInput(input, maxResults = 10, options = {}) {
   const parsed = parseXInput(input);
   const limit = clampInt(maxResults, 10, 100, 10);
 
@@ -893,7 +994,7 @@ export async function lookupXInput(input, maxResults = 10) {
     };
   }
 
-  const result = await searchRecentTweets(parsed.query, limit);
+  const result = await searchRecentTweets(parsed.query, limit, options.paginationToken || null);
   return {
     success: true,
     platform: "x",

@@ -1400,6 +1400,14 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       ...normalized.metrics,
     });
 
+    if (normalized.details) {
+      await supabase.from("post_details_platform").delete().eq("post_id", post.id);
+      await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: normalized.details,
+      });
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error(err);
@@ -1425,8 +1433,11 @@ app.post("/api/posts", async (req, res) => {
     channelTitle,
     videoId,
     views,
+    url,
+    media,
     author_name,
     author_handle,
+    author_profile_image_url,
   } = req.body;
 
   if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
@@ -1448,11 +1459,13 @@ app.post("/api/posts", async (req, res) => {
   const isInstagram = platformKey === 'instagram' || Number(platform_id) === 3;
   const isTikTok = platformKey === 'tiktok' || Number(platform_id) === 5;
   const isReddit = platformKey === 'reddit' || Number(platform_id) === REDDIT_PLATFORM_ID;
+  const cleanUsername = String(username || author_handle || platform_user_id || "").replace(/^@/, "");
+  const displayName = author_name || cleanUsername || platform_user_id;
 
   try {
     // Find or create competitor
-    let profileUrl = `https://unknown/${username || platform_user_id}`;
-    if (isX) profileUrl = `https://x.com/${username || platform_user_id}`;
+    let profileUrl = `https://unknown/${cleanUsername || platform_user_id}`;
+    if (isX) profileUrl = cleanUsername ? `https://x.com/${cleanUsername}` : `https://x.com/i/user/${platform_user_id}`;
     if (isInstagram) profileUrl = `https://www.instagram.com/${username || platform_user_id}`;
     if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platform_user_id}`;
     if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platform_user_id}`;
@@ -1476,7 +1489,7 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           platform_user_id,
-          display_name: username || platform_user_id,
+          display_name: displayName || username || platform_user_id,
           profile_url: profileUrl,
         })
         .select()
@@ -1501,6 +1514,7 @@ app.post("/api/posts", async (req, res) => {
         .update({
           content,
           published_at,
+          url: url || existingPost.url || null,
           competitor_id: competitor.id,
           // Keep ownership stable when set, but backfill when empty.
           user_id: existingPost.user_id || user_id,
@@ -1517,6 +1531,7 @@ app.post("/api/posts", async (req, res) => {
           platform_id,
           competitor_id: competitor.id,
           platform_post_id: platformPostId,
+          url: url || null,
           content,
           published_at,
           user_id,
@@ -1541,6 +1556,7 @@ app.post("/api/posts", async (req, res) => {
           .update({
             content,
             published_at,
+            url: url || racedPost.url || null,
             competitor_id: competitor.id,
             user_id: racedPost.user_id || user_id,
           })
@@ -1582,16 +1598,30 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For X (Twitter), save additional details
+    // For X (Twitter), save additional details. Replace the existing details
+    // row so re-saving a post updates author/media fields instead of keeping
+    // the old stripped-down version.
     if (isX) {
+      const xExtra = {
+        author_name: author_name || displayName || cleanUsername,
+        author_handle: String(author_handle || cleanUsername || username || "").replace(/^@/, ""),
+        username: String(username || author_handle || cleanUsername || "").replace(/^@/, ""),
+        author_profile_image_url: author_profile_image_url || null,
+        media: Array.isArray(media) ? media : [],
+        url: url || null,
+      };
+
+      const { error: deleteDetailsError } = await supabase
+        .from("post_details_platform")
+        .delete()
+        .eq("post_id", post.id);
+      if (deleteDetailsError) {
+        console.error('Error replacing X post details:', deleteDetailsError);
+      }
+
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
-        extra_json: {
-          author_name: author_name || username,
-          author_handle: author_handle || username,
-          username,
-          views: views ?? 0,
-        },
+        extra_json: xExtra,
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving X post details:', detailsError);
@@ -1660,7 +1690,7 @@ app.get("/api/posts", async (req, res) => {
         id: post.id,
         platform_id: post.platform_id || 0,
         platform_post_id: post.platform_post_id || null,
-        url: post.url || null,
+        url: post.url || extra.url || null,
         content: post.content,
         published_at: post.published_at,
         tone: post.tone || null,

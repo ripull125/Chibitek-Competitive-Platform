@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon, Alert, Badge, Button, Card, Collapse, Divider,
-  Group, LoadingOverlay, Modal, Paper, Stack, Text, Title, Tooltip,
+  ActionIcon, Alert, Avatar, Badge, Button, Card, Collapse, Divider,
+  Group, LoadingOverlay, Modal, Paper, SimpleGrid, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
@@ -31,6 +31,211 @@ function Metric({ icon, value }) {
     </Group>
   );
 }
+
+
+function cleanXImageUrl(url) {
+  if (!url || typeof url !== "string") return null;
+  return url.replace("_normal", "_400x400");
+}
+
+function bestVideoVariant(variants = []) {
+  if (!Array.isArray(variants)) return null;
+
+  const mp4s = variants
+    .filter((v) => v?.url && String(v.content_type || v.contentType || "").includes("mp4"))
+    .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
+
+  return mp4s[0]?.url || null;
+}
+
+function normalizeMediaUrlKey(url) {
+  if (!url || typeof url !== "string") return "";
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("format");
+    parsed.searchParams.delete("name");
+    parsed.searchParams.delete("tag");
+    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return String(url).split("?")[0].toLowerCase();
+  }
+}
+
+function mediaQualityScore(item = {}) {
+  const width = Number(item.width || 0);
+  const height = Number(item.height || 0);
+  const url = String(item.url || item.preview_image_url || "");
+  let score = width * height;
+  if (/name=(orig|4096x4096|large)/i.test(url)) score += 1_000_000;
+  if (item.type === "video" || item.type === "animated_gif") score += 500_000;
+  return score;
+}
+
+function dedupeMediaForDisplay(media = []) {
+  const byKey = new Map();
+
+  for (const item of Array.isArray(media) ? media : []) {
+    if (!item) continue;
+    const urlKey = normalizeMediaUrlKey(item.url || item.preview_image_url);
+    const key = item.media_key || urlKey;
+    if (!key) continue;
+
+    const existing = byKey.get(key);
+    if (!existing || mediaQualityScore(item) > mediaQualityScore(existing)) {
+      byKey.set(key, item);
+    }
+  }
+
+  const values = Array.from(byKey.values());
+  const looksLikeCardPreviewSet =
+    values.length > 1 &&
+    values.every((item) => {
+      const url = String(item.url || item.preview_image_url || "");
+      const key = String(item.media_key || "");
+      return /card_img|card-image|thumbnail_image|player_image|summary/i.test(url + " " + key);
+    });
+
+  if (looksLikeCardPreviewSet) {
+    return values.sort((a, b) => mediaQualityScore(b) - mediaQualityScore(a)).slice(0, 1);
+  }
+
+  return values.slice(0, 4);
+}
+
+function cleanDisplayTextForMedia(text = "", mediaItems = []) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (!mediaItems?.length) return raw;
+
+  return raw
+    .replace(/(?:\s|^)https?:\/\/t\.co\/[A-Za-z0-9_]+/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function XMediaPreview({ media }) {
+  const items = dedupeMediaForDisplay(media);
+  if (!items.length) return null;
+
+  return (
+    <div style={{ maxWidth: items.length === 1 ? 520 : 680 }}>
+      <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
+        {items.map((item, index) => {
+          const key = item.media_key || item.url || item.preview_image_url || index;
+          const isVideo = item.type === "video" || item.type === "animated_gif";
+          const videoUrl = bestVideoVariant(item.variants);
+          const imageUrl = item.url || item.preview_image_url;
+
+          const mediaStyle = {
+            width: "100%",
+            maxHeight: 260,
+            objectFit: "contain",
+            borderRadius: 10,
+            background: "#f8f9fa",
+            display: "block",
+            border: "1px solid #edf2f7",
+          };
+
+          if (isVideo && videoUrl) {
+            return (
+              <video
+                key={key}
+                controls
+                playsInline
+                poster={item.preview_image_url || undefined}
+                style={{ ...mediaStyle, background: "#000" }}
+              >
+                <source src={videoUrl} type="video/mp4" />
+              </video>
+            );
+          }
+
+          if (imageUrl) {
+            return (
+              <img
+                key={key}
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                style={mediaStyle}
+              />
+            );
+          }
+
+          return null;
+        })}
+      </SimpleGrid>
+    </div>
+  );
+}
+
+function getTrimmedPreview(value, threshold) {
+  if (!value || value.length <= threshold) return value;
+
+  const hardCut = value.slice(0, threshold);
+  const lastSpace = Math.max(
+    hardCut.lastIndexOf(" "),
+    hardCut.lastIndexOf("\n"),
+    hardCut.lastIndexOf("\t")
+  );
+
+  const cutAt = lastSpace > threshold * 0.65 ? lastSpace : threshold;
+  return value.slice(0, cutAt).trimEnd() + "…";
+}
+
+function ExpandablePostText({ text, threshold = 260, dimmed = false }) {
+  const [expanded, setExpanded] = useState(false);
+  const value = String(text || "").trim();
+  const isLong = value.length > threshold;
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [value]);
+
+  if (!value) return null;
+
+  const visibleText = isLong && !expanded
+    ? getTrimmedPreview(value, threshold)
+    : value;
+
+  return (
+    <Stack gap={4}>
+      <Text
+        component="div"
+        size="sm"
+        c={dimmed ? "dimmed" : undefined}
+        style={{
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.55,
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {visibleText}
+      </Text>
+
+      {isLong && (
+        <Button
+          type="button"
+          variant="subtle"
+          size="compact-sm"
+          px={0}
+          leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
+          style={{ alignSelf: "flex-start" }}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </Button>
+      )}
+    </Stack>
+  );
+}
+
 
 function instagramIdToShortcode(id) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -91,30 +296,26 @@ function getPostUrl(post) {
 
 function XPostCard({ post, onDelete }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const handle = post.extra?.author_handle || post.extra?.username || post.username || t("savedPosts.unknown");
-  const name = post.extra?.author_name || handle;
   const tone = post.tone;
   const postUrl = getPostUrl(post);
+  const extra = post.extra || {};
+  const handle = String(extra.author_handle || extra.username || post.username || "").replace(/^@/, "");
+  const name = extra.author_name || handle || t("savedPosts.unknown");
+  const avatarUrl = cleanXImageUrl(extra.author_profile_image_url || extra.profile_image_url);
+  const mediaItems = dedupeMediaForDisplay(extra.media);
 
   return (
     <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
       <Stack gap="sm">
-        <Group justify="space-between" wrap="nowrap">
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: "50%",
-              background: "#e8f5fd",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 700, fontSize: 15, color: "#1d9bf0", flexShrink: 0,
-            }}>
-              {(name || "?")[0].toUpperCase()}
-            </div>
+            <Avatar src={avatarUrl} radius="xl" size={44} color="blue">
+              {(name || handle || "?")[0].toUpperCase()}
+            </Avatar>
             <div style={{ minWidth: 0 }}>
               <Text fw={700} size="sm" lh={1.3} truncate>{name}</Text>
-              <Text size="xs" c="dimmed" lh={1.2}>@{handle}</Text>
+              {handle && <Text size="xs" c="dimmed" lh={1.2}>@{handle}</Text>}
+              {post.published_at && <Text size="xs" c="dimmed" lh={1.2}>{formatDate(post.published_at)}</Text>}
             </div>
           </Group>
           <Group gap={6} wrap="nowrap">
@@ -134,29 +335,17 @@ function XPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <ExpandablePostText text={cleanDisplayTextForMedia(post.content, mediaItems)} threshold={260} />
+
+        <XMediaPreview media={mediaItems} />
 
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
 
-        {isLong && (
-          <Button variant="subtle" size="xs" p={0} h="auto"
-            leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
-          </Button>
-        )}
-
-        {post.published_at && (
-          <Text size="xs" c="dimmed" mt={-4}>{formatDate(post.published_at)}</Text>
-        )}
-
         <Divider my={0} />
 
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#1d9bf0" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#17bf63" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#1d9bf0" />} value={post.comments} />
