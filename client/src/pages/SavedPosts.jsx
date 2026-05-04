@@ -41,11 +41,23 @@ function cleanXImageUrl(url) {
 function bestVideoVariant(variants = []) {
   if (!Array.isArray(variants)) return null;
 
-  const mp4s = variants
-    .filter((v) => v?.url && String(v.content_type || v.contentType || "").includes("mp4"))
+  const normalized = variants
+    .filter((v) => v?.url)
+    .map((v) => ({
+      ...v,
+      _contentType: String(v.content_type || v.contentType || v.mime_type || v.type || "").toLowerCase(),
+      _url: String(v.url || ""),
+    }));
+
+  const mp4s = normalized
+    .filter((v) => v._contentType.includes("mp4") || /\.mp4(?:\?|$)/i.test(v._url))
     .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
 
-  return mp4s[0]?.url || null;
+  // Native <video> plays MP4 reliably. HLS may work in Safari, but Chrome usually
+  // needs hls.js, so use HLS only as a last resort.
+  const hls = normalized.find((v) => v._contentType.includes("mpegurl") || /\.m3u8(?:\?|$)/i.test(v._url));
+
+  return mp4s[0]?.url || hls?.url || null;
 }
 
 function normalizeMediaUrlKey(url) {
@@ -114,12 +126,12 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
     .trim();
 }
 
-function XMediaPreview({ media }) {
+function XMediaPreview({ media, postUrl = null }) {
   const items = dedupeMediaForDisplay(media);
   if (!items.length) return null;
 
   return (
-    <div style={{ maxWidth: items.length === 1 ? 520 : 680 }}>
+    <div style={{ maxWidth: items.length === 1 ? 420 : 560 }}>
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
         {items.map((item, index) => {
           const key = item.media_key || item.url || item.preview_image_url || index;
@@ -129,10 +141,10 @@ function XMediaPreview({ media }) {
 
           const mediaStyle = {
             width: "100%",
-            maxHeight: 260,
+            maxHeight: 180,
             objectFit: "contain",
             borderRadius: 10,
-            background: "#f8f9fa",
+            background: isVideo ? "#000" : "#f8f9fa",
             display: "block",
             border: "1px solid #edf2f7",
           };
@@ -143,24 +155,49 @@ function XMediaPreview({ media }) {
                 key={key}
                 controls
                 playsInline
+                preload="metadata"
                 poster={item.preview_image_url || undefined}
-                style={{ ...mediaStyle, background: "#000" }}
+                style={mediaStyle}
               >
-                <source src={videoUrl} type="video/mp4" />
+                <source src={videoUrl} type={/\.m3u8(?:\?|$)/i.test(videoUrl) ? "application/vnd.apple.mpegurl" : "video/mp4"} />
               </video>
             );
           }
 
           if (imageUrl) {
-            return (
+            const image = (
               <img
-                key={key}
                 src={imageUrl}
                 alt=""
                 loading="lazy"
                 style={mediaStyle}
               />
             );
+
+            if (isVideo && postUrl) {
+              return (
+                <a key={key} href={postUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", position: "relative" }}>
+                  {image}
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      bottom: 8,
+                      background: "rgba(0,0,0,0.72)",
+                      color: "white",
+                      borderRadius: 999,
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Open video on X
+                  </span>
+                </a>
+              );
+            }
+
+            return <div key={key}>{image}</div>;
           }
 
           return null;
@@ -169,7 +206,6 @@ function XMediaPreview({ media }) {
     </div>
   );
 }
-
 function getTrimmedPreview(value, threshold) {
   if (!value || value.length <= threshold) return value;
 
@@ -305,11 +341,11 @@ function XPostCard({ post, onDelete }) {
   const mediaItems = dedupeMediaForDisplay(extra.media);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
-      <Stack gap="sm">
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
+      <Stack gap="xs">
         <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            <Avatar src={avatarUrl} radius="xl" size={44} color="blue">
+            <Avatar src={avatarUrl} radius="xl" size={38} color="blue">
               {(name || handle || "?")[0].toUpperCase()}
             </Avatar>
             <div style={{ minWidth: 0 }}>
@@ -335,9 +371,9 @@ function XPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <ExpandablePostText text={cleanDisplayTextForMedia(post.content, mediaItems)} threshold={260} />
+        <ExpandablePostText text={cleanDisplayTextForMedia(post.content, mediaItems)} threshold={220} />
 
-        <XMediaPreview media={mediaItems} />
+        <XMediaPreview media={mediaItems} postUrl={postUrl} />
 
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>

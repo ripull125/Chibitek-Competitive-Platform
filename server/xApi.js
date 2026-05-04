@@ -337,11 +337,15 @@ function normalizeMedia(media) {
     duration_ms: media.duration_ms ?? media.video_info?.duration_millis ?? null,
     public_metrics: media.public_metrics || {},
     variants: Array.isArray(media.variants)
-      ? media.variants
+      ? media.variants.map((v) => ({
+          bitrate: v.bitrate ?? null,
+          content_type: v.content_type || v.contentType || v.mime_type || v.type || "",
+          url: v.url || "",
+        }))
       : Array.isArray(media.video_info?.variants)
         ? media.video_info.variants.map((v) => ({
           bitrate: v.bitrate ?? null,
-          content_type: v.content_type || v.contentType || "",
+          content_type: v.content_type || v.contentType || v.mime_type || v.type || "",
           url: v.url || "",
         }))
         : [],
@@ -811,40 +815,51 @@ export async function getUserIdByUsername(username) {
   }
 }
 
-export async function fetchPostsByUserId(userIdOrHandle, maxResults = 10, handleHint = null) {
+export async function fetchPostsByUserId(userIdOrHandle, maxResults = 10, handleHint = null, paginationToken = null) {
   const target = clampInt(maxResults, 5, 100, 10);
   const value = String(userIdOrHandle || "").trim();
 
   if (!/^\d+$/.test(value)) {
     const sc = await scrapeCreatorsUserTweets(value || handleHint, target);
-    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining };
+    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining, meta: {}, source: "scrape_creators" };
   }
 
   try {
+    const params = {
+      max_results: target,
+      "tweet.fields": TWEET_FIELDS,
+      expansions: "author_id,attachments.media_keys",
+      "user.fields": USER_FIELDS,
+      "media.fields": MEDIA_FIELDS,
+    };
+
+    if (paginationToken) {
+      params.pagination_token = paginationToken;
+    }
+
     const data = await xRequest({
       method: "GET",
       url: `/users/${encodeURIComponent(value)}/tweets`,
-      params: {
-        max_results: target,
-        "tweet.fields": TWEET_FIELDS,
-        expansions: "author_id,attachments.media_keys",
-        "user.fields": USER_FIELDS,
-        "media.fields": MEDIA_FIELDS,
-      },
+      params,
     });
 
     const users = data?.includes?.users || [];
     const media = data?.includes?.media || [];
-    return sortTweetsNewestFirst(
-      (data?.data || [])
-        .map((tweet) => normalizeTweet(tweet, users, handleHint, media))
-        .filter(Boolean)
-    ).slice(0, target);
+    return {
+      tweets: sortTweetsNewestFirst(
+        (data?.data || [])
+          .map((tweet) => normalizeTweet(tweet, users, handleHint, media))
+          .filter(Boolean)
+      ).slice(0, target),
+      users: users.map(normalizeUser).filter(Boolean),
+      meta: data?.meta || {},
+      source: "x_api",
+    };
   } catch (err) {
     if (!shouldFallbackToScrapeCreators(err)) throw err;
     const handle = handleHint || value;
     const sc = await scrapeCreatorsUserTweets(handle, target);
-    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining };
+    return { tweets: sc.tweets, credits_remaining: sc.credits_remaining, meta: {}, source: "scrape_creators" };
   }
 }
 
@@ -963,7 +978,12 @@ export async function lookupXInput(input, maxResults = 10, options = {}) {
 
   if (parsed.type === "account") {
     const user = await getUserIdByUsername(parsed.handle);
-    const postsResult = await fetchPostsByUserId(user.id, limit, user.username || parsed.handle);
+    const postsResult = await fetchPostsByUserId(
+      user.id,
+      limit,
+      user.username || parsed.handle,
+      options.paginationToken || null
+    );
     const tweets = Array.isArray(postsResult) ? postsResult : postsResult?.tweets || [];
     return {
       success: true,
@@ -973,6 +993,8 @@ export async function lookupXInput(input, maxResults = 10, options = {}) {
       results: {
         userLookup: user,
         userTweets: tweets.slice(0, limit),
+        userTweetsMeta: postsResult?.meta || {},
+        userTweetsSource: postsResult?.source || null,
       },
       errors: [],
       credits_remaining: user?.credits_remaining ?? postsResult?.credits_remaining ?? null,

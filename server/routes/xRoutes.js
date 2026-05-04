@@ -123,7 +123,7 @@ router.post("/search", async (req, res) => {
 
     if (options.userTweets && tweetsUsername) {
       labels.push("userTweets");
-      tasks.push(getUserIdByUsername(tweetsUsername).then((u) => fetchPostsByUserId(u.id, limit, u.username)));
+      tasks.push(getUserIdByUsername(tweetsUsername).then((u) => fetchPostsByUserId(u.id, limit, u.username, paginationToken)));
     }
 
     if (options.userMentions && tweetsUsername) {
@@ -157,6 +157,8 @@ router.post("/search", async (req, res) => {
         const value = settledResult.value;
         if (label === "userTweets" && value && Array.isArray(value.tweets)) {
           results.userTweets = value.tweets;
+          results.userTweetsMeta = value.meta || {};
+          results.userTweetsSource = value.source || null;
           if (value.credits_remaining != null) credits_remaining = value.credits_remaining;
           return;
         }

@@ -28,7 +28,7 @@ export function normalizeXPost(tweet, { platformId, competitorId }) {
       competitor_id: competitorId,
       platform_post_id: tweet.id,
       url,
-      content: tweet.text || getFullTweetText(tweet),
+      content: getFullTweetText(tweet),
       published_at: tweet.created_at ?? null,
     },
     metrics: {

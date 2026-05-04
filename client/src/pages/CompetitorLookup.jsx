@@ -751,11 +751,21 @@ function LinkedinPostCard({ post, onSave }) {
 function bestVideoVariant(variants = []) {
   if (!Array.isArray(variants)) return null;
 
-  const mp4s = variants
-    .filter((v) => v?.url && String(v.content_type || "").includes("mp4"))
+  const normalized = variants
+    .filter((v) => v?.url)
+    .map((v) => ({
+      ...v,
+      _contentType: String(v.content_type || v.contentType || v.mime_type || v.type || "").toLowerCase(),
+      _url: String(v.url || ""),
+    }));
+
+  const mp4s = normalized
+    .filter((v) => v._contentType.includes("mp4") || /\.mp4(?:\?|$)/i.test(v._url))
     .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
 
-  return mp4s[0]?.url || null;
+  const hls = normalized.find((v) => v._contentType.includes("mpegurl") || /\.m3u8(?:\?|$)/i.test(v._url));
+
+  return mp4s[0]?.url || hls?.url || null;
 }
 
 function normalizeMediaUrlKey(url) {
@@ -824,68 +834,87 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
     .trim();
 }
 
-function XMediaPreview({ media }) {
+function XMediaPreview({ media, postUrl = null }) {
   const items = dedupeMediaForDisplay(media);
 
   if (!items.length) return null;
 
   return (
-    <div style={{ maxWidth: items.length === 1 ? 560 : 760 }}>
+    <div style={{ maxWidth: items.length === 1 ? 520 : 680 }}>
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
-      {items.map((item, index) => {
-        const key = item.media_key || item.url || item.preview_image_url || index;
-        const isVideo = item.type === "video" || item.type === "animated_gif";
-        const videoUrl = bestVideoVariant(item.variants);
-        const imageUrl = item.url || item.preview_image_url;
+        {items.map((item, index) => {
+          const key = item.media_key || item.url || item.preview_image_url || index;
+          const isVideo = item.type === "video" || item.type === "animated_gif";
+          const videoUrl = bestVideoVariant(item.variants);
+          const imageUrl = item.url || item.preview_image_url;
 
-        if (isVideo && videoUrl) {
-          return (
-            <video
-              key={key}
-              controls
-              playsInline
-              poster={item.preview_image_url || undefined}
-              style={{
-                width: "100%",
-                maxHeight: 280,
-                objectFit: "contain",
-                borderRadius: 12,
-                background: "#000",
-                border: "1px solid #edf2f7",
-              }}
-            >
-              <source src={videoUrl} type="video/mp4" />
-            </video>
-          );
-        }
+          const mediaStyle = {
+            width: "100%",
+            maxHeight: 240,
+            objectFit: "contain",
+            borderRadius: 12,
+            display: "block",
+            background: isVideo ? "#000" : "#f8f9fa",
+            border: "1px solid #edf2f7",
+          };
 
-        if (imageUrl) {
-          return (
-            <img
-              key={key}
-              src={imageUrl}
-              alt=""
-              loading="lazy"
-              style={{
-                width: "100%",
-                maxHeight: 280,
-                objectFit: "contain",
-                borderRadius: 12,
-                display: "block",
-                background: "#f8f9fa",
-                border: "1px solid #edf2f7",
-              }}
-            />
-          );
-        }
+          if (isVideo && videoUrl) {
+            return (
+              <video
+                key={key}
+                controls
+                playsInline
+                preload="metadata"
+                poster={item.preview_image_url || undefined}
+                style={mediaStyle}
+              >
+                <source src={videoUrl} type={/\.m3u8(?:\?|$)/i.test(videoUrl) ? "application/vnd.apple.mpegurl" : "video/mp4"} />
+              </video>
+            );
+          }
 
-        return null;
-      })}
+          if (imageUrl) {
+            const image = (
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                style={mediaStyle}
+              />
+            );
+
+            if (isVideo && postUrl) {
+              return (
+                <a key={key} href={postUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", position: "relative" }}>
+                  {image}
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      bottom: 10,
+                      background: "rgba(0,0,0,0.72)",
+                      color: "white",
+                      borderRadius: 999,
+                      padding: "4px 10px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Open video on X
+                  </span>
+                </a>
+              );
+            }
+
+            return <div key={key}>{image}</div>;
+          }
+
+          return null;
+        })}
       </SimpleGrid>
     </div>
   );
 }
-
 function cleanXImageUrl(url) {
   if (!url || typeof url !== "string") return null;
 
@@ -1133,7 +1162,7 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
           threshold={180}
         />
 
-        <XMediaPreview media={mediaItems} />
+        <XMediaPreview media={mediaItems} postUrl={postUrl} />
 
         <Group justify="space-between" align="center">
           <Group gap="lg" c="dimmed">
@@ -1728,46 +1757,80 @@ async function handleSimpleXSubmit() {
 }
 
 function mergeXSearchResults(previous, nextPage) {
-  if (!previous?.results?.searchTweets || !nextPage?.results?.searchTweets) {
-    return nextPage;
-  }
+  if (!previous || !nextPage) return nextPage;
 
-  const existingTweets = previous.results.searchTweets.tweets || [];
-  const nextTweets = nextPage.results.searchTweets.tweets || [];
-  const seen = new Set(existingTweets.map((tweet) => String(tweet.id || "")).filter(Boolean));
-  const mergedTweets = [...existingTweets];
+  if (previous?.results?.searchTweets && nextPage?.results?.searchTweets) {
+    const existingTweets = previous.results.searchTweets.tweets || [];
+    const nextTweets = nextPage.results.searchTweets.tweets || [];
+    const seen = new Set(existingTweets.map((tweet) => String(tweet.id || "")).filter(Boolean));
+    const mergedTweets = [...existingTweets];
 
-  for (const tweet of nextTweets) {
-    const key = String(tweet.id || "");
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
-    mergedTweets.push(tweet);
-  }
+    for (const tweet of nextTweets) {
+      const key = String(tweet.id || "");
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      mergedTweets.push(tweet);
+    }
 
-  const usersById = new Map();
-  for (const user of previous.results.searchTweets.users || []) {
-    if (user?.id) usersById.set(String(user.id), user);
-  }
-  for (const user of nextPage.results.searchTweets.users || []) {
-    if (user?.id) usersById.set(String(user.id), user);
-  }
+    const usersById = new Map();
+    for (const user of previous.results.searchTweets.users || []) {
+      if (user?.id) usersById.set(String(user.id), user);
+    }
+    for (const user of nextPage.results.searchTweets.users || []) {
+      if (user?.id) usersById.set(String(user.id), user);
+    }
 
-  return {
-    ...nextPage,
-    results: {
-      ...nextPage.results,
-      searchTweets: {
-        ...nextPage.results.searchTweets,
-        tweets: mergedTweets,
-        users: Array.from(usersById.values()),
+    return {
+      ...nextPage,
+      results: {
+        ...nextPage.results,
+        searchTweets: {
+          ...nextPage.results.searchTweets,
+          tweets: mergedTweets,
+          users: Array.from(usersById.values()),
+        },
       },
-    },
-  };
+    };
+  }
+
+  if (previous?.results?.userTweets && nextPage?.results?.userTweets) {
+    const existingTweets = previous.results.userTweets || [];
+    const nextTweets = nextPage.results.userTweets || [];
+    const seen = new Set(existingTweets.map((tweet) => String(tweet.id || "")).filter(Boolean));
+    const mergedTweets = [...existingTweets];
+
+    for (const tweet of nextTweets) {
+      const key = String(tweet.id || "");
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      mergedTweets.push(tweet);
+    }
+
+    return {
+      ...nextPage,
+      results: {
+        ...nextPage.results,
+        userLookup: previous.results.userLookup || nextPage.results.userLookup,
+        userTweets: mergedTweets,
+        userTweetsMeta: nextPage.results.userTweetsMeta || {},
+      },
+    };
+  }
+
+  return nextPage;
+}
+
+function getXNextToken(result) {
+  return (
+    result?.results?.searchTweets?.meta?.next_token ||
+    result?.results?.userTweetsMeta?.next_token ||
+    null
+  );
 }
 
 async function handleLoadMoreX() {
   const q = String(simpleQueries.x || "").trim();
-  const nextToken = xResult?.results?.searchTweets?.meta?.next_token;
+  const nextToken = getXNextToken(xResult);
   if (!q || !nextToken) return;
 
   setXError(null);
@@ -2086,7 +2149,7 @@ async function handleLoadMoreX() {
           username: authorHandle,
           platform_post_id: String(data.id || Date.now()),
           url: postUrl,
-          content: data.text || getFullTweetText(data),
+          content: getFullTweetText(data),
           published_at: data.created_at || null,
           likes: metrics.like_count ?? 0,
           shares: metrics.retweet_count ?? 0,
@@ -3805,10 +3868,10 @@ async function handleLoadMoreX() {
                   </Group>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
                   {xResult && <XResults data={xResult} onSave={handleXSave} />}
-                  {xResult?.mode === "keyword" && xResult?.results?.searchTweets?.meta?.next_token && (
+                  {getXNextToken(xResult) && (
                     <Group justify="center">
                       <Button variant="light" loading={xLoadingMore} onClick={handleLoadMoreX}>
-                        Load next 10 results
+                        {xResult?.mode === "account" ? "Load next 10 posts" : "Load next 10 results"}
                       </Button>
                     </Group>
                   )}
