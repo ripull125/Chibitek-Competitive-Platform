@@ -110,7 +110,7 @@ const COLS = [
 
 /* ── main component ───────────────────────────────────────────────────────── */
 
-const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded }, ref) {
+const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded, maxEntries }, ref) {
   const { t } = useTranslation();
   const [keywords, setKeywords] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -152,7 +152,7 @@ const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded }
   }, []);
 
   /* Sort */
-  const sorted = [...keywords].sort((a, b) => {
+  let sorted = [...keywords].sort((a, b) => {
     if (sortBy === "engagement") return b.avgEngagement - a.avgEngagement;
     if (sortBy === "posts") return b.sampleSize - a.sampleSize;
     if (sortBy === "consistency") return b.consistency - a.consistency;
@@ -160,6 +160,9 @@ const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded }
     if (sortBy === "platforms") return (b.platforms?.length || 0) - (a.platforms?.length || 0);
     return b.kpi - a.kpi;
   });
+  if (typeof maxEntries === "number" && maxEntries > 0) {
+    sorted = sorted.slice(0, Math.max(5, Math.min(10, maxEntries)));
+  }
 
   /* Grid template: rank | keyword | ...columns */
   const gridCols = `28px 1fr ${COLS.map(c => c.w + "px").join(" ")}`;
