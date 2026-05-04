@@ -429,11 +429,11 @@ function LinkedinProfileCard({ profile, onSave }) {
             <Group justify="space-between" align="center" my="xs">
               <Divider label={t("competitorLookup.recentActivity")} style={{ flex: 1 }} />
               {posts.length > 1 && (
-                <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} type="activity" />
+                <SaveAllButton items={posts.slice(0, 10)} onSave={(_type, p) => onSave("activity", { text: p.title || p.text || "", url: p.link || "", activityType: p.activityType, profileName: profile.name })} type="activity" />
               )}
             </Group>
             <Stack gap="sm">
-              {posts.slice(0, 5).map((p, i) => (
+              {posts.slice(0, 10).map((p, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Group gap="sm" wrap="nowrap" align="start">
                     <div style={{ flex: 1 }}>
@@ -550,11 +550,11 @@ function LinkedinCompanyCard({ company, onSave }) {
             <Group justify="space-between" align="center" my="xs">
               <Divider label={t("competitorLookup.recentPosts")} style={{ flex: 1 }} />
               {posts.length > 1 && (
-                <SaveAllButton items={posts.slice(0, 5)} onSave={(_type, p) => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} type="companyPost" />
+                <SaveAllButton items={posts.slice(0, 10)} onSave={(_type, p) => onSave("companyPost", { text: p.text || "", datePublished: p.datePublished, url: p.url, companyName: company.name })} type="companyPost" />
               )}
             </Group>
             <Stack gap="sm">
-              {posts.slice(0, 5).map((p, i) => (
+              {posts.slice(0, 10).map((p, i) => (
                 <Card key={i} withBorder radius="sm" p="sm">
                   <Text size="sm" lineClamp={4} style={{ whiteSpace: "pre-wrap" }}>{p.text || "—"}</Text>
                   <Group gap="xs" mt={4} justify="space-between">
@@ -1365,6 +1365,24 @@ function XResults({ data, onSave }) {
 
 /* ─── End X Results ──────────────────────────────────────────────────────── */
 
+function LinkedinPostList({ title, posts, onSave }) {
+  if (!posts?.length) return null;
+
+  return (
+    <div>
+      <Group justify="space-between" align="center" my="xs">
+        <Divider label={`${title} (${posts.length})`} style={{ flex: 1 }} />
+        <SaveAllButton items={posts} onSave={onSave} type="post" />
+      </Group>
+      <Stack gap="sm">
+        {posts.map((post, i) => (
+          <LinkedinPostCard key={post.url || post.id || i} post={post} onSave={onSave} />
+        ))}
+      </Stack>
+    </div>
+  );
+}
+
 function LinkedinResults({ data, onSave }) {
   const { t } = useTranslation();
   if (!data?.results) return null;
@@ -1380,6 +1398,10 @@ function LinkedinResults({ data, onSave }) {
     if (key === "company" || key.startsWith("keyword_company_")) companyResults.push(value);
     if (key === "post" || key.startsWith("keyword_post_")) postResults.push(value);
   });
+
+  const profilePosts = Array.isArray(results.profilePosts) ? results.profilePosts : [];
+  const companyPosts = Array.isArray(results.companyPosts) ? results.companyPosts : [];
+  const searchPosts = Array.isArray(results.searchPosts) ? results.searchPosts : [];
 
   return (
     <Stack gap="md">
@@ -1402,9 +1424,16 @@ function LinkedinResults({ data, onSave }) {
       {profileResults.map((profile, i) => (
         <LinkedinProfileCard key={`profile-${i}`} profile={profile} onSave={onSave} />
       ))}
+
+      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} />
+
       {companyResults.map((company, i) => (
         <LinkedinCompanyCard key={`company-${i}`} company={company} onSave={onSave} />
       ))}
+
+      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} />
+      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} />
+
       {postResults.map((post, i) => (
         <LinkedinPostCard key={`post-${i}`} post={post} onSave={onSave} />
       ))}
@@ -1885,6 +1914,7 @@ async function handleLoadMoreX() {
     const q = String(simpleQueries.linkedin || "").trim();
     setLinkedinError(null);
     setLinkedinResult(null);
+
     if (!q) {
       setLinkedinError("Please enter a LinkedIn @username, profile/company/post URL, or keywords.");
       return;
@@ -1892,30 +1922,13 @@ async function handleLoadMoreX() {
 
     setLinkedinLoading(true);
     try {
-      const isHandleWithAt = /^@[A-Za-z0-9._-]{2,}$/.test(q);
-      if (isHandleWithAt) {
-        const handle = q.slice(1);
-        const json = await tryPostJson("/api/linkedin/search", {
-          options: { profile: true },
-          inputs: { profile: `https://www.linkedin.com/in/${handle}` },
-        });
-        setLinkedinResult(json);
-        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
-      } else if (/linkedin\.com\//i.test(q)) {
-        const isCompany = /\/company\//i.test(q);
-        const isPost = /\/posts\//i.test(q) || /\/pulse\//i.test(q);
-        const options = isCompany ? { company: true } : isPost ? { post: true } : { profile: true };
-        const inputs = isCompany ? { company: q } : isPost ? { post: q } : { profile: q };
-        const json = await tryPostJson("/api/linkedin/search", { options, inputs });
-        setLinkedinResult(json);
-        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
-      } else {
-        const options = { profile: true, company: true, post: true };
-        const inputs = { keyword: q };
-        const json = await tryPostJson("/api/linkedin/search", { options, inputs });
-        setLinkedinResult(json);
-        if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
-      }
+      const json = await tryPostJson("/api/linkedin/search", {
+        q,
+        limit: 10,
+      });
+
+      setLinkedinResult(json);
+      if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
       setLinkedinError(e?.message || "Unknown error");
     } finally {
@@ -3903,11 +3916,11 @@ async function handleLoadMoreX() {
             {connectedPlatforms.linkedin && (
               <Tabs.Panel value="linkedin" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username to look up a profile, paste a LinkedIn URL, or enter keywords to search.</Text>
+                  <Text size="sm" c="dimmed">Use @username for a creator profile, paste a LinkedIn profile/company/post URL, or enter keywords to search recent LinkedIn posts.</Text>
                   <Group align="end">
                     <TextInput
                       label="LinkedIn Search"
-                      placeholder="@username, linkedin.com/in/..., /company/..., or keyword"
+                      placeholder="@username, linkedin.com/in/..., linkedin.com/company/..., post URL, or keywords"
                       value={simpleQueries.linkedin}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, linkedin: e.target.value }))}
                       style={{ flex: 1 }}
