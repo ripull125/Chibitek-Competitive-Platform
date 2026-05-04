@@ -1,5 +1,6 @@
 import xRoutes from "./routes/xRoutes.js";
 import linkedinRoutes from "./routes/linkedinRoutes.js";
+import instagramRoutes from "./routes/instagramRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
@@ -90,6 +91,7 @@ app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/x', xRoutes);
 app.use('/api/linkedin', linkedinRoutes);
+app.use('/api/instagram', instagramRoutes);
 
 const {
   GITHUB_TOKEN,

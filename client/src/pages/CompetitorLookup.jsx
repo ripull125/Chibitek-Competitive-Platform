@@ -1940,29 +1940,19 @@ async function handleLoadMoreX() {
     const q = String(simpleQueries.instagram || "").trim();
     setInstagramError(null);
     setInstagramResult(null);
+
     if (!q) {
-      setInstagramError("Please enter an Instagram @username, URL, or keyword.");
+      setInstagramError("Please enter an Instagram @username, profile/post/reel URL, or keyword.");
       return;
     }
 
-    const isPostUrl = /instagram\.com\/(p|reel)\//i.test(q);
-    const isProfileUrl = /instagram\.com\/(?!p\/|reel\/)[A-Za-z0-9._]+\/?$/i.test(q);
-    const isHandleWithAt = /^@[A-Za-z0-9._]{2,30}$/.test(q);
-    const handle = cleanHandle(q);
-
     setInstagramLoading(true);
     try {
-      const payload = isPostUrl
-        ? { options: { singlePost: true }, inputs: { postUrl: q }, limit: scrapePostCount }
-        : (isProfileUrl || isHandleWithAt)
-          ? {
-            options: { profile: true, userPosts: true, userReels: true },
-            inputs: { username: handle, userPostsUsername: handle, userReelsUsername: handle },
-            limit: scrapePostCount,
-          }
-          : { options: { reelsSearch: true }, inputs: { reelsSearchTerm: q }, limit: scrapePostCount };
+      const json = await tryPostJson("/api/instagram/search", {
+        q,
+        limit: 10,
+      });
 
-      const json = await tryPostJson("/api/instagram/search", payload);
       setInstagramResult(json);
       if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
@@ -3000,6 +2990,105 @@ async function handleLoadMoreX() {
 
   /* ── Instagram Display Components ──────────────────────────────────── */
 
+  function bestIgVideoVariant(variants = []) {
+    if (!Array.isArray(variants)) return null;
+    const mp4s = variants
+      .filter((v) => v?.url && String(v.content_type || "video/mp4").includes("mp4"))
+      .sort((a, b) => (Number(b.width) || Number(b.bitrate) || 0) - (Number(a.width) || Number(a.bitrate) || 0));
+    return mp4s[0]?.url || null;
+  }
+
+  function getIgMediaItems(post) {
+    const direct = Array.isArray(post?.media) ? post.media : [];
+    if (direct.length) return direct.filter(Boolean).slice(0, 4);
+
+    const carousel = Array.isArray(post?.carousel_media) ? post.carousel_media : [];
+    const fromCarousel = carousel.map((m, index) => ({
+      media_key: m.id || m.pk || `${post?.id || "ig"}-${index}`,
+      type: m.media_type === 2 || m.is_video ? "video" : "photo",
+      url: m.video_url || m.video_versions?.[0]?.url || m.image_versions2?.candidates?.[0]?.url || m.display_url || m.thumbnail_src,
+      preview_image_url: m.image_versions2?.candidates?.[0]?.url || m.display_url || m.thumbnail_src,
+      variants: m.video_versions || [],
+    })).filter((m) => m.url || m.preview_image_url);
+    if (fromCarousel.length) return fromCarousel.slice(0, 4);
+
+    const imageUrl = post?.image_url || post?.display_url || post?.thumbnail_src || post?.thumbnail_url || post?.image_versions2?.candidates?.[0]?.url;
+    const videoUrl = post?.video_url || post?.video_versions?.[0]?.url;
+    if (videoUrl || imageUrl) {
+      return [{
+        media_key: post?.id || post?.pk || post?.code || "ig-media",
+        type: videoUrl ? "video" : "photo",
+        url: videoUrl || imageUrl,
+        preview_image_url: imageUrl || post?.thumbnail_url || null,
+        variants: post?.video_versions || (videoUrl ? [{ url: videoUrl, content_type: "video/mp4" }] : []),
+      }];
+    }
+
+    return [];
+  }
+
+  function IgMediaPreview({ media, compact = false }) {
+    const items = Array.isArray(media) ? media.filter(Boolean).slice(0, 4) : [];
+    if (!items.length) return null;
+
+    const maxWidth = items.length === 1 ? 420 : 620;
+    const maxHeight = compact ? 220 : 300;
+
+    return (
+      <div style={{ maxWidth, width: "100%" }}>
+        <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
+          {items.map((item, index) => {
+            const key = item.media_key || item.url || item.preview_image_url || index;
+            const isVideo = item.type === "video" || item.type === "animated_gif";
+            const videoUrl = bestIgVideoVariant(item.variants) || (isVideo ? item.url : null);
+            const imageUrl = item.preview_image_url || (!isVideo ? item.url : null);
+
+            if (isVideo && videoUrl) {
+              return (
+                <video
+                  key={key}
+                  controls
+                  playsInline
+                  poster={imageUrl || undefined}
+                  style={{
+                    width: "100%",
+                    maxHeight,
+                    objectFit: "contain",
+                    borderRadius: 12,
+                    background: "#000",
+                  }}
+                >
+                  <source src={videoUrl} type="video/mp4" />
+                </video>
+              );
+            }
+
+            if (imageUrl || item.url) {
+              return (
+                <img
+                  key={key}
+                  src={imageUrl || item.url}
+                  alt=""
+                  loading="lazy"
+                  style={{
+                    width: "100%",
+                    maxHeight,
+                    objectFit: "contain",
+                    borderRadius: 12,
+                    display: "block",
+                    background: "#f8f9fa",
+                  }}
+                />
+              );
+            }
+
+            return null;
+          })}
+        </SimpleGrid>
+      </div>
+    );
+  }
+
   function IgProfileCard({ profile }) {
     if (!profile) return null;
     const p = profile.data?.user || profile.data || profile.user || profile;
@@ -3050,8 +3139,9 @@ async function handleLoadMoreX() {
 
   function IgPostCard({ post, onSave, compact }) {
     if (!post) return null;
-    const caption = post.caption?.text || post.caption || "";
-    const isVideo = post.media_type === 2 || post.video_url || post.is_video;
+    const caption = post.caption?.text || post.caption || post.text || "";
+    const mediaItems = getIgMediaItems(post);
+    const isVideo = post.media_type === 2 || post.video_url || post.is_video || mediaItems.some((m) => m.type === "video");
     const shortCode = post.code || post.shortcode;
     const postUrl = post.url || post.permalink || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
     const likeCount = post.like_count ?? post.likes;
@@ -3104,6 +3194,8 @@ async function handleLoadMoreX() {
             </Group>
           </Group>
 
+          <IgMediaPreview media={mediaItems} compact={compact} />
+
           {date && <Text size="xs" c="dimmed">{date}</Text>}
 
           <Divider my={0} />
@@ -3130,7 +3222,8 @@ async function handleLoadMoreX() {
 
   function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
-    const caption = reel.caption?.text || reel.caption || "";
+    const caption = reel.caption?.text || reel.caption || reel.text || "";
+    const mediaItems = getIgMediaItems(reel);
     const shortCode = reel.code || reel.shortcode;
     const postUrl = reel.url || reel.permalink || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
     const likeCount = reel.like_count ?? reel.likes;
@@ -3176,6 +3269,8 @@ async function handleLoadMoreX() {
             </Group>
           </Group>
 
+          <IgMediaPreview media={mediaItems} compact={compact} />
+
           {date && <Text size="xs" c="dimmed">{date}</Text>}
 
           <Divider my={0} />
@@ -3214,11 +3309,13 @@ async function handleLoadMoreX() {
     const rawUserReels = results.userReels?.items || results.userReels?.data?.items || [];
     const userReelsArr = rawUserReels.map(r => r.media || r);
     const highlightItems = results.highlightDetail?.highlights || results.highlightDetail?.data?.items || results.highlightDetail?.items || [];
+    const searchPostsArr = results.searchPosts || [];
 
     const count =
       (results.profile ? 1 : 0) +
       (Array.isArray(postsArr) ? postsArr.length : 0) +
       (results.singlePost ? 1 : 0) +
+      (Array.isArray(searchPostsArr) ? searchPostsArr.length : 0) +
       (Array.isArray(reelsSearchArr) ? reelsSearchArr.length : 0) +
       (Array.isArray(userReelsArr) ? userReelsArr.length : 0) +
       (Array.isArray(highlightItems) ? highlightItems.length : 0);
@@ -3261,6 +3358,18 @@ async function handleLoadMoreX() {
           <>
             <Divider label="Post Detail" labelPosition="center" />
             <IgPostCard post={results.singlePost?.data?.xdt_shortcode_media || results.singlePost?.data || results.singlePost} onSave={onSave} />
+          </>
+        )}
+
+        {searchPostsArr.length > 0 && (
+          <>
+            <Group justify="space-between" align="center">
+              <Divider label={`Search Posts (${searchPostsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={searchPostsArr} onSave={onSave} type="post" />
+            </Group>
+            <Stack gap="xs">
+              {searchPostsArr.map((p, i) => <IgPostCard key={p.pk || p.id || p.code || i} post={p} onSave={onSave} compact />)}
+            </Stack>
           </>
         )}
 
