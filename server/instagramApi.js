@@ -54,7 +54,7 @@ export function parseInstagramInput(input) {
   const raw = String(input || "").trim();
   if (!raw) return { type: "empty", raw };
 
-  const at = raw.match(/^@([A-Za-z0-9._]{1,30})$/);
+  const at = raw.match(/^@([A-Za-z0-9._]{1,30})(?:\s+.*)?$/);
   if (at) {
     return {
       type: "account",
@@ -62,6 +62,7 @@ export function parseInstagramInput(input) {
       handle: at[1],
       url: canonicalProfileUrl(at[1]),
       source: "handle",
+      includePosts: true,
     };
   }
 
@@ -90,8 +91,9 @@ export function parseInstagramInput(input) {
             type: "account",
             raw,
             handle,
-            url: url.toString(),
+            url: canonicalProfileUrl(handle),
             source: "profile_url",
+            includePosts: false,
           };
         }
       }
@@ -130,6 +132,34 @@ function shortcodeFromUrl(url) {
   return match?.[1] || null;
 }
 
+function instagramPostKindFromUrl(url) {
+  const text = String(url || "");
+  const match = text.match(/instagram\.com\/(p|reel|tv)\//i);
+  return match?.[1] || null;
+}
+
+function normalizeInstagramPostUrl(post = {}, code = "", isVideo = false) {
+  const rawUrl = String(post.url || post.permalink || "").trim();
+  const rawCode = shortcodeFromUrl(rawUrl);
+  const finalCode = String(code || rawCode || "").trim();
+
+  if (!finalCode) return null;
+
+  const rawKind = instagramPostKindFromUrl(rawUrl);
+  if (rawKind && rawCode && rawCode === finalCode) {
+    return `https://www.instagram.com/${rawKind}/${finalCode}/`;
+  }
+
+  const isReel =
+    post.product_type === "clips" ||
+    post.__typename === "XDTGraphVideo" ||
+    post.is_video === true ||
+    post.media_type === 2 ||
+    isVideo;
+
+  return `https://www.instagram.com/${isReel ? "reel" : "p"}/${finalCode}/`;
+}
+
 function dedupePosts(posts = []) {
   const seen = new Set();
   const out = [];
@@ -163,10 +193,123 @@ function firstText(value) {
   if (!value) return "";
   if (typeof value === "string") return value;
   if (typeof value?.text === "string") return value.text;
+  if (typeof value?.caption === "string") return value.caption;
+  if (typeof value?.caption_text === "string") return value.caption_text;
+  if (typeof value?.node?.text === "string") return value.node.text;
   if (Array.isArray(value?.edges)) {
     return value.edges.map((e) => e?.node?.text).filter(Boolean).join("\n");
   }
   return "";
+}
+
+function pickNumber(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+
+    if (typeof value === "object") {
+      if (Number.isFinite(Number(value.count))) return Number(value.count);
+      if (Number.isFinite(Number(value.value))) return Number(value.value);
+      if (Number.isFinite(Number(value.total_count))) return Number(value.total_count);
+      continue;
+    }
+
+    const raw = String(value).trim().replace(/,/g, "");
+    const match = raw.match(/^([0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+    if (match) {
+      const base = Number(match[1]);
+      const suffix = String(match[2] || "").toLowerCase();
+      const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : suffix === "b" ? 1_000_000_000 : 1;
+      return Math.round(base * multiplier);
+    }
+
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function pickString(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+function pickTimestamp(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric)) return numeric;
+      const parsed = new Date(trimmed).getTime();
+      if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+    }
+  }
+  return null;
+}
+
+function findNestedStringByKey(root, keyMatchers = [], { maxDepth = 5 } = {}) {
+  const seen = new WeakSet();
+  const queue = [{ value: root, depth: 0, path: "root" }];
+
+  while (queue.length) {
+    const { value, depth, path } = queue.shift();
+    if (!value || typeof value !== "object") continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (depth > maxDepth) continue;
+
+    for (const [key, child] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      const fullPath = `${path}.${key}`.toLowerCase();
+      const isCandidate = keyMatchers.some((matcher) => matcher.test(lowerKey) || matcher.test(fullPath));
+
+      if (isCandidate && typeof child === "string" && child.trim()) return child.trim();
+      if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1, path: fullPath });
+    }
+  }
+
+  return "";
+}
+
+function findNestedNumberByKey(root, keyMatchers = [], { maxDepth = 6 } = {}) {
+  const seen = new WeakSet();
+  const queue = [{ value: root, depth: 0, path: "root" }];
+
+  while (queue.length) {
+    const { value, depth, path } = queue.shift();
+    if (!value || typeof value !== "object") continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (depth > maxDepth) continue;
+
+    for (const [key, child] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      const fullPath = `${path}.${key}`.toLowerCase();
+
+      // Avoid accidentally treating IDs or URLs as metrics.
+      if (/(id|fbid|pk|url|uri|link|shortcode|code)$/.test(lowerKey)) {
+        if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1, path: fullPath });
+        continue;
+      }
+
+      const isCandidate = keyMatchers.some((matcher) => matcher.test(lowerKey) || matcher.test(fullPath));
+      if (isCandidate) {
+        const picked = pickNumber(child);
+        if (picked != null && picked >= 0 && picked < 10_000_000_000) return picked;
+      }
+
+      if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1, path: fullPath });
+    }
+  }
+
+  return null;
 }
 
 function extractCaption(post = {}) {
@@ -180,83 +323,396 @@ function extractCaption(post = {}) {
   );
 }
 
+function urlFromCandidates(...values) {
+  for (const value of values) {
+    if (!value) continue;
+    if (typeof value === "string" && /^https?:\/\//i.test(value)) return value;
+    if (typeof value === "object") {
+      const candidate = value.url || value.src || value.uri;
+      if (candidate && /^https?:\/\//i.test(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+function isLikelyMediaUrl(value) {
+  if (!value || typeof value !== "string" || !/^https?:\/\//i.test(value)) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    return (
+      host.includes("cdninstagram") ||
+      host.includes("fbcdn") ||
+      /\.(jpg|jpeg|png|webp|gif|mp4|mov)(\?|$)/i.test(path)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function shouldSkipMediaPath(path = "") {
+  const p = path.toLowerCase();
+  return p.includes("profile_pic") || p.includes("profilepicture") || p.includes("avatar") || p.includes("owner.profile") || p.includes("user.profile");
+}
+
 function normalizeInstagramMedia(rawMedia, fallbackKey = "media") {
   if (!rawMedia) return null;
-  const isVideo = rawMedia.media_type === 2 || rawMedia.is_video === true || Boolean(rawMedia.video_url || rawMedia.video_versions);
-  const videoUrl = rawMedia.video_url || bestVideo(rawMedia.video_versions);
-  const imageUrl =
-    rawMedia.display_url ||
-    rawMedia.thumbnail_src ||
-    rawMedia.thumbnail_url ||
-    rawMedia.image_url ||
-    bestCandidate(rawMedia.image_versions2?.candidates) ||
-    bestCandidate(rawMedia.image_versions?.candidates) ||
-    rawMedia.media_url ||
-    rawMedia.url ||
-    null;
+  const item = rawMedia.node || rawMedia.media || rawMedia;
 
-  const url = isVideo ? videoUrl : imageUrl;
-  const preview = imageUrl || rawMedia.preview_image_url || null;
+  const isVideo =
+    item.media_type === 2 ||
+    item.mediaType === 2 ||
+    item.product_type === "clips" ||
+    item.is_video === true ||
+    Boolean(item.video_url || item.videoUrl || item.video_versions || item.video_versions2);
+
+  const videoUrl = urlFromCandidates(
+    item.video_url,
+    item.videoUrl,
+    bestVideo(item.video_versions),
+    bestVideo(item.video_versions2),
+    item.video?.url,
+    item.video?.src,
+  );
+
+  const imageUrl = urlFromCandidates(
+    item.display_url,
+    item.displayUrl,
+    item.thumbnail_src,
+    item.thumbnail_url,
+    item.thumbnailUrl,
+    item.thumbnail,
+    item.image_url,
+    item.imageUrl,
+    item.image,
+    item.picture,
+    item.photo,
+    item.photo_url,
+    item.photoUrl,
+    item.image_versions2?.candidates?.[0]?.url,
+    item.display_resources?.[0]?.src,
+    item.graphql?.shortcode_media?.display_url,
+    item.graphql?.shortcode_media?.displayUrl,
+    item.cover_url,
+    item.coverUrl,
+    item.cover,
+    item.src,
+    item.media_url,
+    item.mediaUrl,
+    item.url,
+    bestCandidate(item.display_resources),
+    bestCandidate(item.image_versions2?.candidates),
+    bestCandidate(item.image_versions?.candidates),
+    bestCandidate(item.thumbnail_resources),
+  );
+
+  const url = isVideo ? (videoUrl || imageUrl) : imageUrl;
+  const preview = imageUrl || item.preview_image_url || item.previewImageUrl || url || null;
 
   if (!url && !preview) return null;
 
   return {
-    media_key: String(rawMedia.id || rawMedia.pk || rawMedia.code || rawMedia.shortcode || fallbackKey),
+    media_key: String(item.id || item.pk || item.code || item.shortcode || item.media_key || fallbackKey),
     type: isVideo ? "video" : "photo",
     url: url || preview,
     preview_image_url: preview || url,
-    width: rawMedia.original_width || rawMedia.width || null,
-    height: rawMedia.original_height || rawMedia.height || null,
-    variants: videoUrl ? [{ content_type: "video/mp4", url: videoUrl }] : [],
+    width: item.original_width || item.width || item.dimensions?.width || null,
+    height: item.original_height || item.height || item.dimensions?.height || null,
+    variants: videoUrl ? [{ content_type: "video/mp4", url: videoUrl, width: item.width || null }] : [],
   };
+}
+
+function collectNestedInstagramMedia(root, limit = 30) {
+  const out = [];
+  const seenObjects = new WeakSet();
+
+  function visit(value, path = "root") {
+    if (!value || out.length >= limit) return;
+    if (typeof value === "string") {
+      if (!shouldSkipMediaPath(path) && isLikelyMediaUrl(value)) {
+        const isVideo = /\.(mp4|mov)(\?|$)/i.test(value);
+        out.push(normalizeInstagramMedia({
+          id: `${path}-${out.length}`,
+          media_type: isVideo ? 2 : 1,
+          url: value,
+          video_url: isVideo ? value : null,
+          image_url: isVideo ? null : value,
+        }, `${path}-${out.length}`));
+      }
+      return;
+    }
+
+    if (typeof value !== "object") return;
+    if (seenObjects.has(value)) return;
+    seenObjects.add(value);
+
+    if (!shouldSkipMediaPath(path)) {
+      const normalized = normalizeInstagramMedia(value, `${path}-${out.length}`);
+      if (normalized) out.push(normalized);
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}.${index}`));
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (out.length >= limit) break;
+      visit(child, `${path}.${key}`);
+    }
+  }
+
+  visit(root);
+  return out.filter(Boolean);
 }
 
 function extractMedia(post = {}) {
   const carouselCandidates = [
     ...asArray(post.carousel_media),
     ...asArray(post.carousel_media_items),
+    ...asArray(post.carouselMedia),
+    ...asArray(post.carousel?.items),
+    ...asArray(post.carousel),
+    ...asArray(post.children),
+    ...asArray(post.child_media),
+    ...asArray(post.resources),
+    ...asArray(post.sidecar_children),
     ...asArray(post.edge_sidecar_to_children?.edges).map((e) => e?.node).filter(Boolean),
+    ...asArray(post.edge_sidecar_to_children?.edges).map((e) => e?.node?.media).filter(Boolean),
   ];
 
-  const items = carouselCandidates.length ? carouselCandidates : [post];
-  const media = items
+  const directItems = carouselCandidates.length ? carouselCandidates : [post];
+  const directMedia = directItems
     .map((m, index) => normalizeInstagramMedia(m?.node || m, `${post.id || post.pk || post.code || "ig"}-${index}`))
     .filter(Boolean);
 
+  const deepMedia = collectNestedInstagramMedia(post, 40);
+  const media = [...directMedia, ...deepMedia];
+
   const seen = new Set();
   return media.filter((m) => {
-    const key = m.url || m.preview_image_url || m.media_key;
+    const rawKey = m.url || m.preview_image_url || m.media_key;
+    let key = String(rawKey || "");
+    try {
+      const parsed = new URL(key);
+      parsed.searchParams.delete("se");
+      parsed.searchParams.delete("stp");
+      parsed.searchParams.delete("_nc_cat");
+      parsed.searchParams.delete("_nc_ht");
+      parsed.searchParams.delete("_nc_sid");
+      key = `${parsed.origin}${parsed.pathname}`.toLowerCase();
+    } catch {
+      key = key.split("?")[0].toLowerCase();
+    }
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 }
 
+function looksLikeInstagramPost(value = {}) {
+  if (!value || typeof value !== "object") return false;
+  return Boolean(
+    value.code ||
+    value.shortcode ||
+    value.short_code ||
+    value.shortCode ||
+    value.pk ||
+    value.media_id ||
+    value.mediaId ||
+    value.caption ||
+    value.owner ||
+    value.user ||
+    value.author ||
+    value.media_type != null ||
+    value.mediaType != null ||
+    value.product_type ||
+    value.like_count != null ||
+    value.likeCount != null ||
+    value.likes != null ||
+    value.comment_count != null ||
+    value.commentCount != null ||
+    value.comments != null ||
+    value.play_count != null ||
+    value.view_count != null ||
+    value.video_view_count != null ||
+    value.taken_at ||
+    value.taken_at_timestamp ||
+    value.image_versions2 ||
+    value.video_versions ||
+    value.carousel_media
+  );
+}
+
 function unwrapPost(raw = {}) {
+  if (looksLikeInstagramPost(raw)) return raw;
+
   return (
     raw?.node ||
     raw?.media ||
+    raw?.item ||
+    raw?.result ||
+    raw?.response ||
     raw?.data?.xdt_shortcode_media ||
     raw?.data?.shortcode_media ||
+    raw?.data?.graphql?.shortcode_media ||
+    raw?.graphql?.shortcode_media ||
     raw?.data?.media ||
-    raw?.data ||
+    raw?.data?.post ||
+    raw?.data?.result ||
+    raw?.data?.response ||
+    raw?.data?.items?.[0] ||
+    raw?.items?.[0] ||
     raw?.post ||
+    raw?.data ||
     raw
   );
 }
 
+function instagramEmbedUrl(url) {
+  const text = String(url || "").trim();
+  if (!text) return null;
+  const match = text.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  if (!match) return null;
+  return `https://www.instagram.com/${match[1]}/${match[2]}/embed/`;
+}
+
 export function normalizeInstagramPost(raw = {}, fallbackAuthor = {}) {
-  const post = unwrapPost(raw);
+  const post = unwrapPost(raw) || {};
   const caption = extractCaption(post);
-  const code = post.code || post.shortcode || shortcodeFromUrl(post.url || post.permalink) || "";
-  const id = String(post.pk || post.id || post.media_id || code || Date.now());
-  const owner = post.user || post.owner || post.author || fallbackAuthor || {};
-  const username = owner.username || post.username || fallbackAuthor.username || fallbackAuthor.handle || "";
+  const code = pickString(
+    post.code,
+    post.shortcode,
+    post.short_code,
+    post.shortCode,
+    post.media?.code,
+    post.media?.shortcode,
+    shortcodeFromUrl(post.url || post.permalink || post.shortcode_url || post.link)
+  );
+  const id = String(post.pk || post.id || post.media_id || post.mediaId || post.fbid || code || Date.now());
+
+  // ScrapeCreators can put the creator in several places depending on endpoint:
+  // user posts usually have user/owner, reels search commonly has owner, and
+  // some detail/list responses only include caption.user. Keep all fallbacks so
+  // the UI never has to guess and show @unknown when the account is present.
+  const owner =
+    post.user ||
+    post.owner ||
+    post.author ||
+    post.account ||
+    post.profile ||
+    post.caption?.user ||
+    post.caption?.owner ||
+    post.media?.user ||
+    post.media?.owner ||
+    fallbackAuthor ||
+    {};
+
+  const username = cleanHandle(
+    owner.username ||
+      owner.handle ||
+      owner.user_name ||
+      owner.userName ||
+      post.username ||
+      post.handle ||
+      post.ownerUsername ||
+      post.owner_username ||
+      post.authorUsername ||
+      post.author_username ||
+      post.user_username ||
+      post.user_name ||
+      post.profile_username ||
+      post.account_username ||
+      post.caption?.user?.username ||
+      post.caption?.owner?.username ||
+      fallbackAuthor.username ||
+      fallbackAuthor.handle ||
+      fallbackAuthor.user_name ||
+      findNestedStringByKey(post, [/^username$/, /owner\.username$/, /user\.username$/, /author\.username$/]) ||
+      ""
+  );
+
   const media = extractMedia(post);
-  const isVideo = post.media_type === 2 || post.is_video === true || media.some((m) => m.type === "video");
-  const postType = isVideo ? "reel" : "p";
-  const url = post.url || post.permalink || (code ? `https://www.instagram.com/${postType}/${code}/` : null);
-  const takenAt = post.taken_at || post.taken_at_timestamp || post.timestamp || post.created_at || post.date || null;
+  const isVideo = post.media_type === 2 || post.mediaType === 2 || post.is_video === true || post.__typename === "XDTGraphVideo" || media.some((m) => m.type === "video");
+  const url = normalizeInstagramPostUrl(post, code, isVideo);
+  const takenAt = pickTimestamp(
+    post.taken_at,
+    post.taken_at_timestamp,
+    post.timestamp,
+    post.created_at,
+    post.createdAt,
+    post.date,
+    post.caption?.created_at,
+    post.caption?.created_at_utc
+  );
+
+  const likeCount = pickNumber(
+    post.like_count,
+    post.likeCount,
+    post.likesCount,
+    post.likes_count,
+    post.likes,
+    post.like_and_view_counts?.like_count,
+    post.edge_media_preview_like?.count,
+    post.edge_liked_by?.count,
+    post.metrics?.like_count,
+    post.metrics?.likeCount,
+    post.metrics?.likes,
+    post.insights?.like_count,
+    findNestedNumberByKey(post, [/^like_count$/, /^likecount$/, /^likes_count$/, /^likes$/])
+  );
+
+  const commentCount = pickNumber(
+    post.comment_count,
+    post.commentCount,
+    post.commentsCount,
+    post.comments_count,
+    post.num_comments,
+    post.comments,
+    post.edge_media_to_comment?.count,
+    post.edge_media_to_parent_comment?.count,
+    post.metrics?.comment_count,
+    post.metrics?.commentCount,
+    post.metrics?.comments,
+    post.insights?.comment_count,
+    findNestedNumberByKey(post, [/^comment_count$/, /^commentcount$/, /^comments_count$/, /^comments$/, /^num_comments$/])
+  );
+
+  const playCount = pickNumber(
+    post.play_count,
+    post.playCount,
+    post.plays,
+    post.ig_play_count,
+    post.fb_play_count,
+    post.video_play_count,
+    post.videoPlayCount,
+    post.view_count,
+    post.viewCount,
+    post.views,
+    post.video_view_count,
+    post.videoViewCount,
+    post.metrics?.play_count,
+    post.metrics?.playCount,
+    post.metrics?.plays,
+    post.metrics?.view_count,
+    post.metrics?.views,
+    findNestedNumberByKey(post, [/^play_count$/, /^playcount$/, /^ig_play_count$/, /^view_count$/, /^viewcount$/, /^views$/])
+  );
+
+  const normalizedUser = {
+    ...owner,
+    username,
+    full_name: owner.full_name || owner.fullName || owner.name || fallbackAuthor.full_name || fallbackAuthor.name || username,
+    profile_pic_url:
+      owner.profile_pic_url ||
+      owner.profile_pic_url_hd ||
+      owner.profileImage ||
+      owner.hd_profile_pic_url_info?.url ||
+      fallbackAuthor.profile_pic_url ||
+      fallbackAuthor.image ||
+      null,
+  };
 
   return {
     ...post,
@@ -266,26 +722,30 @@ export function normalizeInstagramPost(raw = {}, fallbackAuthor = {}) {
     shortcode: code,
     url,
     permalink: url,
-    caption: { text: caption },
+    embed_url: instagramEmbedUrl(url),
+    caption: { ...(typeof post.caption === "object" && post.caption ? post.caption : {}), text: caption },
     text: caption,
     taken_at: takenAt,
+    taken_at_timestamp: takenAt,
     created_at: takenAt,
-    media_type: post.media_type ?? (isVideo ? 2 : media.length > 1 ? 8 : 1),
+    media_type: post.media_type ?? post.mediaType ?? (isVideo ? 2 : media.length > 1 ? 8 : 1),
     is_video: isVideo,
-    carousel_media_count: post.carousel_media_count || media.length,
-    like_count: post.like_count ?? post.likes ?? post.edge_media_preview_like?.count ?? post.edge_liked_by?.count ?? post.likes_count ?? 0,
-    comment_count: post.comment_count ?? post.comments ?? post.edge_media_to_comment?.count ?? post.comments_count ?? 0,
-    play_count: post.play_count ?? post.video_view_count ?? post.view_count ?? post.video_play_count ?? null,
-    video_view_count: post.video_view_count ?? post.play_count ?? null,
+    carousel_media_count: post.carousel_media_count || post.carouselMediaCount || media.length,
+    like_count: likeCount,
+    likes: likeCount,
+    comment_count: commentCount,
+    comments: commentCount,
+    play_count: playCount,
+    view_count: playCount,
+    views: playCount,
+    video_view_count: pickNumber(post.video_view_count, post.videoViewCount, post.view_count, post.viewCount, post.views, playCount),
     media,
     image_url: media.find((m) => m.type === "photo")?.url || media[0]?.preview_image_url || null,
-    video_url: media.find((m) => m.type === "video")?.url || post.video_url || null,
-    user: {
-      ...owner,
-      username,
-      full_name: owner.full_name || owner.fullName || owner.name || fallbackAuthor.full_name || fallbackAuthor.name || username,
-      profile_pic_url: owner.profile_pic_url || owner.profile_pic_url_hd || owner.profileImage || fallbackAuthor.profile_pic_url || fallbackAuthor.image || null,
-    },
+    video_url: media.find((m) => m.type === "video")?.url || post.video_url || post.videoUrl || null,
+    user: normalizedUser,
+    owner: post.owner || normalizedUser,
+    username,
+    handle: username,
     source: post.source || "scrape_creators",
   };
 }
@@ -360,10 +820,11 @@ export async function scrapeInstagramUserPosts(handleOrUrl, limit = DEFAULT_LIMI
   const handle = cleanHandle(handleOrUrl);
   const target = clampInt(limit, 1, 25, DEFAULT_LIMIT);
   const resp = await scrapeCreatorsPaginated("/v2/instagram/user/posts", { handle, trim: "false" }, target);
-  const posts = extractPostList(resp).map((p) => normalizeInstagramPost(p, { username: handle })).filter(Boolean);
+  const rawPosts = extractPostList(resp);
+  const hydrated = await hydrateInstagramPostsIfNeeded(rawPosts, { username: handle }, target);
   return {
-    posts: sortPostsNewestFirst(dedupePosts(posts)).slice(0, target),
-    credits_remaining: resp?.credits_remaining ?? null,
+    posts: sortPostsNewestFirst(dedupePosts(hydrated.posts)).slice(0, target),
+    credits_remaining: hydrated.credits_remaining ?? resp?.credits_remaining ?? null,
   };
 }
 
@@ -376,6 +837,60 @@ export async function scrapeInstagramPost(urlOrShortcode, fallbackAuthor = {}) {
     post: normalizeInstagramPost(resp, fallbackAuthor),
     credits_remaining: resp?.credits_remaining ?? null,
   };
+}
+
+function shouldHydrateInstagramPost(post = {}) {
+  const expectedCarouselCount = Number(post.carousel_media_count || 0);
+  const mediaCount = Array.isArray(post.media) ? post.media.length : 0;
+  return (
+    !mediaCount ||
+    (expectedCarouselCount > 1 && mediaCount < expectedCarouselCount) ||
+    post.comment_count == null
+  );
+}
+
+function mergeHydratedInstagramPost(base = {}, detailed = {}) {
+  if (!detailed) return base;
+  return {
+    ...base,
+    ...detailed,
+    media: Array.isArray(detailed.media) && detailed.media.length ? detailed.media : base.media,
+    text: detailed.text || base.text,
+    caption: detailed.caption?.text ? detailed.caption : base.caption,
+    like_count: detailed.like_count ?? base.like_count,
+    comment_count: detailed.comment_count ?? base.comment_count,
+    user: detailed.user?.username ? detailed.user : base.user,
+    url: detailed.url || base.url,
+    permalink: detailed.permalink || base.permalink,
+  };
+}
+
+async function hydrateInstagramPostsIfNeeded(posts = [], fallbackAuthor = {}, limit = DEFAULT_LIMIT) {
+  const target = clampInt(limit, 1, 25, DEFAULT_LIMIT);
+  const out = [];
+  let credits_remaining = null;
+
+  for (const post of posts.slice(0, target)) {
+    let normalized = normalizeInstagramPost(post, fallbackAuthor);
+
+    if (shouldHydrateInstagramPost(normalized) && normalized.url) {
+      try {
+        const detail = await scrapeInstagramPost(normalized.url, fallbackAuthor);
+        normalized = mergeHydratedInstagramPost(normalized, detail.post);
+        if (detail?.credits_remaining != null) credits_remaining = detail.credits_remaining;
+      } catch (err) {
+        console.warn("[Instagram] Detail hydration failed; keeping list result:", {
+          url: normalized.url,
+          message: err?.message,
+          status: err?.status,
+        });
+      }
+    }
+
+    out.push(normalized);
+  }
+
+  return { posts: out, credits_remaining };
 }
 
 async function hydratePostUrls(urls = [], limit = DEFAULT_LIMIT) {
@@ -447,6 +962,94 @@ export async function searchInstagramKeywordPosts(query, limit = DEFAULT_LIMIT) 
   };
 }
 
+export async function scrapeInstagramUserReels(handleOrUrl, limit = DEFAULT_LIMIT) {
+  const handle = cleanHandle(handleOrUrl);
+  const target = clampInt(limit, 1, 25, DEFAULT_LIMIT);
+  const resp = await scrapeCreatorsPaginated("/v1/instagram/user/reels", { handle, trim: "false" }, target);
+  const rawReels = extractPostList(resp);
+  const hydrated = await hydrateInstagramPostsIfNeeded(rawReels, { username: handle }, target);
+  return {
+    reels: sortPostsNewestFirst(dedupePosts(hydrated.posts)).slice(0, target),
+    credits_remaining: hydrated.credits_remaining ?? resp?.credits_remaining ?? null,
+  };
+}
+
+export async function lookupInstagramAdvanced(options = {}, inputs = {}, maxResults = DEFAULT_LIMIT) {
+  const limit = clampInt(maxResults, 1, 25, DEFAULT_LIMIT);
+  const results = {};
+  const errors = [];
+  let credits_remaining = null;
+
+  async function capture(label, fn, onSuccess) {
+    try {
+      const value = await fn();
+      if (value?.credits_remaining != null) credits_remaining = value.credits_remaining;
+      onSuccess(value);
+    } catch (err) {
+      errors.push({ endpoint: label, error: err?.message || String(err) });
+    }
+  }
+
+  const profileHandle = cleanHandle(inputs.username);
+  const postsHandle = cleanHandle(inputs.userPostsUsername || inputs.username);
+  const reelsHandle = cleanHandle(inputs.userReelsUsername || inputs.userPostsUsername || inputs.username);
+  const keyword = String(inputs.reelsSearchTerm || inputs.keyword || inputs.query || "").trim();
+  const postUrl = String(inputs.postUrl || "").trim();
+  const highlightHandle = cleanHandle(inputs.highlightUrl || inputs.username);
+
+  if (options.profile && profileHandle) {
+    await capture("profile", () => scrapeInstagramProfile(profileHandle), (value) => {
+      results.profile = { ...(value.profile || {}), posts: [] };
+    });
+  }
+
+  if (options.userPosts && postsHandle) {
+    await capture("userPosts", () => scrapeInstagramUserPosts(postsHandle, limit), (value) => {
+      results.userPosts = { posts: value.posts || [] };
+    });
+  }
+
+  if (options.singlePost && postUrl) {
+    await capture("singlePost", () => scrapeInstagramPost(postUrl), (value) => {
+      results.singlePost = value.post;
+    });
+  }
+
+  if (options.reelsSearch && keyword) {
+    await capture("reelsSearch", () => searchInstagramKeywordPosts(keyword, limit), (value) => {
+      // Advanced UI historically renders this checkbox under `reelsSearch`.
+      // The posts are normalized the same way as keyword `searchPosts` so the
+      // card can read creator/date/likes/comments/views consistently.
+      results.reelsSearch = { reels: value.posts || [] };
+    });
+  }
+
+  if (options.userReels && reelsHandle) {
+    await capture("userReels", () => scrapeInstagramUserReels(reelsHandle, limit), (value) => {
+      results.userReels = { reels: value.reels || [] };
+    });
+  }
+
+  if (options.highlightDetail && highlightHandle) {
+    await capture("highlightDetail", () => scrapeCreators("/v1/instagram/user/highlights", { handle: highlightHandle }), (value) => {
+      results.highlightDetail = value;
+    });
+  }
+
+  if (!Object.keys(results).length && !errors.length) {
+    throw new Error("No Instagram options selected or inputs provided.");
+  }
+
+  return {
+    success: true,
+    platform: "instagram",
+    mode: "advanced",
+    results,
+    errors,
+    credits_remaining,
+  };
+}
+
 export async function lookupInstagramInput(input, maxResults = DEFAULT_LIMIT) {
   const parsed = parseInstagramInput(input);
   const limit = clampInt(maxResults, 1, 25, DEFAULT_LIMIT);
@@ -456,31 +1059,60 @@ export async function lookupInstagramInput(input, maxResults = DEFAULT_LIMIT) {
   }
 
   if (parsed.type === "account") {
-    const profileResult = await scrapeInstagramProfile(parsed.handle || parsed.url);
-    const profile = profileResult.profile;
+    const errors = [];
+    let profileResult = null;
+    let profile = null;
     let posts = [];
     let postsCredits = null;
+    const includePosts = parsed.includePosts === true || parsed.source === "handle";
 
-    const embeddedPosts = asArray(profile.posts).map((p) => normalizeInstagramPost(p, { username: profile.username, full_name: profile.full_name })).filter(Boolean);
-    if (embeddedPosts.length >= limit) {
-      posts = sortPostsNewestFirst(dedupePosts(embeddedPosts)).slice(0, limit);
-    } else {
-      const postsResult = await scrapeInstagramUserPosts(profile.username || parsed.handle, limit);
-      posts = postsResult.posts;
-      postsCredits = postsResult.credits_remaining;
+    try {
+      profileResult = await scrapeInstagramProfile(parsed.handle || parsed.url);
+      profile = profileResult.profile;
+    } catch (err) {
+      errors.push({ endpoint: "profile", error: err?.message || String(err) });
+      profile = {
+        username: parsed.handle || cleanHandle(parsed.url),
+        full_name: parsed.handle || cleanHandle(parsed.url),
+        url: parsed.url || canonicalProfileUrl(parsed.handle),
+        posts: [],
+      };
+    }
+
+    const usernameForPosts = profile?.username || parsed.handle || cleanHandle(parsed.url);
+
+    if (includePosts) {
+      try {
+        const embeddedRawPosts = asArray(profile?.posts);
+        const embeddedHydrated = embeddedRawPosts.length
+          ? await hydrateInstagramPostsIfNeeded(embeddedRawPosts, { username: usernameForPosts, full_name: profile?.full_name }, limit)
+          : { posts: [] };
+        const embeddedPosts = embeddedHydrated.posts || [];
+        if (embeddedPosts.length >= limit) {
+          posts = sortPostsNewestFirst(dedupePosts(embeddedPosts)).slice(0, limit);
+          postsCredits = embeddedHydrated.credits_remaining;
+        } else if (usernameForPosts) {
+          const postsResult = await scrapeInstagramUserPosts(usernameForPosts, limit);
+          posts = postsResult.posts || [];
+          postsCredits = postsResult.credits_remaining;
+        }
+      } catch (err) {
+        errors.push({ endpoint: "userPosts", error: err?.message || String(err) });
+        posts = [];
+      }
     }
 
     return {
       success: true,
       platform: "instagram",
-      mode: "account",
+      mode: includePosts ? "account_with_posts" : "account",
       input: parsed,
       results: {
         profile: { ...profile, posts: [] },
-        userPosts: { posts },
+        ...(includePosts ? { userPosts: { posts } } : {}),
       },
-      errors: [],
-      credits_remaining: postsCredits ?? profileResult.credits_remaining ?? null,
+      errors,
+      credits_remaining: postsCredits ?? profileResult?.credits_remaining ?? null,
     };
   }
 

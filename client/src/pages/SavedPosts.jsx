@@ -24,10 +24,11 @@ function formatDate(str) {
 }
 
 function Metric({ icon, value }) {
+  const label = value == null || value === "" ? "—" : Number(value || 0).toLocaleString();
   return (
     <Group gap={4} wrap="nowrap">
       {icon}
-      <Text size="xs" c="dimmed" lh={1}>{(value || 0).toLocaleString()}</Text>
+      <Text size="xs" c="dimmed" lh={1}>{label}</Text>
     </Group>
   );
 }
@@ -73,6 +74,13 @@ function normalizeMediaUrlKey(url) {
   }
 }
 
+function instagramEmbedUrl(url) {
+  const text = String(url || "").trim();
+  const match = text.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  if (!match) return null;
+  return `https://www.instagram.com/${match[1]}/${match[2]}/embed/`;
+}
+
 function mediaQualityScore(item = {}) {
   const width = Number(item.width || 0);
   const height = Number(item.height || 0);
@@ -83,7 +91,7 @@ function mediaQualityScore(item = {}) {
   return score;
 }
 
-function dedupeMediaForDisplay(media = []) {
+function dedupeMediaForDisplay(media = [], maxItems = 4) {
   const byKey = new Map();
 
   for (const item of Array.isArray(media) ? media : []) {
@@ -111,7 +119,7 @@ function dedupeMediaForDisplay(media = []) {
     return values.sort((a, b) => mediaQualityScore(b) - mediaQualityScore(a)).slice(0, 1);
   }
 
-  return values.slice(0, 4);
+  return values.slice(0, maxItems);
 }
 
 function cleanDisplayTextForMedia(text = "", mediaItems = []) {
@@ -126,9 +134,30 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
     .trim();
 }
 
-function XMediaPreview({ media, postUrl = null }) {
-  const items = dedupeMediaForDisplay(media);
-  if (!items.length) return null;
+function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open video on X", embedFallbackUrl = null }) {
+  const items = dedupeMediaForDisplay(media, maxItems);
+
+  if (!items.length) {
+    const embedUrl = embedFallbackUrl ? instagramEmbedUrl(embedFallbackUrl) : null;
+    if (!embedUrl) return null;
+
+    return (
+      <div style={{ maxWidth: 420, width: "100%" }}>
+        <iframe
+          src={embedUrl}
+          title="Instagram post media"
+          loading="lazy"
+          style={{
+            width: "100%",
+            height: 320,
+            border: "1px solid #edf2f7",
+            borderRadius: 10,
+            background: "#fff",
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: items.length === 1 ? 420 : 560 }}>
@@ -206,6 +235,78 @@ function XMediaPreview({ media, postUrl = null }) {
     </div>
   );
 }
+
+function isUsableInstagramImageUrl(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url) && !/\.(mp4|mov|m3u8)(\?|$)/i.test(url);
+}
+
+function InstagramMediaPreview({ media, postUrl = null }) {
+  const items = dedupeMediaForDisplay(media, 10);
+  const imageItems = items
+    .map((item, index) => {
+      const isVideo = item?.type === "video" || item?.type === "animated_gif";
+      const imageUrl = item?.preview_image_url || (!isVideo ? item?.url : null);
+      return imageUrl && isUsableInstagramImageUrl(imageUrl)
+        ? { ...item, _displayUrl: imageUrl, _displayKey: item.media_key || imageUrl || index }
+        : null;
+    })
+    .filter(Boolean);
+
+  const hasHiddenMedia = items.length > imageItems.length;
+
+  if (!imageItems.length) {
+    if (!postUrl) return null;
+    return (
+      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460 }}>
+        <Stack gap={4}>
+          <Text size="xs" c="dimmed">
+            Instagram photos/videos are not available from the API for inline preview.
+          </Text>
+          <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+            View the post on Instagram to see the media →
+          </Text>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Stack gap={6} style={{ maxWidth: imageItems.length === 1 ? 360 : 520, width: "100%" }}>
+      <SimpleGrid cols={imageItems.length === 1 ? 1 : 2} spacing="xs">
+        {imageItems.map((item, index) => (
+          <img
+            key={item._displayKey || index}
+            src={item._displayUrl}
+            alt=""
+            loading="lazy"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            style={{
+              width: "100%",
+              maxHeight: 170,
+              objectFit: "contain",
+              borderRadius: 10,
+              display: "block",
+              background: "#f8f9fa",
+              border: "1px solid #edf2f7",
+            }}
+          />
+        ))}
+      </SimpleGrid>
+      {(hasHiddenMedia || postUrl) && (
+        <Text size="xs" c="dimmed">
+          Some Instagram media may not preview here. {postUrl && (
+            <Text span c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+              View post →
+            </Text>
+          )}
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
 function getTrimmedPreview(value, threshold) {
   if (!value || value.length <= threshold) return value;
 
@@ -291,10 +392,20 @@ function instagramIdToShortcode(id) {
   return shortcode;
 }
 
+function isInstagramPostUrl(value) {
+  return /instagram\.com\/(p|reel|tv)\//i.test(String(value || ""));
+}
+
 // Build URL to the original post on its platform 
 function getPostUrl(post) {
-  // Prefer stored url
-  if (post.url) return post.url;
+  // Prefer real stored platform URLs. Do not blindly trust guessed Instagram URLs.
+  if (post.platform_id === 3) {
+    if (isInstagramPostUrl(post.url)) return post.url;
+    if (isInstagramPostUrl(post.extra?.url)) return post.extra.url;
+    if (isInstagramPostUrl(post.extra?.permalink)) return post.extra.permalink;
+  } else if (post.url) {
+    return post.url;
+  }
 
   const pid = post.platform_post_id;
   if (!pid) return null;
@@ -308,8 +419,19 @@ function getPostUrl(post) {
 
   // Instagram
   if (platformId === 3) {
-    const shortcode = instagramIdToShortcode(pid);
-    return `https://www.instagram.com/p/${shortcode}/`;
+    const shortcode = post.extra?.shortcode || post.extra?.code;
+
+    if (shortcode) {
+      const isReel =
+        post.extra?.is_video === true ||
+        post.extra?.type === "reel" ||
+        post.extra?.product_type === "clips";
+
+      return `https://www.instagram.com/${isReel ? "reel" : "p"}/${shortcode}/`;
+    }
+
+    // Do not guess Instagram URLs from numeric IDs. That can open the wrong post.
+    return null;
   }
 
   // TikTok
@@ -547,9 +669,11 @@ function LinkedInPostCard({ post, onDelete }) {
 function InstagramPostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || t("savedPosts.unknown");
+  const content = String(post.content || "");
+  const isLong = content.length > 280;
+  const preview = isLong && !expanded ? getTrimmedPreview(content, 280) : content;
+  const name = post.username || post.extra?.author_handle || post.extra?.username || t("savedPosts.unknown");
+  const mediaItems = Array.isArray(post.extra?.media) ? post.extra.media : [];
   const tone = post.tone;
   const postUrl = getPostUrl(post);
 
@@ -598,13 +722,14 @@ function InstagramPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        <InstagramMediaPreview media={mediaItems} postUrl={postUrl} />
+
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
 
         <Divider my={0} />
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#E1306C" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#E1306C" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#E1306C" />} value={post.comments} />
         </Group>
@@ -690,9 +815,11 @@ function TikTokPostCard({ post, onDelete }) {
 function RedditPostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || t("savedPosts.unknown");
+  const content = String(post.content || "");
+  const isLong = content.length > 280;
+  const preview = isLong && !expanded ? getTrimmedPreview(content, 280) : content;
+  const name = post.username || post.extra?.author_handle || post.extra?.username || t("savedPosts.unknown");
+  const mediaItems = Array.isArray(post.extra?.media) ? post.extra.media : [];
   const tone = post.tone;
   const postUrl = getPostUrl(post);
 

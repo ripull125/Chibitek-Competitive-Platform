@@ -267,6 +267,37 @@ const normalizeRole = (role) => {
   return ROLE_USER;
 };
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientNetworkError(err) {
+  const text = `${err?.message || ''} ${err?.code || ''} ${err?.cause?.code || ''}`.toLowerCase();
+  return (
+    text.includes('fetch failed') ||
+    text.includes('timeout') ||
+    text.includes('enotfound') ||
+    text.includes('econnrefused') ||
+    text.includes('und_err_connect_timeout') ||
+    text.includes('network')
+  );
+}
+
+async function retryTransient(label, operation, { attempts = 3, delayMs = 500 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientNetworkError(err) || i === attempts) break;
+      console.warn(`[${label}] transient failure ${i}/${attempts}; retrying:`, err?.message || err);
+      await sleep(delayMs * i);
+    }
+  }
+  throw lastErr;
+}
+
 const canManageRegularUsers = (role) => {
   const normalized = normalizeRole(role);
   return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
@@ -322,7 +353,7 @@ async function getRequestAuthContext(req) {
 
   let data, error;
   try {
-    const resp = await supabaseAuth.auth.getUser(token);
+    const resp = await retryTransient('Auth getUser', () => supabaseAuth.auth.getUser(token), { attempts: 2, delayMs: 400 });
     data = resp.data;
     error = resp.error;
   } catch (err) {
@@ -1442,6 +1473,10 @@ app.post("/api/posts", async (req, res) => {
     author_name,
     author_handle,
     author_profile_image_url,
+    code,
+    shortcode,
+    is_video,
+    product_type,
   } = req.body;
 
   if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
@@ -1632,16 +1667,38 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For Instagram, TikTok, Reddit — save author details + views
+    // For Instagram, TikTok, Reddit — save author/details. Replace the
+    // existing row so re-saving can backfill media and author fields.
     if (isInstagram || isTikTok || isReddit) {
+      const socialExtra = {
+        author_name: author_name || username,
+        author_handle: author_handle || username,
+        username,
+        author_profile_image_url: author_profile_image_url || null,
+        media: Array.isArray(media) ? media : [],
+        url: url || null,
+        code: code || shortcode || null,
+        shortcode: shortcode || code || null,
+        is_video: is_video === true,
+        product_type: product_type || null,
+      };
+
+      // Keep views for platforms that care about them, but do not surface them
+      // for Instagram in the UI because cross-platform keyword tracking uses
+      // likes/shares/comments.
+      if (!isInstagram) socialExtra.views = views ?? 0;
+
+      const { error: deleteDetailsError } = await supabase
+        .from("post_details_platform")
+        .delete()
+        .eq("post_id", post.id);
+      if (deleteDetailsError) {
+        console.error('Error replacing social post details:', deleteDetailsError);
+      }
+
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
-        extra_json: {
-          author_name: author_name || username,
-          author_handle: author_handle || username,
-          username,
-          views: views ?? 0,
-        },
+        extra_json: socialExtra,
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
@@ -3234,7 +3291,7 @@ app.post('/api/youtube/search', async (req, res) => {
 // platform keys → numeric IDs without hardcoding them.
 app.get('/api/platforms', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('platforms').select('id, name');
+    const { data, error } = await retryTransient('GET /api/platforms', () => supabase.from('platforms').select('id, name'));
     if (error) throw error;
 
     const NAME_TO_KEY = {
@@ -3353,7 +3410,7 @@ app.get('/api/keywords', async (req, res) => {
 
   try {
     // 1. Fetch all saved posts with metrics + platform name
-    const { data: posts, error: postsError } = await supabase
+    const { data: posts, error: postsError } = await retryTransient('GET /api/keywords posts', () => supabase
       .from('posts')
       .select(`
         id,
@@ -3367,7 +3424,7 @@ app.get('/api/keywords', async (req, res) => {
       `)
       .eq('user_id', userId)
       .order('published_at', { ascending: true })
-      .limit(500);
+      .limit(500));
 
     if (postsError) throw postsError;
     if (!posts?.length) {

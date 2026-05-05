@@ -2292,25 +2292,36 @@ async function handleLoadMoreX() {
           : new Date(data.taken_at);
         if (!isNaN(d.getTime())) publishedAt = d.toISOString();
       }
-      const ownerUsername = data.user?.username || data.owner?.username || "";
-      const ownerFullName = data.user?.full_name || data.owner?.full_name || "";
+      const ownerUsername = data.user?.username || data.owner?.username || data.author?.username || data.username || "";
+      const ownerFullName = data.user?.full_name || data.owner?.full_name || data.author?.full_name || data.author?.name || "";
+      const mediaItems = getIgMediaItems(data);
+      const shortCode = data.code || data.shortcode;
+      const postUrl = getInstagramPostUrl(data, data.media_type === 2 || data.is_video === true);
+      const commentCount = data.comment_count ?? data.comments ?? data.commentCount ?? data.commentsCount;
       const resp = await fetch(apiUrl("/api/posts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          platform_name: "instagram",
           platform_id: platformIds.instagram, // Instagram
           platform_user_id: platformUserId,
           username: ownerUsername || ownerFullName || platformUserId,
           platform_post_id: platformPostId,
-          content: data.caption?.text || data.caption || "",
+          url: postUrl,
+          media: mediaItems,
+          code: data.code || data.shortcode || null,
+          shortcode: data.shortcode || data.code || null,
+          is_video: data.is_video === true || data.media_type === 2,
+          product_type: data.product_type || null,
+          content: data.caption?.text || data.caption || data.text || "",
           published_at: publishedAt,
           likes: Math.max(0, data.like_count ?? data.likes ?? 0),
-          shares: 0,
-          comments: Math.max(0, data.comment_count ?? data.comments ?? 0),
-          views: Math.max(0, data.play_count ?? data.video_view_count ?? 0),
+          shares: null,
+          comments: Number.isFinite(Number(commentCount)) ? Math.max(0, Number(commentCount)) : 0,
           user_id: currentUserId,
           author_name: ownerFullName || ownerUsername,
           author_handle: ownerUsername,
+          author_profile_image_url: data.user?.profile_pic_url || data.owner?.profile_pic_url || data.user?.profile_pic_url_hd || null,
         }),
       });
       if (!resp.ok) {
@@ -2990,6 +3001,33 @@ async function handleLoadMoreX() {
 
   /* ── Instagram Display Components ──────────────────────────────────── */
 
+
+  function getInstagramPostUrl(post = {}, forceReel = false) {
+    const rawUrl = String(post?.url || post?.permalink || post?.shortcode_url || "").trim();
+    const match = rawUrl.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+    const code = String(post?.code || post?.shortcode || match?.[2] || "").trim();
+
+    if (!code && match?.[1] && match?.[2]) {
+      return `https://www.instagram.com/${match[1]}/${match[2]}/`;
+    }
+    if (!code) return null;
+
+    // If the source URL points to the same shortcode, preserve whether it was
+    // /p/, /reel/, or /tv/. This prevents View from opening a mismatched post.
+    if (match?.[1] && match?.[2] === code) {
+      return `https://www.instagram.com/${match[1]}/${code}/`;
+    }
+
+    const isReel =
+      forceReel ||
+      post?.product_type === "clips" ||
+      post?.__typename === "XDTGraphVideo" ||
+      post?.is_video === true ||
+      post?.media_type === 2;
+
+    return `https://www.instagram.com/${isReel ? "reel" : "p"}/${code}/`;
+  }
+
   function bestIgVideoVariant(variants = []) {
     if (!Array.isArray(variants)) return null;
     const mp4s = variants
@@ -2998,22 +3036,82 @@ async function handleLoadMoreX() {
     return mp4s[0]?.url || null;
   }
 
+  function normalizeIgMediaKey(url) {
+    if (!url || typeof url !== "string") return "";
+    try {
+      const parsed = new URL(url);
+      parsed.searchParams.delete("se");
+      parsed.searchParams.delete("stp");
+      parsed.searchParams.delete("_nc_cat");
+      parsed.searchParams.delete("_nc_ht");
+      return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+    } catch {
+      return String(url).split("?")[0].toLowerCase();
+    }
+  }
+
+  function dedupeIgMedia(media = []) {
+    const seen = new Set();
+    const out = [];
+    for (const item of Array.isArray(media) ? media : []) {
+      if (!item) continue;
+      const key = item.media_key || normalizeIgMediaKey(item.url || item.preview_image_url);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(item);
+    }
+    return out;
+  }
+
+  function instagramEmbedUrl(url) {
+    const text = String(url || "").trim();
+    const match = text.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+    if (!match) return null;
+    return `https://www.instagram.com/${match[1]}/${match[2]}/embed/`;
+  }
+
   function getIgMediaItems(post) {
     const direct = Array.isArray(post?.media) ? post.media : [];
-    if (direct.length) return direct.filter(Boolean).slice(0, 4);
+    if (direct.length) return dedupeIgMedia(direct.filter(Boolean)).slice(0, 10);
 
-    const carousel = Array.isArray(post?.carousel_media) ? post.carousel_media : [];
-    const fromCarousel = carousel.map((m, index) => ({
-      media_key: m.id || m.pk || `${post?.id || "ig"}-${index}`,
-      type: m.media_type === 2 || m.is_video ? "video" : "photo",
-      url: m.video_url || m.video_versions?.[0]?.url || m.image_versions2?.candidates?.[0]?.url || m.display_url || m.thumbnail_src,
-      preview_image_url: m.image_versions2?.candidates?.[0]?.url || m.display_url || m.thumbnail_src,
-      variants: m.video_versions || [],
-    })).filter((m) => m.url || m.preview_image_url);
-    if (fromCarousel.length) return fromCarousel.slice(0, 4);
+    const carousel = [
+      ...(Array.isArray(post?.carousel_media) ? post.carousel_media : []),
+      ...(Array.isArray(post?.carousel_media_items) ? post.carousel_media_items : []),
+      ...(Array.isArray(post?.children) ? post.children : []),
+      ...(Array.isArray(post?.resources) ? post.resources : []),
+      ...(Array.isArray(post?.edge_sidecar_to_children?.edges) ? post.edge_sidecar_to_children.edges.map((e) => e?.node).filter(Boolean) : []),
+    ];
+    const fromCarousel = carousel.map((raw, index) => {
+      const m = raw?.node || raw?.media || raw;
+      const imageUrl =
+        m.image_versions2?.candidates?.[0]?.url ||
+        m.image_versions?.candidates?.[0]?.url ||
+        m.display_resources?.[0]?.src ||
+        m.display_url ||
+        m.displayUrl ||
+        m.thumbnail_src ||
+        m.thumbnail_url ||
+        m.thumbnailUrl ||
+        m.photo_url ||
+        m.photoUrl ||
+        m.photo ||
+        m.image_url ||
+        m.imageUrl ||
+        m.media_url ||
+        m.url;
+      const videoUrl = m.video_url || m.videoUrl || m.video_versions?.[0]?.url || m.video_versions2?.[0]?.url;
+      return {
+        media_key: m.id || m.pk || m.code || `${post?.id || "ig"}-${index}`,
+        type: m.media_type === 2 || m.mediaType === 2 || m.is_video || videoUrl ? "video" : "photo",
+        url: videoUrl || imageUrl,
+        preview_image_url: imageUrl || m.preview_image_url || null,
+        variants: m.video_versions || m.video_versions2 || (videoUrl ? [{ url: videoUrl, content_type: "video/mp4" }] : []),
+      };
+    }).filter((m) => m.url || m.preview_image_url);
+    if (fromCarousel.length) return dedupeIgMedia(fromCarousel).slice(0, 10);
 
-    const imageUrl = post?.image_url || post?.display_url || post?.thumbnail_src || post?.thumbnail_url || post?.image_versions2?.candidates?.[0]?.url;
-    const videoUrl = post?.video_url || post?.video_versions?.[0]?.url;
+    const imageUrl = post?.image_url || post?.imageUrl || post?.photo_url || post?.photoUrl || post?.photo || post?.display_url || post?.displayUrl || post?.display_resources?.[0]?.src || post?.thumbnail_src || post?.thumbnail_url || post?.thumbnailUrl || post?.image_versions2?.candidates?.[0]?.url || post?.media_url || post?.url;
+    const videoUrl = post?.video_url || post?.videoUrl || post?.video_versions?.[0]?.url || post?.video_versions2?.[0]?.url;
     if (videoUrl || imageUrl) {
       return [{
         media_key: post?.id || post?.pk || post?.code || "ig-media",
@@ -3027,65 +3125,78 @@ async function handleLoadMoreX() {
     return [];
   }
 
-  function IgMediaPreview({ media, compact = false }) {
-    const items = Array.isArray(media) ? media.filter(Boolean).slice(0, 4) : [];
-    if (!items.length) return null;
+  function isUsableImageUrl(url) {
+    return typeof url === "string" && /^https?:\/\//i.test(url) && !/\.(mp4|mov|m3u8)(\?|$)/i.test(url);
+  }
 
-    const maxWidth = items.length === 1 ? 420 : 620;
-    const maxHeight = compact ? 220 : 300;
+  function IgMediaPreview({ media, compact = false, postUrl = null }) {
+    const items = dedupeIgMedia(Array.isArray(media) ? media.filter(Boolean) : []).slice(0, 10);
+    const imageItems = items
+      .map((item, index) => {
+        const isVideo = item?.type === "video" || item?.type === "animated_gif";
+        const imageUrl = item?.preview_image_url || (!isVideo ? item?.url : null);
+        return imageUrl && isUsableImageUrl(imageUrl)
+          ? { ...item, _displayUrl: imageUrl, _displayKey: item.media_key || imageUrl || index }
+          : null;
+      })
+      .filter(Boolean);
+
+    const hasHiddenMedia = items.length > imageItems.length;
+    const showUnavailableNote = postUrl && (!imageItems.length || hasHiddenMedia);
+    const maxWidth = imageItems.length === 1 ? 420 : 620;
+    const maxHeight = compact ? 180 : 240;
+
+    if (!imageItems.length) {
+      if (!showUnavailableNote) return null;
+      return (
+        <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 520 }}>
+          <Stack gap={4}>
+            <Text size="xs" c="dimmed">
+              Instagram photos/videos are not available from the API for inline preview.
+            </Text>
+            <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+              View the post on Instagram to see the media →
+            </Text>
+          </Stack>
+        </Card>
+      );
+    }
 
     return (
-      <div style={{ maxWidth, width: "100%" }}>
-        <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
-          {items.map((item, index) => {
-            const key = item.media_key || item.url || item.preview_image_url || index;
-            const isVideo = item.type === "video" || item.type === "animated_gif";
-            const videoUrl = bestIgVideoVariant(item.variants) || (isVideo ? item.url : null);
-            const imageUrl = item.preview_image_url || (!isVideo ? item.url : null);
-
-            if (isVideo && videoUrl) {
-              return (
-                <video
-                  key={key}
-                  controls
-                  playsInline
-                  poster={imageUrl || undefined}
-                  style={{
-                    width: "100%",
-                    maxHeight,
-                    objectFit: "contain",
-                    borderRadius: 12,
-                    background: "#000",
-                  }}
-                >
-                  <source src={videoUrl} type="video/mp4" />
-                </video>
-              );
-            }
-
-            if (imageUrl || item.url) {
-              return (
-                <img
-                  key={key}
-                  src={imageUrl || item.url}
-                  alt=""
-                  loading="lazy"
-                  style={{
-                    width: "100%",
-                    maxHeight,
-                    objectFit: "contain",
-                    borderRadius: 12,
-                    display: "block",
-                    background: "#f8f9fa",
-                  }}
-                />
-              );
-            }
-
-            return null;
-          })}
+      <Stack gap={6} style={{ maxWidth, width: "100%" }}>
+        <SimpleGrid cols={imageItems.length === 1 ? 1 : imageItems.length > 4 ? 3 : 2} spacing="xs">
+          {imageItems.map((item, index) => (
+            <img
+              key={item._displayKey || index}
+              src={item._displayUrl}
+              alt=""
+              loading="lazy"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+              style={{
+                width: "100%",
+                maxHeight,
+                objectFit: "contain",
+                borderRadius: 12,
+                display: "block",
+                background: "#f8f9fa",
+                border: "1px solid #edf2f7",
+              }}
+            />
+          ))}
         </SimpleGrid>
-      </div>
+
+        {showUnavailableNote && (
+          <Text size="xs" c="dimmed">
+            Some Instagram media, especially videos/carousels, may not preview here. {postUrl && (
+              <Text span c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+                View post →
+              </Text>
+            )}
+          </Text>
+        )}
+      </Stack>
     );
   }
 
@@ -3137,30 +3248,127 @@ async function handleLoadMoreX() {
     );
   }
 
+  function firstFiniteMetric(...values) {
+    for (const value of values) {
+      if (value == null || value === "") continue;
+      if (typeof value === "object") {
+        const nested = value.count ?? value.value ?? value.total_count ?? value.totalCount;
+        if (nested != null && Number.isFinite(Number(nested))) return Number(nested);
+        continue;
+      }
+      const raw = String(value).trim().replace(/,/g, "");
+      const match = raw.match(/^([0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+      if (match) {
+        const base = Number(match[1]);
+        const suffix = String(match[2] || "").toLowerCase();
+        const multiplier = suffix === "k" ? 1000 : suffix === "m" ? 1000000 : suffix === "b" ? 1000000000 : 1;
+        return Math.round(base * multiplier);
+      }
+      if (Number.isFinite(Number(raw))) return Number(raw);
+    }
+    return null;
+  }
+
+  function findIgNestedValue(root, keyTests = [], maxDepth = 5) {
+    const seen = new WeakSet();
+    const queue = [{ value: root, depth: 0, path: "root" }];
+    while (queue.length) {
+      const { value, depth, path } = queue.shift();
+      if (!value || typeof value !== "object" || depth > maxDepth) continue;
+      if (seen.has(value)) continue;
+      seen.add(value);
+
+      for (const [key, child] of Object.entries(value)) {
+        const lowerKey = key.toLowerCase();
+        const lowerPath = `${path}.${key}`.toLowerCase();
+        const isMatch = keyTests.some((test) => test.test(lowerKey) || test.test(lowerPath));
+        if (isMatch && child != null && typeof child !== "object") return child;
+        if (isMatch && child && typeof child === "object") {
+          const metric = firstFiniteMetric(child);
+          if (metric != null) return metric;
+        }
+        if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1, path: lowerPath });
+      }
+    }
+    return null;
+  }
+
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function getIgMetric(post, names = []) {
+    const directValues = names.flatMap((name) => [
+      post?.[name],
+      post?.metrics?.[name],
+      post?.insights?.[name],
+    ]);
+    const direct = firstFiniteMetric(...directValues);
+    if (direct != null) return direct;
+    const tests = names.map((name) => new RegExp(`^${escapeRegExp(name)}$`, "i"));
+    return firstFiniteMetric(findIgNestedValue(post, tests));
+  }
+
+  function getIgAuthorHandle(post) {
+    return cleanHandle(
+      post?.user?.username ||
+      post?.owner?.username ||
+      post?.author?.username ||
+      post?.account?.username ||
+      post?.profile?.username ||
+      post?.caption?.user?.username ||
+      post?.caption?.owner?.username ||
+      post?.username ||
+      post?.handle ||
+      post?.ownerUsername ||
+      post?.owner_username ||
+      post?.authorUsername ||
+      post?.author_username ||
+      post?.user_username ||
+      post?.user_name ||
+      findIgNestedValue(post, [/^username$/, /owner\.username$/, /user\.username$/, /author\.username$/]) ||
+      "unknown"
+    );
+  }
+
+  function getIgPostDate(post) {
+    return post?.taken_at ||
+      post?.taken_at_timestamp ||
+      post?.timestamp ||
+      post?.created_at ||
+      post?.createdAt ||
+      post?.date ||
+      post?.caption?.created_at ||
+      post?.caption?.created_at_utc ||
+      null;
+  }
+
+  function getIgCaptionText(post) {
+    if (!post) return "";
+    if (typeof post.caption === "string") return post.caption;
+    return post.caption?.text || post.caption?.caption || post.text || post.description || post.title || "";
+  }
+
   function IgPostCard({ post, onSave, compact }) {
     if (!post) return null;
-    const caption = post.caption?.text || post.caption || post.text || "";
+    const caption = getIgCaptionText(post);
     const mediaItems = getIgMediaItems(post);
-    const isVideo = post.media_type === 2 || post.video_url || post.is_video || mediaItems.some((m) => m.type === "video");
-    const shortCode = post.code || post.shortcode;
-    const postUrl = post.url || post.permalink || (shortCode ? `https://www.instagram.com/p/${shortCode}/` : null);
-    const likeCount = post.like_count ?? post.likes;
-    const commentCount = post.comment_count ?? post.comments;
-    const viewCount = post.play_count || post.video_view_count || post.view_count;
-    const authorHandle = post.user?.username
-      || post.owner?.username
-      || post.author?.username
-      || post.username
-      || post.user?.full_name
-      || post.owner?.full_name
-      || post.owner?.id
-      || "unknown";
-    const rawDate = post.taken_at || post.taken_at_timestamp || post.timestamp || post.created_at;
-    const date = rawDate
-      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    const isVideo = post.media_type === 2 || post.mediaType === 2 || post.video_url || post.videoUrl || post.is_video || mediaItems.some((m) => m.type === "video");
+    const postUrl = getInstagramPostUrl(post, isVideo);
+    const likeCount = getIgMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
+    const commentCount = getIgMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
+    const viewCount = getIgMetric(post, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
+    const authorHandle = getIgAuthorHandle(post);
+    const rawDate = getIgPostDate(post);
+    const parsedDate = rawDate
+      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate)
+      : null;
+    const date = parsedDate && !Number.isNaN(parsedDate.getTime())
+      ? parsedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
+    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
 
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "md"} style={{ borderLeft: "3px solid #E1306C" }}>
@@ -3194,7 +3402,7 @@ async function handleLoadMoreX() {
             </Group>
           </Group>
 
-          <IgMediaPreview media={mediaItems} compact={compact} />
+          <IgMediaPreview media={mediaItems} compact={compact} postUrl={postUrl} />
 
           {date && <Text size="xs" c="dimmed">{date}</Text>}
 
@@ -3204,9 +3412,7 @@ async function handleLoadMoreX() {
             <Group gap="lg">
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
-              {viewCount != null && (
-                <Group gap={4} wrap="nowrap"><IconEye size={14} color="#7a7a7a" /><Text size="xs" c="dimmed">{formatCount(viewCount)}</Text></Group>
-              )}
+              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3222,27 +3428,23 @@ async function handleLoadMoreX() {
 
   function IgReelCard({ reel, onSave, compact }) {
     if (!reel) return null;
-    const caption = reel.caption?.text || reel.caption || reel.text || "";
+    const caption = getIgCaptionText(reel);
     const mediaItems = getIgMediaItems(reel);
-    const shortCode = reel.code || reel.shortcode;
-    const postUrl = reel.url || reel.permalink || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
-    const likeCount = reel.like_count ?? reel.likes;
-    const commentCount = reel.comment_count ?? reel.comments;
-    const viewCount = reel.play_count || reel.video_view_count || reel.view_count;
-    const authorHandle = reel.user?.username
-      || reel.owner?.username
-      || reel.author?.username
-      || reel.username
-      || reel.user?.full_name
-      || reel.owner?.full_name
-      || reel.owner?.id
-      || "unknown";
-    const rawDate = reel.taken_at || reel.taken_at_timestamp || reel.timestamp || reel.created_at;
-    const date = rawDate
-      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    const postUrl = getInstagramPostUrl(reel, true);
+    const likeCount = getIgMetric(reel, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
+    const commentCount = getIgMetric(reel, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
+    const viewCount = getIgMetric(reel, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
+    const authorHandle = getIgAuthorHandle(reel);
+    const rawDate = getIgPostDate(reel);
+    const parsedDate = rawDate
+      ? new Date(Number(rawDate) < 1e12 ? Number(rawDate) * 1000 : rawDate)
+      : null;
+    const date = parsedDate && !Number.isNaN(parsedDate.getTime())
+      ? parsedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
+    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "xs"} style={{ borderLeft: "3px solid #E1306C" }}>
         <Stack gap="sm">
@@ -3269,7 +3471,7 @@ async function handleLoadMoreX() {
             </Group>
           </Group>
 
-          <IgMediaPreview media={mediaItems} compact={compact} />
+          <IgMediaPreview media={mediaItems} compact={compact} postUrl={postUrl} />
 
           {date && <Text size="xs" c="dimmed">{date}</Text>}
 
@@ -3277,9 +3479,9 @@ async function handleLoadMoreX() {
 
           <Group justify="space-between" align="center">
             <Group gap="lg">
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#7a7a7a" /><Text size="xs" c="dimmed">{viewCount == null ? "—" : formatCount(viewCount)}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
+              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3293,23 +3495,152 @@ async function handleLoadMoreX() {
     );
   }
 
+  function objectValuesArray(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    return Object.values(value).filter(Boolean);
+  }
+
+  function toIgArray(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (Array.isArray(value.posts)) return value.posts;
+    if (Array.isArray(value.reels)) return value.reels;
+    if (Array.isArray(value.items)) return value.items;
+    if (Array.isArray(value.medias)) return value.medias;
+    if (Array.isArray(value.media) && !isLikelyNormalizedIgPost(value)) return value.media;
+    if (Array.isArray(value.highlights)) return value.highlights;
+    if (Array.isArray(value.data?.items)) return value.data.items;
+    if (Array.isArray(value.data?.posts)) return value.data.posts;
+    if (Array.isArray(value.data?.reels)) return value.data.reels;
+    if (Array.isArray(value.data?.medias)) return value.data.medias;
+    if (Array.isArray(value.edges)) return value.edges.map((edge) => edge?.node || edge).filter(Boolean);
+
+    const objectBacked =
+      objectValuesArray(value.posts).length ? objectValuesArray(value.posts) :
+      objectValuesArray(value.reels).length ? objectValuesArray(value.reels) :
+      objectValuesArray(value.items).length ? objectValuesArray(value.items) :
+      objectValuesArray(value.medias).length ? objectValuesArray(value.medias) :
+      objectValuesArray(value.data?.items).length ? objectValuesArray(value.data.items) :
+      objectValuesArray(value.data?.posts).length ? objectValuesArray(value.data.posts) :
+      objectValuesArray(value.data?.reels).length ? objectValuesArray(value.data.reels) :
+      [];
+
+    return objectBacked;
+  }
+
+  function isLikelyNormalizedIgPost(value) {
+    if (!value || typeof value !== "object") return false;
+    const hasIdentity = Boolean(
+      value.code ||
+      value.shortcode ||
+      value.pk ||
+      value.id ||
+      value.url ||
+      value.permalink
+    );
+    const hasDisplayData = Boolean(
+      value.user?.username ||
+      value.owner?.username ||
+      value.username ||
+      value.like_count != null ||
+      value.comment_count != null ||
+      value.play_count != null ||
+      value.view_count != null ||
+      value.views != null ||
+      value.taken_at ||
+      value.taken_at_timestamp ||
+      value.created_at ||
+      value.media?.length
+    );
+    return hasIdentity && hasDisplayData;
+  }
+
+  function hasUsefulIgShellFields(value) {
+    if (!value || typeof value !== "object") return false;
+    return Boolean(
+      value.user?.username ||
+      value.owner?.username ||
+      value.username ||
+      value.like_count != null ||
+      value.comment_count != null ||
+      value.play_count != null ||
+      value.view_count != null ||
+      value.views != null ||
+      value.taken_at ||
+      value.taken_at_timestamp ||
+      value.created_at ||
+      value.url ||
+      value.permalink ||
+      value.code ||
+      value.shortcode
+    );
+  }
+
+  function mergeIgPostShell(shell, inner) {
+    if (!shell || typeof shell !== "object" || !inner || typeof inner !== "object") return inner || shell;
+    const shellCaption = shell.caption?.text || (typeof shell.caption === "string" ? shell.caption : null);
+    return {
+      ...inner,
+      ...shell,
+      user: shell.user?.username ? shell.user : (inner.user || shell.user),
+      owner: shell.owner?.username ? shell.owner : (inner.owner || shell.owner),
+      caption: shellCaption || inner.caption || shell.caption,
+      media: Array.isArray(shell.media) && shell.media.length ? shell.media : inner.media,
+      like_count: shell.like_count ?? inner.like_count,
+      comment_count: shell.comment_count ?? inner.comment_count,
+      play_count: shell.play_count ?? inner.play_count,
+      view_count: shell.view_count ?? inner.view_count,
+      views: shell.views ?? inner.views,
+      taken_at: shell.taken_at ?? inner.taken_at,
+      taken_at_timestamp: shell.taken_at_timestamp ?? inner.taken_at_timestamp,
+      created_at: shell.created_at ?? inner.created_at,
+      url: shell.url || shell.permalink || inner.url || inner.permalink,
+      permalink: shell.permalink || shell.url || inner.permalink || inner.url,
+    };
+  }
+
+  function unwrapIgResultPost(value) {
+    if (!value) return value;
+
+    // Server-normalized posts intentionally keep the original raw response on
+    // fields like `data`. Do not unwrap those normalized posts back into the raw
+    // nested payload, or the card loses username/date/metric fields and shows
+    // @unknown plus dashes.
+    if (isLikelyNormalizedIgPost(value)) return value;
+
+    const inner =
+      value?.node ||
+      value?.media ||
+      value?.item ||
+      value?.result ||
+      value?.response ||
+      value?.data?.xdt_shortcode_media ||
+      value?.data?.shortcode_media ||
+      value?.data?.media ||
+      value?.data?.post ||
+      value?.data ||
+      value;
+
+    if (inner !== value && hasUsefulIgShellFields(value)) return mergeIgPostShell(value, inner);
+    return inner;
+  }
+
   function InstagramResults({ data, onSave }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
-    // Normalize arrays — Scrape Creators response shapes:
-    //   userPosts: { posts: [{ node: {...} }] }
-    //   reelsSearch: { reels: [...] }
-    //   userReels: { items: [{ media: {...} }] }
-    //   postComments: { comments: [...] }
-    //   highlightDetail: { highlights: [...] }
-    const rawPosts = results.userPosts?.posts || results.userPosts?.data?.items || results.userPosts?.items || [];
-    const postsArr = rawPosts.map(p => p.node || p);
-    const reelsSearchArr = results.reelsSearch?.reels || results.reelsSearch?.data?.items || results.reelsSearch?.items || [];
-    const rawUserReels = results.userReels?.items || results.userReels?.data?.items || [];
-    const userReelsArr = rawUserReels.map(r => r.media || r);
-    const highlightItems = results.highlightDetail?.highlights || results.highlightDetail?.data?.items || results.highlightDetail?.items || [];
-    const searchPostsArr = results.searchPosts || [];
+    // Normalize arrays defensively. Some ScrapeCreators Instagram account
+    // responses return { posts: [...] }, some return { data: { items: [...] } },
+    // and some return a single object. Never call .map on a non-array.
+    const postsArr = toIgArray(results.userPosts).map(unwrapIgResultPost).filter(Boolean);
+    const reelsSearchArr = toIgArray(results.reelsSearch).map(unwrapIgResultPost).filter(Boolean);
+    const userReelsArr = toIgArray(results.userReels).map((r) => {
+      if (isLikelyNormalizedIgPost(r)) return r;
+      const candidate = r?.media && !Array.isArray(r.media) ? r.media : r;
+      return unwrapIgResultPost(candidate);
+    }).filter(Boolean);
+    const highlightItems = toIgArray(results.highlightDetail).map(unwrapIgResultPost).filter(Boolean);
+    const searchPostsArr = toIgArray(results.searchPosts).map(unwrapIgResultPost).filter(Boolean);
 
     const count =
       (results.profile ? 1 : 0) +
