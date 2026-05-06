@@ -8,7 +8,7 @@ let _cachedKeys = null;
 function loadApiKeys() {
   if (_cachedKeys) return _cachedKeys;
   const keys = [];
-  for (let i = 0; i <= 50; i++) {
+  for (let i = 0; i <= 24; i++) {
     const key = process.env[`SCRAPE_CREATORS${i}`];
     if (key) keys.push(key);
   }
@@ -80,6 +80,140 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
   const keys = loadApiKeys();
   const maxAttempts = maxKeyAttempts ?? keys.length;
 
+  // Local test-mode mock: if the only key is the placeholder 'dummy' or
+  // SCRAPE_CREATORS_MOCK=1 is set, return canned responses so local testing
+  // can proceed without contacting the external API.
+  const isMock = (keys.length === 1 && keys[0] === 'dummy') || process.env.SCRAPE_CREATORS_MOCK === '1';
+  if (isMock) {
+    // Minimal fake responses tailored to the most-common paths used by tests.
+    if (path.startsWith('/v1/tiktok/profile')) {
+      const handle = params.handle || 'demo';
+      const videos = Array.from({ length: 12 }).map((_, i) => ({
+        aweme_id: `1000${i}`,
+        desc: `Demo video ${i} by ${handle}`,
+        author: { uniqueId: handle, nickname: handle },
+        url: `https://www.tiktok.com/@${handle}/video/1000${i}`,
+      }));
+      return { uniqueId: handle, nickname: handle, itemList: videos };
+    }
+    if (path === '/v1/tiktok/search/keyword' || path === '/v1/tiktok/search/hashtag') {
+      const q = params.query || params.hashtag || 'demo';
+      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q } } }));
+      return { search_item_list: hits, cursor: null };
+    }
+    if (path === '/v1/reddit/subreddit/details') {
+      // Return subreddit metadata including rules expected by the frontend
+      return {
+        display_name: params.subreddit || 'demo',
+        description: `Demo subreddit for ${params.subreddit || 'demo'}`,
+        subscribers: 12345,
+        weekly_active_users: 678,
+        weekly_contributions: 12,
+        submit_text: 'Demo submit text',
+        advertiser_category: 'Technology',
+        rules: [
+          { short_name: 'No Spam', description: 'No spammy posts' },
+          { short_name: 'Be Respectful', description: 'Be kind to others' },
+        ],
+      };
+    }
+    if (path.startsWith('/v1/reddit/subreddit')) {
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `t3_demo${i}`, title: `Demo post ${i}`, selftext: `Demo content ${i}`, permalink: `/r/demo/comments/t3_demo${i}` }));
+      return { posts };
+    }
+    if (path === '/v1/reddit/search') {
+      const posts = Array.from({ length: 8 }).map((_, i) => ({ id: `s_demo${i}`, title: `Search post ${i}`, selftext: `Search content ${i}`, permalink: `/r/search/comments/s_demo${i}` }));
+      return { posts };
+    }
+    if (path.startsWith('/v1/linkedin/profile')) {
+      return { url: params.url || 'https://linkedin.com/in/demo', name: 'Demo Person', headline: 'Demo Headline', activity: Array.from({ length: 10 }).map((_, i) => ({ id: `lnk_post_${i}`, text: `Demo activity ${i}`, url: `https://linkedin.com/posts/demo_${i}` })) };
+    }
+    if (path.startsWith('/v1/instagram/profile')) {
+      const handle = params.handle || 'demo';
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_${i}`, shortcode: `ABC${i}`, caption: `Demo IG post ${i} by ${handle}`, url: `https://www.instagram.com/p/ABC${i}/` }));
+      return { username: handle, full_name: handle, biography: `Demo bio for ${handle}`, posts: posts, media_count: 123 };
+    }
+    if (path.startsWith('/v1/twitter/profile')) {
+      const handle = params.handle || 'demo';
+      return {
+        rest_id: `1000${handle}`,
+        is_blue_verified: true,
+        legacy: {
+          screen_name: handle,
+          name: handle,
+          description: `Demo bio for ${handle}`,
+          followers_count: 12345,
+          friends_count: 321,
+          statuses_count: 456,
+          listed_count: 78,
+          location: 'Demo City',
+          created_at: 'Wed Dec 01 19:13:23 +0000 2010',
+          entities: {
+            url: { urls: [{ expanded_url: `https://x.com/${handle}` }] },
+          },
+        },
+        credits_remaining: 123,
+      };
+    }
+    if (path.startsWith('/v1/twitter/user-tweets')) {
+      const handle = params.handle || 'demo';
+      const tweets = Array.from({ length: 12 }).map((_, i) => ({
+        rest_id: `2000${i}`,
+        legacy: {
+          id_str: `2000${i}`,
+          full_text: `Demo tweet ${i} from ${handle}`,
+          created_at: 'Tue Aug 27 12:02:20 +0000 2024',
+          favorite_count: 10 + i,
+          retweet_count: 5 + i,
+          reply_count: 2 + i,
+          quote_count: 1 + i,
+          user_id_str: `1000${handle}`,
+        },
+      }));
+      return { tweets, credits_remaining: 123 };
+    }
+    if (path.startsWith('/v1/twitter/tweet')) {
+      return {
+        rest_id: '30001',
+        legacy: {
+          id_str: '30001',
+          full_text: 'Demo tweet details',
+          created_at: 'Thu Feb 23 14:52:10 +0000 2023',
+          favorite_count: 42,
+          retweet_count: 7,
+          reply_count: 3,
+          quote_count: 2,
+        },
+        credits_remaining: 123,
+      };
+    }
+    if (path.startsWith('/v2/instagram/user/posts') || path.startsWith('/v1/instagram/user/posts')) {
+      const handle = params.handle || 'demo';
+      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `ig_post_${i}`, shortcode: `ABC${i}`, caption: `Demo post ${i}`, url: `https://www.instagram.com/p/ABC${i}/` }));
+      return { posts };
+    }
+    if (path.startsWith('/v1/instagram/post')) {
+      return { id: params.url || 'https://www.instagram.com/p/ABC0/', shortcode: 'ABC0', caption: 'Demo single post', comments_count: 5, likes_count: 100 };
+    }
+    if (path.startsWith('/v2/instagram/reels/search') || path.startsWith('/v1/instagram/user/reels')) {
+      const q = params.query || params.handle || 'demo';
+      const reels = Array.from({ length: 12 }).map((_, i) => ({ id: `reel_${i}`, desc: `Demo reel ${i} for ${q}`, url: `https://www.instagram.com/reel/REEL${i}/` }));
+      return { reels };
+    }
+    if (path.startsWith('/v1/google/search')) {
+      const baseUser = params.query?.split(' ')[0] || 'demo';
+      const results = Array.from({ length: 12 }).map((_, i) => ({
+        url: `https://twitter.com/${baseUser}/status/2000${i}`,
+        title: `Demo tweet ${i} from ${baseUser}`,
+        snippet: `Demo snippet ${i} for ${baseUser}`,
+      }));
+      return {
+        results,
+        credits_remaining: 123,
+      };
+    }
+  }
+
   const url = new URL(path, SCRAPE_CREATORS_BASE);
   for (const [k, v] of Object.entries(params)) {
     if (v != null && v !== '') url.searchParams.set(k, v);
@@ -91,9 +225,9 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
     const { key: apiKey, index: keyIdx } = getNextKey();
 
     try {
-      // Abort after 20 seconds to prevent indefinite hangs (e.g. some LinkedIn profiles)
+      // Abort after 35 seconds; some endpoints are slow but still valid.
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20_000);
+      const timeoutId = setTimeout(() => controller.abort(), 35_000);
 
       let resp;
       try {
@@ -158,9 +292,11 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
       // If the error was thrown by us (from the block above) just re-throw
       if (err === lastError) throw err;
 
-      // Timeout (AbortError) → don't retry, the endpoint itself is slow
+      // Timeout (AbortError) can be transient; retry with backoff.
       if (err.name === 'AbortError') {
-        throw new Error(`Request timed out after 20s: ${path}`);
+        lastError = new Error(`Request timed out after 35s: ${path}`);
+        await new Promise(r => setTimeout(r, (attempt + 1) * 750));
+        continue;
       }
 
       // Network / fetch error → try next key

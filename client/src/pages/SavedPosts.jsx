@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon, Alert, Badge, Button, Card, Collapse, Divider,
-  Group, LoadingOverlay, Modal, Paper, Stack, Text, Title, Tooltip,
+  ActionIcon, Alert, Avatar, Badge, Button, Card, Collapse, Divider,
+  Group, LoadingOverlay, Modal, Paper, SimpleGrid, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
@@ -24,13 +24,355 @@ function formatDate(str) {
 }
 
 function Metric({ icon, value }) {
+  const label = value == null || value === "" ? "—" : Number(value || 0).toLocaleString();
   return (
     <Group gap={4} wrap="nowrap">
       {icon}
-      <Text size="xs" c="dimmed" lh={1}>{(value || 0).toLocaleString()}</Text>
+      <Text size="xs" c="dimmed" lh={1}>{label}</Text>
     </Group>
   );
 }
+
+
+function cleanXImageUrl(url) {
+  if (!url || typeof url !== "string") return null;
+  return url.replace("_normal", "_400x400");
+}
+
+function bestVideoVariant(variants = []) {
+  if (!Array.isArray(variants)) return null;
+
+  const normalized = variants
+    .filter((v) => v?.url)
+    .map((v) => ({
+      ...v,
+      _contentType: String(v.content_type || v.contentType || v.mime_type || v.type || "").toLowerCase(),
+      _url: String(v.url || ""),
+    }));
+
+  const mp4s = normalized
+    .filter((v) => v._contentType.includes("mp4") || /\.mp4(?:\?|$)/i.test(v._url))
+    .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
+
+  // Native <video> plays MP4 reliably. HLS may work in Safari, but Chrome usually
+  // needs hls.js, so use HLS only as a last resort.
+  const hls = normalized.find((v) => v._contentType.includes("mpegurl") || /\.m3u8(?:\?|$)/i.test(v._url));
+
+  return mp4s[0]?.url || hls?.url || null;
+}
+
+function normalizeMediaUrlKey(url) {
+  if (!url || typeof url !== "string") return "";
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("format");
+    parsed.searchParams.delete("name");
+    parsed.searchParams.delete("tag");
+    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return String(url).split("?")[0].toLowerCase();
+  }
+}
+
+function instagramEmbedUrl(url) {
+  const text = String(url || "").trim();
+  const match = text.match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  if (!match) return null;
+  return `https://www.instagram.com/${match[1]}/${match[2]}/embed/`;
+}
+
+function mediaQualityScore(item = {}) {
+  const width = Number(item.width || 0);
+  const height = Number(item.height || 0);
+  const url = String(item.url || item.preview_image_url || "");
+  let score = width * height;
+  if (/name=(orig|4096x4096|large)/i.test(url)) score += 1_000_000;
+  if (item.type === "video" || item.type === "animated_gif") score += 500_000;
+  return score;
+}
+
+function dedupeMediaForDisplay(media = [], maxItems = 4) {
+  const byKey = new Map();
+
+  for (const item of Array.isArray(media) ? media : []) {
+    if (!item) continue;
+    const urlKey = normalizeMediaUrlKey(item.url || item.preview_image_url);
+    const key = item.media_key || urlKey;
+    if (!key) continue;
+
+    const existing = byKey.get(key);
+    if (!existing || mediaQualityScore(item) > mediaQualityScore(existing)) {
+      byKey.set(key, item);
+    }
+  }
+
+  const values = Array.from(byKey.values());
+  const looksLikeCardPreviewSet =
+    values.length > 1 &&
+    values.every((item) => {
+      const url = String(item.url || item.preview_image_url || "");
+      const key = String(item.media_key || "");
+      return /card_img|card-image|thumbnail_image|player_image|summary/i.test(url + " " + key);
+    });
+
+  if (looksLikeCardPreviewSet) {
+    return values.sort((a, b) => mediaQualityScore(b) - mediaQualityScore(a)).slice(0, 1);
+  }
+
+  return values.slice(0, maxItems);
+}
+
+function cleanDisplayTextForMedia(text = "", mediaItems = []) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+  if (!mediaItems?.length) return raw;
+
+  return raw
+    .replace(/(?:\s|^)https?:\/\/t\.co\/[A-Za-z0-9_]+/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open video on X", embedFallbackUrl = null }) {
+  const items = dedupeMediaForDisplay(media, maxItems);
+
+  if (!items.length) {
+    const embedUrl = embedFallbackUrl ? instagramEmbedUrl(embedFallbackUrl) : null;
+    if (!embedUrl) return null;
+
+    return (
+      <div style={{ maxWidth: 420, width: "100%" }}>
+        <iframe
+          src={embedUrl}
+          title="Instagram post media"
+          loading="lazy"
+          style={{
+            width: "100%",
+            height: 320,
+            border: "1px solid #edf2f7",
+            borderRadius: 10,
+            background: "#fff",
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: items.length === 1 ? 420 : 560 }}>
+      <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
+        {items.map((item, index) => {
+          const key = item.media_key || item.url || item.preview_image_url || index;
+          const isVideo = item.type === "video" || item.type === "animated_gif";
+          const videoUrl = bestVideoVariant(item.variants);
+          const imageUrl = item.url || item.preview_image_url;
+
+          const mediaStyle = {
+            width: "100%",
+            maxHeight: 180,
+            objectFit: "contain",
+            borderRadius: 10,
+            background: isVideo ? "#000" : "#f8f9fa",
+            display: "block",
+            border: "1px solid #edf2f7",
+          };
+
+          if (isVideo && videoUrl) {
+            return (
+              <video
+                key={key}
+                controls
+                playsInline
+                preload="metadata"
+                poster={item.preview_image_url || undefined}
+                style={mediaStyle}
+              >
+                <source src={videoUrl} type={/\.m3u8(?:\?|$)/i.test(videoUrl) ? "application/vnd.apple.mpegurl" : "video/mp4"} />
+              </video>
+            );
+          }
+
+          if (imageUrl) {
+            const image = (
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                style={mediaStyle}
+              />
+            );
+
+            if (isVideo && postUrl) {
+              return (
+                <a key={key} href={postUrl} target="_blank" rel="noopener noreferrer" style={{ display: "block", position: "relative" }}>
+                  {image}
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 8,
+                      bottom: 8,
+                      background: "rgba(0,0,0,0.72)",
+                      color: "white",
+                      borderRadius: 999,
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Open video on X
+                  </span>
+                </a>
+              );
+            }
+
+            return <div key={key}>{image}</div>;
+          }
+
+          return null;
+        })}
+      </SimpleGrid>
+    </div>
+  );
+}
+
+function isUsableInstagramImageUrl(url) {
+  return typeof url === "string" && /^https?:\/\//i.test(url) && !/\.(mp4|mov|m3u8)(\?|$)/i.test(url);
+}
+
+function InstagramMediaPreview({ media, postUrl = null }) {
+  const items = dedupeMediaForDisplay(media, 10);
+  const imageItems = items
+    .map((item, index) => {
+      const isVideo = item?.type === "video" || item?.type === "animated_gif";
+      const imageUrl = item?.preview_image_url || (!isVideo ? item?.url : null);
+      return imageUrl && isUsableInstagramImageUrl(imageUrl)
+        ? { ...item, _displayUrl: imageUrl, _displayKey: item.media_key || imageUrl || index }
+        : null;
+    })
+    .filter(Boolean);
+
+  const hasHiddenMedia = items.length > imageItems.length;
+
+  if (!imageItems.length) {
+    if (!postUrl) return null;
+    return (
+      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460 }}>
+        <Stack gap={4}>
+          <Text size="xs" c="dimmed">
+            Instagram photos/videos are not available from the API for inline preview.
+          </Text>
+          <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+            View the post on Instagram to see the media →
+          </Text>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Stack gap={6} style={{ maxWidth: imageItems.length === 1 ? 360 : 520, width: "100%" }}>
+      <SimpleGrid cols={imageItems.length === 1 ? 1 : 2} spacing="xs">
+        {imageItems.map((item, index) => (
+          <img
+            key={item._displayKey || index}
+            src={item._displayUrl}
+            alt=""
+            loading="lazy"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            style={{
+              width: "100%",
+              maxHeight: 170,
+              objectFit: "contain",
+              borderRadius: 10,
+              display: "block",
+              background: "#f8f9fa",
+              border: "1px solid #edf2f7",
+            }}
+          />
+        ))}
+      </SimpleGrid>
+      {(hasHiddenMedia || postUrl) && (
+        <Text size="xs" c="dimmed">
+          Some Instagram media may not preview here. {postUrl && (
+            <Text span c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
+              View post →
+            </Text>
+          )}
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
+function getTrimmedPreview(value, threshold) {
+  if (!value || value.length <= threshold) return value;
+
+  const hardCut = value.slice(0, threshold);
+  const lastSpace = Math.max(
+    hardCut.lastIndexOf(" "),
+    hardCut.lastIndexOf("\n"),
+    hardCut.lastIndexOf("\t")
+  );
+
+  const cutAt = lastSpace > threshold * 0.65 ? lastSpace : threshold;
+  return value.slice(0, cutAt).trimEnd() + "…";
+}
+
+function ExpandablePostText({ text, threshold = 260, dimmed = false }) {
+  const [expanded, setExpanded] = useState(false);
+  const value = String(text || "").trim();
+  const isLong = value.length > threshold;
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [value]);
+
+  if (!value) return null;
+
+  const visibleText = isLong && !expanded
+    ? getTrimmedPreview(value, threshold)
+    : value;
+
+  return (
+    <Stack gap={4}>
+      <Text
+        component="div"
+        size="sm"
+        c={dimmed ? "dimmed" : undefined}
+        style={{
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.55,
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
+        }}
+      >
+        {visibleText}
+      </Text>
+
+      {isLong && (
+        <Button
+          type="button"
+          variant="subtle"
+          size="compact-sm"
+          px={0}
+          leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((prev) => !prev);
+          }}
+          style={{ alignSelf: "flex-start" }}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </Button>
+      )}
+    </Stack>
+  );
+}
+
 
 function instagramIdToShortcode(id) {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -50,10 +392,20 @@ function instagramIdToShortcode(id) {
   return shortcode;
 }
 
+function isInstagramPostUrl(value) {
+  return /instagram\.com\/(p|reel|tv)\//i.test(String(value || ""));
+}
+
 // Build URL to the original post on its platform 
 function getPostUrl(post) {
-  // Prefer stored url
-  if (post.url) return post.url;
+  // Prefer real stored platform URLs. Do not blindly trust guessed Instagram URLs.
+  if (post.platform_id === 3) {
+    if (isInstagramPostUrl(post.url)) return post.url;
+    if (isInstagramPostUrl(post.extra?.url)) return post.extra.url;
+    if (isInstagramPostUrl(post.extra?.permalink)) return post.extra.permalink;
+  } else if (post.url) {
+    return post.url;
+  }
 
   const pid = post.platform_post_id;
   if (!pid) return null;
@@ -67,8 +419,19 @@ function getPostUrl(post) {
 
   // Instagram
   if (platformId === 3) {
-    const shortcode = instagramIdToShortcode(pid);
-    return `https://www.instagram.com/p/${shortcode}/`;
+    const shortcode = post.extra?.shortcode || post.extra?.code;
+
+    if (shortcode) {
+      const isReel =
+        post.extra?.is_video === true ||
+        post.extra?.type === "reel" ||
+        post.extra?.product_type === "clips";
+
+      return `https://www.instagram.com/${isReel ? "reel" : "p"}/${shortcode}/`;
+    }
+
+    // Do not guess Instagram URLs from numeric IDs. That can open the wrong post.
+    return null;
   }
 
   // TikTok
@@ -91,30 +454,26 @@ function getPostUrl(post) {
 
 function XPostCard({ post, onDelete }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const handle = post.extra?.author_handle || post.extra?.username || post.username || t("savedPosts.unknown");
-  const name = post.extra?.author_name || handle;
   const tone = post.tone;
   const postUrl = getPostUrl(post);
+  const extra = post.extra || {};
+  const handle = String(extra.author_handle || extra.username || post.username || "").replace(/^@/, "");
+  const name = extra.author_name || handle || t("savedPosts.unknown");
+  const avatarUrl = cleanXImageUrl(extra.author_profile_image_url || extra.profile_image_url);
+  const mediaItems = dedupeMediaForDisplay(extra.media);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #1d9bf0" }}>
-      <Stack gap="sm">
-        <Group justify="space-between" wrap="nowrap">
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #1d9bf0" }}>
+      <Stack gap="xs">
+        <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: "50%",
-              background: "#e8f5fd",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 700, fontSize: 15, color: "#1d9bf0", flexShrink: 0,
-            }}>
-              {(name || "?")[0].toUpperCase()}
-            </div>
+            <Avatar src={avatarUrl} radius="xl" size={38} color="blue">
+              {(name || handle || "?")[0].toUpperCase()}
+            </Avatar>
             <div style={{ minWidth: 0 }}>
               <Text fw={700} size="sm" lh={1.3} truncate>{name}</Text>
-              <Text size="xs" c="dimmed" lh={1.2}>@{handle}</Text>
+              {handle && <Text size="xs" c="dimmed" lh={1.2}>@{handle}</Text>}
+              {post.published_at && <Text size="xs" c="dimmed" lh={1.2}>{formatDate(post.published_at)}</Text>}
             </div>
           </Group>
           <Group gap={6} wrap="nowrap">
@@ -134,29 +493,17 @@ function XPostCard({ post, onDelete }) {
           </Group>
         </Group>
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{preview}</Text>
+        <ExpandablePostText text={cleanDisplayTextForMedia(post.content, mediaItems)} threshold={220} />
+
+        <XMediaPreview media={mediaItems} postUrl={postUrl} />
 
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
 
-        {isLong && (
-          <Button variant="subtle" size="xs" p={0} h="auto"
-            leftSection={expanded ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? t("savedPosts.showLess") : t("savedPosts.showMore")}
-          </Button>
-        )}
-
-        {post.published_at && (
-          <Text size="xs" c="dimmed" mt={-4}>{formatDate(post.published_at)}</Text>
-        )}
-
         <Divider my={0} />
 
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#1d9bf0" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#17bf63" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#1d9bf0" />} value={post.comments} />
@@ -322,9 +669,11 @@ function LinkedInPostCard({ post, onDelete }) {
 function InstagramPostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || t("savedPosts.unknown");
+  const content = String(post.content || "");
+  const isLong = content.length > 280;
+  const preview = isLong && !expanded ? getTrimmedPreview(content, 280) : content;
+  const name = post.username || post.extra?.author_handle || post.extra?.username || t("savedPosts.unknown");
+  const mediaItems = Array.isArray(post.extra?.media) ? post.extra.media : [];
   const tone = post.tone;
   const postUrl = getPostUrl(post);
 
@@ -373,13 +722,14 @@ function InstagramPostCard({ post, onDelete }) {
           </Button>
         )}
 
+        <InstagramMediaPreview media={mediaItems} postUrl={postUrl} />
+
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
 
         <Divider my={0} />
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#E1306C" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#E1306C" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#E1306C" />} value={post.comments} />
         </Group>
@@ -465,9 +815,11 @@ function TikTokPostCard({ post, onDelete }) {
 function RedditPostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const isLong = (post.content || "").length > 280;
-  const preview = isLong && !expanded ? post.content.slice(0, 280) + "…" : post.content;
-  const name = post.username || post.extra?.username || t("savedPosts.unknown");
+  const content = String(post.content || "");
+  const isLong = content.length > 280;
+  const preview = isLong && !expanded ? getTrimmedPreview(content, 280) : content;
+  const name = post.username || post.extra?.author_handle || post.extra?.username || t("savedPosts.unknown");
+  const mediaItems = Array.isArray(post.extra?.media) ? post.extra.media : [];
   const tone = post.tone;
   const postUrl = getPostUrl(post);
 

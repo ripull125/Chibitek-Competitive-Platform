@@ -1,4 +1,6 @@
-import { getUserIdByUsername, fetchPostsByUserId, fetchUserMentions, fetchFollowers, fetchFollowing, fetchTweetById, searchRecentTweets } from "./xApi.js";
+import xRoutes from "./routes/xRoutes.js";
+import linkedinRoutes from "./routes/linkedinRoutes.js";
+import instagramRoutes from "./routes/instagramRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
@@ -34,6 +36,28 @@ function extractYouTubeVideoId(input) {
   return null;
 }
 
+/**
+ * Detect whether a freeform input is a URL, an @handle, or a keyword.
+ * Returns { type: 'url'|'handle'|'keyword', value }
+ */
+function detectInputType(input) {
+  const s = String(input || '').trim();
+  if (!s) return { type: null, value: '' };
+  try {
+    // If it parses as a URL, consider it a URL type
+    new URL(s);
+    return { type: 'url', value: s };
+  } catch { }
+
+  if (s.startsWith('@')) return { type: 'handle', value: s.replace(/^@/, '') };
+
+  // If the input is a single token without spaces, treat it as a possible
+  // handle for platforms (will be interpreted as handle by platform helpers).
+  if (!/\s/.test(s) && /^[\w.@-]+$/.test(s)) return { type: 'handle', value: s };
+
+  return { type: 'keyword', value: s };
+}
+
 // Ensure Reddit platform row exists
 let REDDIT_PLATFORM_ID = 6; // default, will be confirmed/created at startup
 async function ensureRedditPlatform() {
@@ -56,12 +80,18 @@ async function ensureRedditPlatform() {
 }
 
 const app = express();
+
 app.use(cors({
   origin: 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 }));
+
 app.use(express.json({ limit: '10mb' }));
+
+app.use('/api/x', xRoutes);
+app.use('/api/linkedin', linkedinRoutes);
+app.use('/api/instagram', instagramRoutes);
 
 const {
   GITHUB_TOKEN,
@@ -237,6 +267,37 @@ const normalizeRole = (role) => {
   return ROLE_USER;
 };
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientNetworkError(err) {
+  const text = `${err?.message || ''} ${err?.code || ''} ${err?.cause?.code || ''}`.toLowerCase();
+  return (
+    text.includes('fetch failed') ||
+    text.includes('timeout') ||
+    text.includes('enotfound') ||
+    text.includes('econnrefused') ||
+    text.includes('und_err_connect_timeout') ||
+    text.includes('network')
+  );
+}
+
+async function retryTransient(label, operation, { attempts = 3, delayMs = 500 } = {}) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await operation();
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientNetworkError(err) || i === attempts) break;
+      console.warn(`[${label}] transient failure ${i}/${attempts}; retrying:`, err?.message || err);
+      await sleep(delayMs * i);
+    }
+  }
+  throw lastErr;
+}
+
 const canManageRegularUsers = (role) => {
   const normalized = normalizeRole(role);
   return normalized === ROLE_OWNER || normalized === ROLE_ADMIN;
@@ -290,7 +351,17 @@ async function getRequestAuthContext(req) {
     return { ok: false, status: 401, error: 'Missing bearer token.' };
   }
 
-  const { data, error } = await supabaseAuth.auth.getUser(token);
+  let data, error;
+  try {
+    const resp = await retryTransient('Auth getUser', () => supabaseAuth.auth.getUser(token), { attempts: 2, delayMs: 400 });
+    data = resp.data;
+    error = resp.error;
+  } catch (err) {
+    console.warn('[Auth] supabaseAuth.getUser failed:', err?.message || err);
+    // Treat as unauthenticated rather than crashing the server.
+    return { ok: false, status: 503, error: 'Authentication service unavailable' };
+  }
+
   if (error || !data?.user) {
     return { ok: false, status: 401, error: 'Invalid or expired token.' };
   }
@@ -788,121 +859,7 @@ async function fetchLatestPostsContext(userId) {
   }
 }
 
-app.get("/api/x/fetch/:username", async (req, res) => {
-  try {
-    const username = req.params.username;
-    const user = await getUserIdByUsername(username);
-    const posts = await fetchPostsByUserId(user.id, 5);
 
-    res.json({ success: true, username: user.username || username, userId: user.id, posts });
-  } catch (err) {
-    console.error("X fetch error:", err.message);
-
-    if (String(err.message).includes("Rate limit")) {
-      return res.status(429).json({ error: err.message });
-    }
-
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/x/search
- * Body: { options: { userLookup, followers, following, userTweets, userMentions, tweetLookup, searchTweets },
- *         inputs: { username, tweetsUsername, tweetUrl, searchQuery } }
- * Calls the relevant X API v2 endpoints in parallel and returns combined results.
- */
-app.post('/api/x/search', async (req, res) => {
-  try {
-    const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
-    const tasks = [];
-    const labels = [];
-
-    // Resolve user IDs where needed
-    const cleanUsername = (u) => String(u || '').trim().replace(/^@/, '');
-    const extractTweetId = (urlOrId) => {
-      const m = String(urlOrId || '').match(/status\/(\d+)/);
-      return m ? m[1] : String(urlOrId || '').trim();
-    };
-
-    // Profile-related (need username → user object)
-    const profileUsername = cleanUsername(inputs.username);
-    const tweetsUsername = cleanUsername(inputs.tweetsUsername || inputs.username);
-
-    // User Lookup
-    if (options.userLookup && profileUsername) {
-      labels.push('userLookup');
-      tasks.push(getUserIdByUsername(profileUsername));
-    }
-
-    // Followers
-    if (options.followers && profileUsername) {
-      labels.push('followers');
-      tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowers(u.id, limit))
-      );
-    }
-
-    // Following
-    if (options.following && profileUsername) {
-      labels.push('following');
-      tasks.push(
-        getUserIdByUsername(profileUsername).then(u => fetchFollowing(u.id, limit))
-      );
-    }
-
-    // User Tweets
-    if (options.userTweets && tweetsUsername) {
-      labels.push('userTweets');
-      tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchPostsByUserId(u.id, limit))
-      );
-    }
-
-    // User Mentions
-    if (options.userMentions && tweetsUsername) {
-      labels.push('userMentions');
-      tasks.push(
-        getUserIdByUsername(tweetsUsername).then(u => fetchUserMentions(u.id, limit))
-      );
-    }
-
-    // Single Tweet Lookup
-    if (options.tweetLookup && inputs.tweetUrl) {
-      labels.push('tweetLookup');
-      const tweetId = extractTweetId(inputs.tweetUrl);
-      tasks.push(fetchTweetById(tweetId));
-    }
-
-    // Search
-    if (options.searchTweets && inputs.searchQuery) {
-      labels.push('searchTweets');
-      tasks.push(searchRecentTweets(inputs.searchQuery.trim(), limit));
-    }
-
-    if (!tasks.length) {
-      return res.status(400).json({ error: 'No X options selected or inputs provided.' });
-    }
-
-    const settled = await Promise.allSettled(tasks);
-    const results = {};
-    const errors = [];
-
-    settled.forEach((s, i) => {
-      if (s.status === 'fulfilled') {
-        results[labels[i]] = s.value;
-      } else {
-        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
-      }
-    });
-
-    return res.json({ success: true, results, errors });
-  } catch (err) {
-    console.error('X search error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-});
 
 // ─── Helper: Update tone in posts table ───────────────────────────────────
 /**
@@ -1427,7 +1384,9 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       competitor = newComp;
     }
 
-    const [tweet] = await fetchPostsByUserId(platformUserId);
+    const postsResult = await fetchPostsByUserId(platformUserId);
+    const posts = Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
+    const [tweet] = posts;
 
     if (!tweet) {
       return res.json({ saved: false, reason: "No tweet found" });
@@ -1476,6 +1435,14 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
       ...normalized.metrics,
     });
 
+    if (normalized.details) {
+      await supabase.from("post_details_platform").delete().eq("post_id", post.id);
+      await supabase.from("post_details_platform").insert({
+        post_id: post.id,
+        extra_json: normalized.details,
+      });
+    }
+
     res.json({ saved: true, post_id: post.id });
   } catch (err) {
     console.error(err);
@@ -1501,8 +1468,15 @@ app.post("/api/posts", async (req, res) => {
     channelTitle,
     videoId,
     views,
+    url,
+    media,
     author_name,
     author_handle,
+    author_profile_image_url,
+    code,
+    shortcode,
+    is_video,
+    product_type,
   } = req.body;
 
   if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
@@ -1524,11 +1498,13 @@ app.post("/api/posts", async (req, res) => {
   const isInstagram = platformKey === 'instagram' || Number(platform_id) === 3;
   const isTikTok = platformKey === 'tiktok' || Number(platform_id) === 5;
   const isReddit = platformKey === 'reddit' || Number(platform_id) === REDDIT_PLATFORM_ID;
+  const cleanUsername = String(username || author_handle || platform_user_id || "").replace(/^@/, "");
+  const displayName = author_name || cleanUsername || platform_user_id;
 
   try {
     // Find or create competitor
-    let profileUrl = `https://unknown/${username || platform_user_id}`;
-    if (isX) profileUrl = `https://x.com/${username || platform_user_id}`;
+    let profileUrl = `https://unknown/${cleanUsername || platform_user_id}`;
+    if (isX) profileUrl = cleanUsername ? `https://x.com/${cleanUsername}` : `https://x.com/i/user/${platform_user_id}`;
     if (isInstagram) profileUrl = `https://www.instagram.com/${username || platform_user_id}`;
     if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platform_user_id}`;
     if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platform_user_id}`;
@@ -1552,7 +1528,7 @@ app.post("/api/posts", async (req, res) => {
         .insert({
           platform_id,
           platform_user_id,
-          display_name: username || platform_user_id,
+          display_name: displayName || username || platform_user_id,
           profile_url: profileUrl,
         })
         .select()
@@ -1577,6 +1553,7 @@ app.post("/api/posts", async (req, res) => {
         .update({
           content,
           published_at,
+          url: url || existingPost.url || null,
           competitor_id: competitor.id,
           // Keep ownership stable when set, but backfill when empty.
           user_id: existingPost.user_id || user_id,
@@ -1593,6 +1570,7 @@ app.post("/api/posts", async (req, res) => {
           platform_id,
           competitor_id: competitor.id,
           platform_post_id: platformPostId,
+          url: url || null,
           content,
           published_at,
           user_id,
@@ -1617,6 +1595,7 @@ app.post("/api/posts", async (req, res) => {
           .update({
             content,
             published_at,
+            url: url || racedPost.url || null,
             competitor_id: competitor.id,
             user_id: racedPost.user_id || user_id,
           })
@@ -1658,32 +1637,68 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For X (Twitter), save additional details
+    // For X (Twitter), save additional details. Replace the existing details
+    // row so re-saving a post updates author/media fields instead of keeping
+    // the old stripped-down version.
     if (isX) {
+      const xExtra = {
+        author_name: author_name || displayName || cleanUsername,
+        author_handle: String(author_handle || cleanUsername || username || "").replace(/^@/, ""),
+        username: String(username || author_handle || cleanUsername || "").replace(/^@/, ""),
+        author_profile_image_url: author_profile_image_url || null,
+        media: Array.isArray(media) ? media : [],
+        url: url || null,
+      };
+
+      const { error: deleteDetailsError } = await supabase
+        .from("post_details_platform")
+        .delete()
+        .eq("post_id", post.id);
+      if (deleteDetailsError) {
+        console.error('Error replacing X post details:', deleteDetailsError);
+      }
+
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
-        extra_json: {
-          author_name: author_name || username,
-          author_handle: author_handle || username,
-          username,
-          views: views ?? 0,
-        },
+        extra_json: xExtra,
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving X post details:', detailsError);
       }
     }
 
-    // For Instagram, TikTok, Reddit — save author details + views
+    // For Instagram, TikTok, Reddit — save author/details. Replace the
+    // existing row so re-saving can backfill media and author fields.
     if (isInstagram || isTikTok || isReddit) {
+      const socialExtra = {
+        author_name: author_name || username,
+        author_handle: author_handle || username,
+        username,
+        author_profile_image_url: author_profile_image_url || null,
+        media: Array.isArray(media) ? media : [],
+        url: url || null,
+        code: code || shortcode || null,
+        shortcode: shortcode || code || null,
+        is_video: is_video === true,
+        product_type: product_type || null,
+      };
+
+      // Keep views for platforms that care about them, but do not surface them
+      // for Instagram in the UI because cross-platform keyword tracking uses
+      // likes/shares/comments.
+      if (!isInstagram) socialExtra.views = views ?? 0;
+
+      const { error: deleteDetailsError } = await supabase
+        .from("post_details_platform")
+        .delete()
+        .eq("post_id", post.id);
+      if (deleteDetailsError) {
+        console.error('Error replacing social post details:', deleteDetailsError);
+      }
+
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
-        extra_json: {
-          author_name: author_name || username,
-          author_handle: author_handle || username,
-          username,
-          views: views ?? 0,
-        },
+        extra_json: socialExtra,
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
         console.error('Error saving post details:', detailsError);
@@ -1736,7 +1751,7 @@ app.get("/api/posts", async (req, res) => {
         id: post.id,
         platform_id: post.platform_id || 0,
         platform_post_id: post.platform_post_id || null,
-        url: post.url || null,
+        url: post.url || extra.url || null,
         content: post.content,
         published_at: post.published_at,
         tone: post.tone || null,
@@ -1888,7 +1903,33 @@ function normalizeLinkedinUrl(raw, type) {
  */
 app.post('/api/linkedin/search', async (req, res) => {
   try {
+    console.log('[Debug][LinkedIn] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {} } = req.body;
+
+    // If caller provided a single freeform query and no explicit options,
+    // auto-route: @handle -> profile, URL -> direct lookup, keyword -> discovery
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.keyword)) {
+      const free = inputs.query || inputs.keyword;
+      const detected = detectInputType(free);
+      if (detected.type === 'handle') {
+        options.profile = true;
+        inputs.profile = detected.value;
+      } else if (detected.type === 'url') {
+        // Let existing logic normalize URL types (profile/company/post)
+        // Try to push the URL into profile/company/post depending on path
+        const url = String(detected.value || '');
+        if (/linkedin\.com\/(company)\//i.test(url)) {
+          options.company = true; inputs.company = url;
+        } else if (/linkedin\.com\/(posts|pulse|feed)\//i.test(url)) {
+          options.post = true; inputs.post = url;
+        } else {
+          options.profile = true; inputs.profile = url;
+        }
+      } else {
+        // keyword discovery
+        options.profile = true; options.company = true; options.post = true; inputs.keyword = detected.value;
+      }
+    }
 
     const tasks = [];
     const labels = [];
@@ -1912,23 +1953,65 @@ app.post('/api/linkedin/search', async (req, res) => {
       tasks.push(scrapeCreators('/v1/linkedin/post', { url: normalizedUrl }));
     }
 
+    // Keyword-based LinkedIn discovery: if a freeform keyword is provided,
+    // perform a lightweight Google search and extract any linkedin.com links,
+    // then enqueue matching LinkedIn endpoints.
+    if (inputs.keyword && String(inputs.keyword).trim()) {
+      try {
+        const googleResp = await scrapeCreators('/v1/google/search', { query: String(inputs.keyword).trim() });
+        const hits = googleResp?.results || googleResp?.data || [];
+        let added = 0;
+        for (const h of hits) {
+          const url = (h.url || h.link || '').toString();
+          if (!url) continue;
+          if (!/linkedin\.com\//i.test(url)) continue;
+          if (added >= 3) break; // limit follow-ups to 3 links
+          // Determine endpoint type
+          const endpointType = /\/company\//i.test(url)
+            ? 'company'
+            : (/\/posts\//i.test(url) || /\/pulse\//i.test(url))
+              ? 'post'
+              : 'profile';
+          const endpoint = endpointType === 'company'
+            ? '/v1/linkedin/company'
+            : endpointType === 'post'
+              ? '/v1/linkedin/post'
+              : '/v1/linkedin/profile';
+          labels.push(`keyword_${endpointType}_${added}`);
+          tasks.push(scrapeCreators(endpoint, { url }));
+          added++;
+        }
+      } catch (e) {
+        console.warn('[LinkedIn] Keyword discovery failed:', e?.message || e);
+      }
+    }
+
     if (!tasks.length) {
+      // If the caller provided a keyword for discovery but no linkedin.com
+      // links were found, return a successful response with empty results
+      // rather than a 400. This avoids client crashes in mock/offline mode.
+      if (inputs.keyword && String(inputs.keyword).trim()) {
+        return res.json({ success: true, results: {}, errors: [{ message: 'No discovery links found for keyword.' }] });
+      }
       return res.status(400).json({ error: 'No LinkedIn options selected or inputs provided.' });
     }
 
     const settled = await Promise.allSettled(tasks);
     const results = {};
     const errors = [];
-    let credits_remaining = null;
 
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
-        results[labels[i]] = s.value;
+        // Ensure we always return an object or array for the label so the
+        // frontend rendering code can safely access expected keys.
+        results[labels[i]] = s.value ?? {};
         if (s.value?.credits_remaining != null) {
           credits_remaining = s.value.credits_remaining;
         }
       } else {
+        // Keep the error message concise but include endpoint label.
         errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        results[labels[i]] = { error: s.reason?.message || String(s.reason) };
       }
     });
 
@@ -2438,23 +2521,71 @@ function extractIgUsername(input) {
 app.post('/api/instagram/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // Auto-route when caller supplies a single freeform query and no options.
+    // For Instagram, only treat @handles as account lookups; plain text
+    // without @ should map to keyword search.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm)) {
+      const free = String(inputs.query || inputs.username || inputs.userReelsUsername || inputs.reelsSearchTerm || '').trim();
+      const isAtHandle = free.startsWith('@');
+      let isUrl = false;
+      try { new URL(free); isUrl = true; } catch { }
+
+      if (isAtHandle) {
+        const handleValue = free.replace(/^@/, '');
+        options.profile = true;
+        options.userPosts = true;
+        inputs.username = handleValue;
+        inputs.userPostsUsername = handleValue;
+      } else if (isUrl) {
+        const shortcode = extractIgShortcode(free);
+        if (shortcode) {
+          options.singlePost = true;
+          inputs.postUrl = free;
+        } else {
+          const h = extractIgUsername(free);
+          if (h) {
+            options.profile = true;
+            options.userPosts = true;
+            inputs.username = h;
+            inputs.userPostsUsername = h;
+          }
+        }
+      } else if (free) {
+        options.reelsSearch = true;
+        inputs.reelsSearchTerm = free;
+      }
+    }
     const tasks = [];
     const labels = [];
 
     // ── Profile & Account ────────────────────────────────────────────────
     const handle = extractIgUsername(inputs.username);
+    const postsHandle = extractIgUsername(inputs.userPostsUsername || inputs.username);
+
+    // If both profile and userPosts/userReels are requested, fetch the
+    // profile first and only paginate posts/reels if the profile indicates
+    // there are media items. This avoids wasting pages on empty accounts
+    // and prevents downstream loops when profiles report zero media.
+    let deferUserPosts = false;
+    let deferUserReels = false;
 
     if (options.profile && handle) {
       labels.push('profile');
       tasks.push(scrapeCreators('/v1/instagram/profile', { handle }));
-    }
 
-    // ── Posts & Content ──────────────────────────────────────────────────
-    const postsHandle = extractIgUsername(inputs.userPostsUsername);
-    if (options.userPosts && postsHandle) {
-      labels.push('userPosts');
-      tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
+      if (options.userPosts && postsHandle) deferUserPosts = true;
+      if (options.userReels && postsHandle) deferUserReels = true;
+    } else {
+      // If profile not requested, behave as before and enqueue posts/reels directly
+      if (options.userPosts && postsHandle) {
+        labels.push('userPosts');
+        tasks.push(scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle }, limit));
+      }
+      if (options.userReels && postsHandle) {
+        labels.push('userReels');
+        tasks.push(scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: postsHandle }, limit));
+      }
     }
 
     // For single post & comments the API expects the full post URL
@@ -2498,6 +2629,7 @@ app.post('/api/instagram/search', async (req, res) => {
     const errors = [];
     let credits_remaining = null;
 
+    // Map immediate results (profile may be present)
     settled.forEach((s, i) => {
       if (s.status === 'fulfilled') {
         results[labels[i]] = s.value;
@@ -2505,9 +2637,58 @@ app.post('/api/instagram/search', async (req, res) => {
           credits_remaining = s.value.credits_remaining;
         }
       } else {
-        errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        if (labels[i] === 'subredditDetails' && s.reason?.status === 404) {
+          results.subredditDetails = {};
+        } else {
+          errors.push({ endpoint: labels[i], error: s.reason?.message || String(s.reason) });
+        }
       }
     });
+
+    // If we deferred posts/reels because profile was requested, decide now
+    if (results.profile && (deferUserPosts || deferUserReels)) {
+      const profile = results.profile || {};
+      const mediaCount = Number(profile.media_count || profile.mediaCount || (Array.isArray(profile.posts) ? profile.posts.length : 0));
+
+      // If profile indicates zero media, return empty arrays instead of paginating
+      if (mediaCount <= 0) {
+        if (deferUserPosts) results.userPosts = { posts: [] };
+        if (deferUserReels) results.userReels = { reels: [] };
+      } else {
+        // There may be posts embedded in the profile response already
+        if (deferUserPosts) {
+          const existing = profile.posts || profile.items || profile.posts || profile.media || profile.timeline;
+          if (Array.isArray(existing) && existing.length > 0) {
+            results.userPosts = { posts: existing.slice(0, limit) };
+          } else {
+            try {
+              const postsResp = await scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle: postsHandle, trim: true }, limit);
+              results.userPosts = postsResp || { posts: [] };
+              if (postsResp?.credits_remaining != null) credits_remaining = postsResp.credits_remaining;
+            } catch (e) {
+              errors.push({ endpoint: 'userPosts', error: e?.message || String(e) });
+              results.userPosts = { posts: [] };
+            }
+          }
+        }
+
+        if (deferUserReels) {
+          const existingReels = profile.reels || profile.itemList || profile.reel_items;
+          if (Array.isArray(existingReels) && existingReels.length > 0) {
+            results.userReels = { reels: existingReels.slice(0, limit) };
+          } else {
+            try {
+              const reelsResp = await scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle: postsHandle, trim: true }, limit);
+              results.userReels = reelsResp || { reels: [] };
+              if (reelsResp?.credits_remaining != null) credits_remaining = reelsResp.credits_remaining;
+            } catch (e) {
+              errors.push({ endpoint: 'userReels', error: e?.message || String(e) });
+              results.userReels = { reels: [] };
+            }
+          }
+        }
+      }
+    }
 
     return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
@@ -2557,8 +2738,48 @@ function extractTkUsername(input) {
  */
 app.post('/api/tiktok/search', async (req, res) => {
   try {
+    console.log('[Debug][TikTok] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // If caller provided a single freeform query and no specific options,
+    // auto-route based on whether it's an @handle, URL, or keyword.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && (inputs.query || inputs.username || inputs.keyword || inputs.videosUsername)) {
+      const free = String(inputs.query || inputs.username || inputs.videosUsername || inputs.keyword || '').trim();
+      const isAtHandle = free.startsWith('@');
+      const isHashtag = free.startsWith('#');
+      let isUrl = false;
+      try { new URL(free); isUrl = true; } catch { }
+
+      if (isAtHandle) {
+        const handle = free.replace(/^@/, '');
+        options.profile = true;
+        options.profileVideos = true;
+        inputs.username = handle;
+        inputs.videosUsername = handle;
+      } else if (isUrl) {
+        // If the URL looks like a video, route to video-specific endpoints
+        const u = free;
+        if (/\/video\/|\/v\//i.test(u) || /video/i.test(u)) {
+          options.transcript = true;
+          inputs.videoUrl = u;
+        } else {
+          // Treat as profile URL
+          const h = extractTkUsername(u);
+          if (h) {
+            options.profile = true;
+            options.profileVideos = true;
+            inputs.username = h;
+            inputs.videosUsername = h;
+          }
+        }
+      } else if (isHashtag) {
+        options.searchHashtag = true;
+        inputs.hashtag = free;
+      } else if (free) {
+        options.searchKeyword = true;
+        inputs.keyword = free;
+      }
+    }
     const tasks = [];
     const labels = [];
 
@@ -2572,7 +2793,7 @@ app.post('/api/tiktok/search', async (req, res) => {
 
     if (options.profile && handle) {
       labels.push('profile');
-      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle }));
+      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle, trim: true }));
     }
     if (options.following && handle) {
       labels.push('following');
@@ -2584,11 +2805,12 @@ app.post('/api/tiktok/search', async (req, res) => {
     }
 
     // ── Videos & Content ───────────────────────────────────────────────
-    // Profile videos come from the profile endpoint's itemList.
-    // Skip the duplicate call if we already fetched the same handle above.
+    // Profile videos: fetch via paginated search for the user's handle to
+    // ensure we collect multiple pages of videos (more reliable for lots of
+    // recent posts). Also still fetch profile metadata separately above.
     if (options.profileVideos && videosHandle && !(sameHandle && options.profile)) {
       labels.push('profileVideos');
-      tasks.push(scrapeCreators('/v1/tiktok/profile', { handle: videosHandle }));
+      tasks.push(scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: videosHandle, trim: true }, limit));
     }
 
     const videoUrl = inputs.videoUrl?.trim();
@@ -2638,6 +2860,41 @@ app.post('/api/tiktok/search', async (req, res) => {
       results.profileVideos = results.profile;
     }
 
+    // Normalize profile/profileVideos shapes: some ScrapeCreators responses
+    // return videos under different keys (search_item_list, item_list, aweme_list).
+    try {
+      const trimTo = limit || 10;
+
+      // Helper to extract array from several known keys
+      const extractVideoArray = (obj) => {
+        if (!obj) return null;
+        if (Array.isArray(obj.itemList)) return obj.itemList;
+        if (Array.isArray(obj.search_item_list)) return obj.search_item_list.map(r => r?.data || r);
+        if (Array.isArray(obj.item_list)) return obj.item_list;
+        if (Array.isArray(obj.aweme_list)) return obj.aweme_list;
+        if (Array.isArray(obj.posts)) return obj.posts;
+        return null;
+      };
+
+      // Normalize profile -> itemList
+      if (results.profile && !Array.isArray(results.profile.itemList)) {
+        const arr = extractVideoArray(results.profile) || [];
+        if (arr.length) results.profile.itemList = arr.slice(0, trimTo);
+      } else if (Array.isArray(results.profile?.itemList)) {
+        results.profile.itemList = results.profile.itemList.slice(0, trimTo);
+      }
+
+      // Normalize profileVideos -> itemList
+      if (results.profileVideos && !Array.isArray(results.profileVideos.itemList)) {
+        const arr = extractVideoArray(results.profileVideos) || [];
+        if (arr.length) results.profileVideos.itemList = arr.slice(0, trimTo);
+      } else if (Array.isArray(results.profileVideos?.itemList)) {
+        results.profileVideos.itemList = results.profileVideos.itemList.slice(0, trimTo);
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
     return res.json({ success: true, results, errors, credits_remaining });
   } catch (err) {
     console.error('TikTok search error:', err);
@@ -2685,7 +2942,27 @@ function extractSubreddit(input) {
 app.post('/api/reddit/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
+    // If caller provided a freeform single query and no options, treat
+    // plain words as a keyword search; subreddit-like inputs are handled
+    // by extractSubreddit below when options.subreddit* are present.
+    if ((!options || Object.keys(options).length === 0 || Object.values(options).every(v => !v)) && inputs.query) {
+      const detected = detectInputType(inputs.query);
+      if (detected.type === 'handle') {
+        // Treat as subreddit name
+        inputs.subreddit = detected.value.replace(/^r\//i, '');
+        options.subredditDetails = true;
+        options.subredditPosts = true;
+      } else if (detected.type === 'url') {
+        // Try to extract subreddit from URL
+        inputs.subreddit = extractSubreddit(detected.value);
+        options.subredditDetails = true;
+        options.subredditPosts = true;
+      } else {
+        options.search = true;
+        inputs.searchQuery = detected.value;
+      }
+    }
     const tasks = [];
     const labels = [];
 
@@ -2694,15 +2971,15 @@ app.post('/api/reddit/search', async (req, res) => {
 
     if (options.subredditDetails && subreddit) {
       labels.push('subredditDetails');
-      tasks.push(scrapeCreators('/v1/reddit/subreddit/details', { subreddit }));
+      tasks.push(scrapeCreators('/v1/reddit/subreddit/details', { subreddit, trim: true }));
     }
     if (options.subredditPosts && subreddit) {
       labels.push('subredditPosts');
-      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit }, limit));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit, trim: true }, limit));
     }
     if (options.subredditSearch && subreddit && inputs.subredditQuery?.trim()) {
       labels.push('subredditSearch');
-      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim() }, limit));
+      tasks.push(scrapeCreatorsPaginated('/v1/reddit/subreddit/search', { subreddit, query: inputs.subredditQuery.trim(), trim: true }, limit));
     }
 
     // ── Posts & Search ─────────────────────────────────────────────────
@@ -2947,7 +3224,7 @@ async function searchYouTube(query, maxResults = 10) {
 app.post('/api/youtube/search', async (req, res) => {
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
-    const limit = Math.min(100, Math.max(5, Number(rawLimit) || 10));
+    const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
     const tasks = [];
     const labels = [];
 
@@ -3014,7 +3291,7 @@ app.post('/api/youtube/search', async (req, res) => {
 // platform keys → numeric IDs without hardcoding them.
 app.get('/api/platforms', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('platforms').select('id, name');
+    const { data, error } = await retryTransient('GET /api/platforms', () => supabase.from('platforms').select('id, name'));
     if (error) throw error;
 
     const NAME_TO_KEY = {
@@ -3133,7 +3410,7 @@ app.get('/api/keywords', async (req, res) => {
 
   try {
     // 1. Fetch all saved posts with metrics + platform name
-    const { data: posts, error: postsError } = await supabase
+    const { data: posts, error: postsError } = await retryTransient('GET /api/keywords posts', () => supabase
       .from('posts')
       .select(`
         id,
@@ -3147,7 +3424,7 @@ app.get('/api/keywords', async (req, res) => {
       `)
       .eq('user_id', userId)
       .order('published_at', { ascending: true })
-      .limit(500);
+      .limit(500));
 
     if (postsError) throw postsError;
     if (!posts?.length) {
@@ -3530,7 +3807,10 @@ async function _executeWatchlistScrape(item) {
       const user = await getUserIdByUsername(username);
       switch (scrape_type) {
         case 'user_posts':
-          return fetchPostsByUserId(user.id, config.max_results || 10);
+          {
+            const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
+            return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
+          }
         case 'user_mentions':
           return fetchUserMentions(user.id, config.max_results || 10);
         case 'followers':
@@ -3573,14 +3853,14 @@ async function _executeWatchlistScrape(item) {
       switch (scrape_type) {
         case 'subreddit_posts': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreators('/v1/reddit/subreddit', { subreddit: sub, limit });
+          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, limit);
         }
         case 'subreddit_details': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub });
+          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub, trim: true });
         }
         case 'search':
-          return scrapeCreators('/v1/reddit/search', { query: target, limit });
+          return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
       }
@@ -3602,14 +3882,14 @@ async function _executeWatchlistScrape(item) {
 
     /* ── Instagram ───────────────────────────────────────── */
     case 'instagram': {
-      const username = target.replace(/^@/, '').trim();
+      const handle = target.replace(/^@/, '').trim();
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/instagram/profile', { username });
+          return scrapeCreators('/v1/instagram/profile', { handle, trim: true });
         case 'user_posts':
-          return scrapeCreators('/v1/instagram/user/posts', { username, limit: config.max_results });
+          return scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle, trim: true }, config.max_results || 12);
         case 'user_reels':
-          return scrapeCreators('/v1/instagram/user/reels', { username, limit: config.max_results });
+          return scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle, trim: true }, config.max_results || 12);
         default:
           throw new Error(`Unknown Instagram scrape_type: ${scrape_type}`);
       }
@@ -3617,15 +3897,15 @@ async function _executeWatchlistScrape(item) {
 
     /* ── TikTok ──────────────────────────────────────────── */
     case 'tiktok': {
-      const username = target.replace(/^@/, '').trim();
+      const handle = target.replace(/^@/, '').trim();
       const limit = config.max_results || 20;
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/tiktok/profile', { username });
+          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'profile_videos':
-          return scrapeCreators('/v1/tiktok/user/videos', { username, limit });
+          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'search':
-          return scrapeCreators('/v1/tiktok/search/keyword', { keyword: target, limit });
+          return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
       }
@@ -3635,6 +3915,266 @@ async function _executeWatchlistScrape(item) {
       throw new Error(`Unknown platform: ${platform}`);
   }
 }
+
+function normalizeLookupItems(source, raw) {
+  const items = [];
+
+  if (source === 'google') {
+    for (const r of raw?.results || []) {
+      items.push({
+        source,
+        id: r.url,
+        title: r.title || r.url,
+        text: r.description || '',
+        url: r.url,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'reddit') {
+    const subreddit = raw?.data || raw;
+    if (!raw?.posts && (subreddit?.display_name || subreddit?.name)) {
+      items.push({
+        source,
+        id: subreddit.id || subreddit.name || subreddit.display_name,
+        title: `r/${subreddit.display_name || subreddit.name}`,
+        text: subreddit.public_description || subreddit.description || '',
+        url: `https://reddit.com/r/${subreddit.display_name || subreddit.name}`,
+      });
+      return items;
+    }
+
+    for (const p of raw?.posts || []) {
+      items.push({
+        source,
+        id: p.id || p.name,
+        title: p.title || 'Reddit post',
+        text: p.selftext || '',
+        url: p.permalink ? `https://reddit.com${p.permalink}` : p.url,
+        author: p.author,
+        metrics: {
+          score: p.score ?? p.ups ?? 0,
+          comments: p.num_comments ?? 0,
+        },
+      });
+    }
+    return items;
+  }
+
+  if (source === 'youtube') {
+    const all = [
+      ...(raw?.videos || []),
+      ...(raw?.shorts || []),
+      ...(raw?.channels || []),
+      ...(raw?.playlists || []),
+    ];
+    for (const v of all) {
+      items.push({
+        source,
+        id: v.id || v.url,
+        title: v.title || v.name || 'YouTube result',
+        text: v.description || '',
+        url: v.url || (v.id ? `https://www.youtube.com/watch?v=${v.id}` : null),
+        author: v.channel?.title || v.channelTitle || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'tiktok') {
+    const profile = raw?.data || raw;
+    if (!raw?.search_item_list && (profile?.uniqueId || profile?.username || profile?.nickname)) {
+      const handle = profile.uniqueId || profile.username;
+      items.push({
+        source,
+        id: profile.id || handle || profile.nickname,
+        title: profile.nickname || handle || 'TikTok profile',
+        text: profile.signature || profile.bio || '',
+        url: handle ? `https://www.tiktok.com/@${handle}` : null,
+        author: handle || null,
+      });
+      return items;
+    }
+
+    for (const row of raw?.search_item_list || []) {
+      const v = row?.data || row;
+      items.push({
+        source,
+        id: v.aweme_id || v.id,
+        title: (v.desc || 'TikTok video').slice(0, 120),
+        text: v.desc || '',
+        url: v.url || (v.aweme_id ? `https://www.tiktok.com/@${v.author?.uniqueId || 'user'}/video/${v.aweme_id}` : null),
+        author: v.author?.uniqueId || v.author?.nickname || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'instagram') {
+    const d = raw?.data || raw;
+    if (!raw?.reels && (d?.username || d?.full_name || d?.fullName)) {
+      items.push({
+        source,
+        id: d.id || d.username,
+        title: d.full_name || d.fullName || d.username || 'Instagram profile',
+        text: d.biography || d.bio || '',
+        url: d.username ? `https://www.instagram.com/${d.username}/` : null,
+        author: d.username || null,
+      });
+      return items;
+    }
+
+    for (const r of raw?.reels || []) {
+      items.push({
+        source,
+        id: r.id || r.shortcode || r.url,
+        title: r.caption ? r.caption.slice(0, 120) : 'Instagram reel',
+        text: r.caption || '',
+        url: r.url || (r.shortcode ? `https://www.instagram.com/reel/${r.shortcode}/` : null),
+        author: r.owner?.username || null,
+      });
+    }
+    return items;
+  }
+
+  if (source === 'linkedin') {
+    items.push({
+      source,
+      id: raw?.url || raw?.name || 'linkedin',
+      title: raw?.name || raw?.headline || 'LinkedIn',
+      text: raw?.about || raw?.description || '',
+      url: raw?.url || null,
+    });
+    return items;
+  }
+
+  return items;
+}
+
+app.post('/api/lookup/search', async (req, res) => {
+  try {
+    const query = String(req.body?.query || '').trim();
+    const limit = Math.min(150, Math.max(10, Number(req.body?.limit) || 60));
+    const maxCredits = Math.min(6, Math.max(1, Number(req.body?.maxCredits) || 1));
+
+    if (!query) {
+      return res.status(400).json({ error: 'query is required' });
+    }
+
+    const isUrl = /^https?:\/\//i.test(query);
+    const accountMatch = query.match(/^@([A-Za-z0-9._]{2,})(?:\s+(instagram|tiktok|reddit))?$/i);
+    const isAccountHandle = Boolean(accountMatch);
+    const queue = [];
+    let intent = isUrl ? 'url' : isAccountHandle ? 'account' : 'phrase';
+    let routeUsed = null;
+
+    if (isUrl) {
+      if (/linkedin\.com\//i.test(query)) {
+        const endpoint = /\/company\//i.test(query)
+          ? '/v1/linkedin/company'
+          : (/\/pulse\//i.test(query) || /\/posts\//i.test(query))
+            ? '/v1/linkedin/post'
+            : '/v1/linkedin/profile';
+
+        queue.push({ source: 'linkedin', run: () => scrapeCreators(endpoint, { url: query }) });
+        routeUsed = endpoint;
+      } else if (/instagram\.com\//i.test(query)) {
+        const isPostUrl = /\/p\/|\/reel\//i.test(query);
+        if (isPostUrl) {
+          queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/post', { url: query, trim: true }) });
+          routeUsed = '/v1/instagram/post';
+        } else {
+          const handle = query.split('/').filter(Boolean).pop()?.replace(/^@/, '') || '';
+          queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/profile', { handle, trim: true }) });
+          routeUsed = '/v1/instagram/profile';
+        }
+      } else if (/tiktok\.com\//i.test(query)) {
+        const handle = query.match(/@([^/]+)/)?.[1];
+        if (handle) {
+          queue.push({ source: 'tiktok', run: () => scrapeCreators('/v1/tiktok/profile', { handle, trim: true }) });
+          routeUsed = '/v1/tiktok/profile';
+        } else {
+          queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+          routeUsed = '/v1/google/search';
+        }
+      } else if (/reddit\.com\//i.test(query)) {
+        const subMatch = query.match(/\/r\/([^/]+)/i);
+        if (subMatch?.[1]) {
+          queue.push({ source: 'reddit', run: () => scrapeCreators('/v1/reddit/subreddit/details', { subreddit: subMatch[1], trim: true }) });
+          routeUsed = '/v1/reddit/subreddit/details';
+        } else {
+          queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+          routeUsed = '/v1/google/search';
+        }
+      } else if (/youtube\.com\/|youtu\.be\//i.test(query)) {
+        queue.push({ source: 'youtube', run: () => searchYouTube(query, Math.min(15, limit)) });
+        routeUsed = 'youtube-api-search';
+      } else {
+        queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+        routeUsed = '/v1/google/search';
+      }
+    } else if (isAccountHandle) {
+      const handle = accountMatch[1];
+      const hint = (accountMatch[2] || 'instagram').toLowerCase();
+
+      if (hint === 'tiktok') {
+        queue.push({ source: 'tiktok', run: () => scrapeCreators('/v1/tiktok/profile', { handle, trim: true }) });
+        routeUsed = '/v1/tiktok/profile';
+      } else if (hint === 'reddit') {
+        queue.push({ source: 'reddit', run: () => scrapeCreators('/v1/reddit/subreddit/details', { subreddit: handle, trim: true }) });
+        routeUsed = '/v1/reddit/subreddit/details';
+      } else {
+        queue.push({ source: 'instagram', run: () => scrapeCreators('/v1/instagram/profile', { handle, trim: true }) });
+        routeUsed = '/v1/instagram/profile';
+      }
+    } else {
+      // Phrase / keyword mode: single Google-style endpoint for low credit usage.
+      queue.push({ source: 'google', run: () => scrapeCreators('/v1/google/search', { query }) });
+      routeUsed = '/v1/google/search';
+    }
+
+    const results = [];
+    const bySource = {};
+    const errors = [];
+    let calls = 0;
+    let credits_remaining = null;
+
+    for (const task of queue) {
+      if (calls >= maxCredits) break;
+      try {
+        const raw = await task.run();
+        calls += 1;
+        if (raw?.credits_remaining != null) credits_remaining = raw.credits_remaining;
+
+        const normalized = normalizeLookupItems(task.source, raw);
+        bySource[task.source] = normalized;
+        results.push(...normalized);
+
+        if (results.length >= limit) break;
+      } catch (err) {
+        errors.push({ source: task.source, error: err?.message || String(err) });
+      }
+    }
+
+    return res.json({
+      success: true,
+      query,
+      intent,
+      routeUsed,
+      maxCredits,
+      callsUsed: calls,
+      total: Math.min(results.length, limit),
+      results: results.slice(0, limit),
+      bySource,
+      errors,
+      credits_remaining,
+    });
+  } catch (err) {
+    console.error('Lookup search error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 /* ═══════════════════════════════════════════════════════════════════════
    Cron endpoint — runs ALL users' enabled watchlist items.
