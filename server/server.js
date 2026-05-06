@@ -81,8 +81,20 @@ async function ensureRedditPlatform() {
 
 const app = express();
 
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://chibitek-competitive-pla-2b01e.web.app',
+  ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean) : []),
+];
+
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin not allowed: ${origin}`));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
 }));
