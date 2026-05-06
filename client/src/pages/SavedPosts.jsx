@@ -585,7 +585,6 @@ function YouTubePostCard({ post, onDelete }) {
         <Divider my={0} />
 
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#606060" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#606060" />} value={post.comments} />
         </Group>
@@ -800,7 +799,6 @@ function TikTokPostCard({ post, onDelete }) {
 
         <Divider my={0} />
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#161823" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#fe2c55" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#25f4ee" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#161823" />} value={post.comments} />
@@ -1079,7 +1077,7 @@ export default function SavedPosts() {
 
       <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
         {t("savedPosts.metricsMayBeUnavailable", {
-          defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+          defaultValue: "Some metrics (e.g. likes) may appear as 0 because they are private.",
         })}
       </Alert>
 

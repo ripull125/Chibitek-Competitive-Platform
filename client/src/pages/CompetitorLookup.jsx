@@ -1967,40 +1967,16 @@ async function handleLoadMoreX() {
     setTiktokError(null);
     setTiktokResult(null);
     if (!q) {
-      setTiktokError("Please enter a TikTok @username, video URL, hashtag, or keyword.");
+      setTiktokError("Please enter a TikTok @username, profile/video URL, hashtag, or keyword.");
       return;
     }
 
-    const isVideoUrl = /tiktok\.com\/.+\/video\//i.test(q);
-    const isHandleWithAt = /^@[A-Za-z0-9._]{2,30}$/.test(q);
-    const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+\/?$/i.test(q);
-    const isHashtag = q.trim().startsWith("#");
-    const handle = isProfileUrl
-      ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "")
-      : (isHandleWithAt ? cleanHandle(q) : "");
-    const videoAuthor = isVideoUrl ? (q.match(/tiktok\.com\/@([A-Za-z0-9._]+)\//)?.[1] || null) : null;
-
     setTiktokLoading(true);
     try {
-      const payload = isVideoUrl
-        ? videoAuthor
-          ? {
-            options: { profile: true, transcript: true },
-            inputs: { username: videoAuthor, videoUrl: q },
-            limit: scrapePostCount,
-          }
-          : { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
-        : (isHandleWithAt || isProfileUrl)
-          ? {
-            options: { profile: true, profileVideos: true },
-            inputs: { username: handle, videosUsername: handle },
-            limit: scrapePostCount,
-          }
-          : isHashtag
-            ? { options: { searchHashtag: true }, inputs: { hashtag: q }, limit: scrapePostCount }
-            : { options: { searchKeyword: true }, inputs: { keyword: q }, limit: scrapePostCount };
-
-      const json = await tryPostJson("/api/tiktok/search", payload);
+      const json = await tryPostJson("/api/tiktok/search", {
+        q,
+        limit: 10,
+      });
       setTiktokResult(json);
       if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
@@ -2378,17 +2354,17 @@ async function handleLoadMoreX() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: platformIds.tiktok, // TikTok
-          platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.uid || "unknown"),
-          username: data.author?.uniqueId || data.author?.nickname || data.author?.unique_id || "",
+          platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.unique_id || data.author?.uid || "unknown"),
+          username: data.author?.uniqueId || data.author?.unique_id || data.author?.nickname || "",
           author_name: data.author?.nickname || data.author?.uniqueId || "",
           author_handle: data.author?.uniqueId || data.author?.unique_id || "",
-          platform_post_id: String(data.id || data.aweme_id || data.video?.id || Date.now()),
+          platform_post_id: String(data.aweme_id || data.awemeId || data.id_str || data.id || data.video_id || data.video?.id || Date.now()),
           content: data.desc || data.title || "",
           published_at: (() => { if (!data.createTime) return null; const d = new Date(typeof data.createTime === 'number' ? data.createTime * 1000 : data.createTime); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
           likes: Math.max(0, data.stats?.diggCount ?? data.statsV2?.diggCount ?? data.statistics?.digg_count ?? data.statistics?.diggCount ?? data.diggCount ?? data.digg_count ?? 0),
           shares: Math.max(0, data.stats?.shareCount ?? data.statsV2?.shareCount ?? data.statistics?.share_count ?? data.statistics?.shareCount ?? data.shareCount ?? data.share_count ?? 0),
           comments: Math.max(0, data.stats?.commentCount ?? data.statsV2?.commentCount ?? data.statistics?.comment_count ?? data.statistics?.commentCount ?? data.commentCount ?? data.comment_count ?? 0),
-          views: Math.max(0, data.stats?.playCount ?? data.statsV2?.playCount ?? data.statistics?.play_count ?? data.statistics?.playCount ?? data.playCount ?? data.play_count ?? 0),
+          views: 0,
           user_id: currentUserId,
         }),
       });
@@ -3790,17 +3766,96 @@ async function handleLoadMoreX() {
     );
   }
 
+  function looksLikeTikTokVideo(video) {
+    if (!video || typeof video !== "object" || Array.isArray(video)) return false;
+    return Boolean(
+      video.aweme_id ||
+      video.awemeId ||
+      video.id_str ||
+      video.item_id ||
+      video.desc ||
+      video.description ||
+      video.statistics ||
+      video.stats ||
+      video.statsV2 ||
+      video.author ||
+      video.author_info ||
+      video.share_url ||
+      video.create_time ||
+      video.createTime ||
+      video.create_time_utc
+    );
+  }
+
+  function unwrapTikTokVideo(video) {
+    if (!video || typeof video !== "object") return video || null;
+    if (looksLikeTikTokVideo(video)) return video;
+    const wrapped = video.aweme_info || video.awemeInfo || video.aweme_detail || video.awemeDetail || video.aweme || video.item || video.post || video.result || video.data;
+    return wrapped && wrapped !== video ? unwrapTikTokVideo(wrapped) : video;
+  }
+
+  function getFirstUrl(value) {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.find(Boolean) || null;
+    if (Array.isArray(value.url_list)) return value.url_list.find(Boolean) || null;
+    return value.url || value.uri || null;
+  }
+
+  function getTikTokAuthor(video) {
+    const v = unwrapTikTokVideo(video) || {};
+    const candidate = v.author_info || v.author || v.user || v.userInfo?.user || v.user_info || {};
+    const a = typeof candidate === "string" ? { uniqueId: candidate, unique_id: candidate, nickname: candidate } : (candidate || {});
+    const unique = a.uniqueId || a.unique_id || a.username || a.handle || v.author_unique_id || v.authorHandle || v.author_username || v.owner_handle || null;
+    return {
+      ...a,
+      id: a.id || a.uid || a.secUid || a.sec_uid || v.author_user_id || v.author_id || v.authorId || null,
+      uniqueId: unique,
+      unique_id: unique,
+      nickname: a.nickname || a.nick_name || a.name || a.displayName || v.author_name || unique || null,
+      avatarThumb: a.avatarThumb || getFirstUrl(a.avatar_thumb) || a.avatarMedium || getFirstUrl(a.avatar_medium) || getFirstUrl(a.avatar_168x168) || getFirstUrl(a.avatar) || null,
+    };
+  }
+
+  function getTikTokCount(stats, ...keys) {
+    for (const key of keys) {
+      const raw = stats?.[key];
+      if (raw == null || raw === "") continue;
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      const text = String(raw).trim().replace(/,/g, "");
+      const match = text.match(/^([0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+      if (match) {
+        const base = Number(match[1]);
+        const suffix = String(match[2] || "").toLowerCase();
+        const multiplier = suffix === "k" ? 1000 : suffix === "m" ? 1000000 : suffix === "b" ? 1000000000 : 1;
+        return Math.round(base * multiplier);
+      }
+      const n = Number(text);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  }
+
+  function formatTikTokDate(value) {
+    if (!value) return "";
+    const n = Number(value);
+    const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(value);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : "";
+  }
+
   function TkVideoCard({ video, onSave, compact }) {
     if (!video) return null;
-    const desc = video.desc || video.title || "";
-    const stats = video.stats || video.statsV2 || video.statistics || {};
-    const author = video.author || {};
-    const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
+    const v = unwrapTikTokVideo(video) || {};
+    const desc = v.desc || v.description || v.video_description || v.title || "";
+    const stats = v.stats || v.statsV2 || v.statistics || v.stats_v2 || {};
+    const author = getTikTokAuthor(v);
+    const created = formatTikTokDate(v.createTime ?? v.create_time ?? v.created_at ?? v.publishTime ?? v.create_time_utc);
     const authorHandle = author.uniqueId || author.unique_id || author.nickname;
-    const videoId = video.aweme_id || video.id;
-    const postUrl = video.share_url || video.url || (videoId ? `https://www.tiktok.com/@${authorHandle || 'user'}/video/${videoId}` : null);
-    const likeCount = stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count;
-    const commentCount = stats.commentCount ?? stats.comment_count;
+    const videoId = v.aweme_id || v.awemeId || v.id_str || v.id || v.video_id || v.item_id;
+    const postUrl = v.share_url || v.url || v.webVideoUrl || v.share_info?.share_url || (videoId ? `https://www.tiktok.com/@${authorHandle || 'user'}/video/${videoId}` : null);
+    const likeCount = getTikTokCount(stats, "diggCount", "digg_count", "likeCount", "like_count") ?? getTikTokCount(v, "diggCount", "digg_count", "likeCount", "like_count");
+    const commentCount = getTikTokCount(stats, "commentCount", "comment_count") ?? getTikTokCount(v, "commentCount", "comment_count");
+    const shareCount = getTikTokCount(stats, "shareCount", "share_count", "forward_count") ?? getTikTokCount(v, "shareCount", "share_count", "forward_count");
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
@@ -3812,10 +3867,9 @@ async function handleLoadMoreX() {
           </Text>
           <Group gap="xs">
             {[
-              { label: "▶", val: stats.playCount ?? stats.play_count },
-              { label: "❤️", val: stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count },
-              { label: "💬", val: stats.commentCount ?? stats.comment_count },
-              { label: "🔗", val: stats.shareCount ?? stats.share_count },
+              { label: "❤️", val: likeCount },
+              { label: "💬", val: commentCount },
+              { label: "🔗", val: shareCount },
             ].filter(x => x.val != null).map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
             ))}
@@ -3828,7 +3882,7 @@ async function handleLoadMoreX() {
                   View Post
                 </Button>
               )}
-              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", video)} />
+              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", { ...v, author, stats: { ...stats, diggCount: likeCount ?? 0, commentCount: commentCount ?? 0, shareCount: shareCount ?? 0 }, url: postUrl, share_url: postUrl })} />
             </Group>
           )}
         </Stack>
@@ -3877,6 +3931,8 @@ async function handleLoadMoreX() {
     const followersList = results.followers?.followers || [];
     // Transcript
     const transcript = results.transcript?.transcript;
+    // Single video/post result
+    const singleVideo = results.video || results.post || null;
     // Search results
     const searchUsersList = results.searchUsers?.user_list || [];
     const searchHashtagList = results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || [];
@@ -3888,6 +3944,7 @@ async function handleLoadMoreX() {
       followingList.length +
       followersList.length +
       (transcript ? 1 : 0) +
+      (singleVideo ? 1 : 0) +
       searchUsersList.length +
       searchHashtagList.length +
       searchKeywordList.length;
@@ -3960,6 +4017,16 @@ async function handleLoadMoreX() {
           </>
         )}
 
+        {singleVideo && (
+          <>
+            <Group justify="space-between" align="center">
+              <Divider label="TikTok Post" labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={[singleVideo]} onSave={onSave} type="post" />
+            </Group>
+            <TkVideoCard video={singleVideo} onSave={onSave} compact />
+          </>
+        )}
+
         {searchUsersList.length > 0 && (
           <>
             <Divider label={t("competitorLookup.searchUsersCount", { count: searchUsersList.length })} labelPosition="center" />
@@ -3983,11 +4050,11 @@ async function handleLoadMoreX() {
           <>
             <Group justify="space-between" align="center">
               <Divider label={t("competitorLookup.keywordSearchCount", { count: searchKeywordList.length })} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={searchKeywordList.map(item => item.aweme_info || item)} onSave={onSave} type="post" />
+              <SaveAllButton items={searchKeywordList.map(item => unwrapTikTokVideo(item))} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
               {searchKeywordList.map((item, i) => {
-                const v = item.aweme_info || item;
+                const v = unwrapTikTokVideo(item);
                 return <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />;
               })}
             </Stack>

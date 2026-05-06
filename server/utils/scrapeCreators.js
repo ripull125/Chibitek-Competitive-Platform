@@ -86,19 +86,38 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
   const isMock = (keys.length === 1 && keys[0] === 'dummy') || process.env.SCRAPE_CREATORS_MOCK === '1';
   if (isMock) {
     // Minimal fake responses tailored to the most-common paths used by tests.
-    if (path.startsWith('/v1/tiktok/profile')) {
+    if (path.startsWith('/v1/tiktok/profile') || path.startsWith('/v3/tiktok/profile/videos')) {
       const handle = params.handle || 'demo';
       const videos = Array.from({ length: 12 }).map((_, i) => ({
         aweme_id: `1000${i}`,
         desc: `Demo video ${i} by ${handle}`,
-        author: { uniqueId: handle, nickname: handle },
+        create_time: Math.floor(Date.now() / 1000) - i * 3600,
+        author: { uniqueId: handle, unique_id: handle, nickname: handle },
+        statistics: { digg_count: i + 10, comment_count: i + 2, share_count: i + 1, play_count: 1000 + i },
         url: `https://www.tiktok.com/@${handle}/video/1000${i}`,
       }));
+      if (path.startsWith('/v3/tiktok/profile/videos')) return { aweme_list: videos, has_more: false, max_cursor: null };
       return { uniqueId: handle, nickname: handle, itemList: videos };
+    }
+    if (path === '/v2/tiktok/video') {
+      const url = params.url || 'https://www.tiktok.com/@demo/video/10000';
+      const handle = (url.match(/@([^/]+)/) || [])[1] || 'demo';
+      const id = (url.match(/video\/(\d+)/) || [])[1] || '10000';
+      return {
+        aweme_detail: {
+          aweme_id: id,
+          desc: `Demo video ${id} by ${handle}`,
+          create_time: Math.floor(Date.now() / 1000),
+          author: { unique_id: handle, nickname: handle },
+          statistics: { digg_count: 99, comment_count: 12, share_count: 5, play_count: 1000 },
+          url,
+        },
+      };
     }
     if (path === '/v1/tiktok/search/keyword' || path === '/v1/tiktok/search/hashtag') {
       const q = params.query || params.hashtag || 'demo';
-      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q } } }));
+      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q }, statistics: { digg_count: i + 3, comment_count: i, share_count: i + 1, play_count: 100 + i } } }));
+      if (path === '/v1/tiktok/search/hashtag') return { challenge_aweme_list: hits.map(h => h.data), cursor: null };
       return { search_item_list: hits, cursor: null };
     }
     if (path === '/v1/reddit/subreddit/details') {
@@ -342,6 +361,16 @@ const PAGINATION_CONFIG = {
   },
 
   // TikTok
+  '/v3/tiktok/profile/videos': {
+    resultsKey: 'aweme_list',
+    cursorParam: 'max_cursor',
+    getCursor: (resp) => resp.max_cursor,
+    hasMore: (resp) =>
+      resp.has_more === true &&
+      resp.max_cursor != null &&
+      Array.isArray(resp.aweme_list) &&
+      resp.aweme_list.length > 0,
+  },
   '/v1/tiktok/search/keyword': {
     resultsKey: 'search_item_list',
     cursorParam: 'cursor',
