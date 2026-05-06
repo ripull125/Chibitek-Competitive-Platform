@@ -1991,29 +1991,16 @@ async function handleLoadMoreX() {
     setRedditError(null);
     setRedditResult(null);
     if (!q) {
-      setRedditError("Please enter a Reddit @user, r/subreddit, URL, or keyword.");
+      setRedditError("Please enter a Reddit @user, u/user, r/subreddit, URL, or keyword.");
       return;
     }
 
-    const isUserHandle = /^@[A-Za-z0-9_-]{2,}$/.test(q);
-    const postUrl = /reddit\.com\/r\/.+\/comments\//i.test(q);
-    const subMatch = !isUserHandle && (q.match(/^r\/([A-Za-z0-9_]+)/i) || q.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/i));
-
     setRedditLoading(true);
     try {
-      const payload = isUserHandle
-        ? { options: { search: true }, inputs: { searchQuery: `author:${q.slice(1)}` }, limit: scrapePostCount }
-        : postUrl
-          ? { options: { postComments: true }, inputs: { postUrl: q }, limit: scrapePostCount }
-          : subMatch?.[1]
-            ? {
-              options: { subredditDetails: true, subredditPosts: true },
-              inputs: { subreddit: subMatch[1] },
-              limit: scrapePostCount,
-            }
-            : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
-
-      const json = await tryPostJson("/api/reddit/search", payload);
+      const json = await tryPostJson("/api/reddit/search", {
+        q,
+        limit: scrapePostCount,
+      });
       setRedditResult(json);
       if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
@@ -2425,8 +2412,14 @@ async function handleLoadMoreX() {
           platform_user_id: String(data.author || data.author_fullname || "unknown"),
           username: data.author || "",
           platform_post_id: String(data.id || data.name || Date.now()),
-          content: data.title || data.selftext || "",
-          published_at: (() => { if (!data.created_utc) return null; const d = new Date(typeof data.created_utc === 'number' ? data.created_utc * 1000 : data.created_utc); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
+          content: [data.title, data.selftext || data.body || data.description || data.caption].filter(Boolean).join("\n\n"),
+          published_at: (() => {
+            if (!data.created_utc && !data.created_at && !data.created) return null;
+            const raw = data.created_utc ?? data.created_at ?? data.created;
+            const n = Number(raw);
+            const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(raw);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+          })(),
           likes: Math.max(0, data.score ?? data.ups ?? data.upvote_count ?? 0),
           shares: 0,
           comments: Math.max(0, data.num_comments ?? data.comment_count ?? 0),
@@ -4120,18 +4113,193 @@ async function handleLoadMoreX() {
     );
   }
 
+  function RedditUserCard({ profile }) {
+    if (!profile) return null;
+    const username = profile.username || profile.name || profile.display_name || "unknown";
+    const created = profile.created_utc ? new Date(Number(profile.created_utc) * 1000).toLocaleDateString() : "";
+    const profileUrl = profile.url || `https://www.reddit.com/user/${username}/`;
+    const avatar = profile.icon_img || profile.avatar || profile.profile_img;
+
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <Avatar src={avatar} radius="xl" color="orange">
+                <IconBrandReddit size={18} />
+              </Avatar>
+              <div style={{ minWidth: 0 }}>
+                <Title order={4} lineClamp={1}>u/{username}</Title>
+                <Text size="xs" c="dimmed" lineClamp={1}>{profileUrl}</Text>
+              </div>
+            </Group>
+            <Button size="xs" variant="subtle" component="a" href={profileUrl} target="_blank" rel="noopener noreferrer">
+              View Profile
+            </Button>
+          </Group>
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Total Karma", raw: profile.total_karma },
+              { label: "Post Karma", raw: profile.link_karma },
+              { label: "Comment Karma", raw: profile.comment_karma },
+              { label: "Awardee Karma", raw: profile.awardee_karma },
+            ].filter(x => x.raw != null).map(({ label, raw }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{fmtNum(raw)}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          <Group gap="xs">
+            {created && <Badge variant="light" size="xs">Created {created}</Badge>}
+            {profile.is_gold === true && <Badge variant="outline" size="xs">Reddit Premium</Badge>}
+            {profile.is_mod === true && <Badge variant="outline" size="xs">Moderator</Badge>}
+            {profile.verified === true && <Badge variant="outline" size="xs">Verified</Badge>}
+          </Group>
+        </Stack>
+      </Card>
+    );
+  }
+
+  function redditCleanMediaUrl(value) {
+    const text = String(value || "")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .trim();
+    if (!/^https?:\/\//i.test(text)) return "";
+    if (/^(self|default|nsfw|spoiler|image|video)$/i.test(text)) return "";
+    return text;
+  }
+
+  function redditLooksLikeImage(value) {
+    return /\.(png|jpe?g|gif|webp)(?:[?#].*)?$/i.test(String(value || ""));
+  }
+
+  function redditLooksLikeVideo(value) {
+    return /\.(mp4|m3u8|mov|webm)(?:[?#].*)?$/i.test(String(value || ""));
+  }
+
+  function redditPostDate(post = {}) {
+    const raw = post.created_utc ?? post.createdUtc ?? post.created_at ?? post.createdAt ?? post.created;
+    if (!raw) return "";
+    const numeric = Number(raw);
+    const date = Number.isFinite(numeric)
+      ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+      : new Date(raw);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString() : "";
+  }
+
+  function addRedditMediaItem(items, item = {}) {
+    const url = redditCleanMediaUrl(item.url || item.src || item.source);
+    const thumbnail = redditCleanMediaUrl(item.thumbnail || item.preview || item.poster || item.thumbnail_url || url);
+    if (!url && !thumbnail) return;
+    const type = item.type || (redditLooksLikeVideo(url) ? "video" : "image");
+    const next = { type, url: url || thumbnail, thumbnail: thumbnail || url };
+    const key = `${next.type}:${next.url}`;
+    if (!items.some((existing) => `${existing.type}:${existing.url}` === key)) items.push(next);
+  }
+
+  function getRedditMediaItems(post = {}) {
+    const items = [];
+    const arrays = [post.media, post.media_preview, post.images, post.gallery, post.mediaItems].filter(Array.isArray);
+    arrays.forEach((arr) => arr.forEach((item) => addRedditMediaItem(items, item)));
+
+    const previewImages = post.preview?.images;
+    if (Array.isArray(previewImages)) {
+      previewImages.forEach((image) => {
+        const source = image?.source || {};
+        const resolutions = Array.isArray(image?.resolutions) ? image.resolutions : [];
+        const best = resolutions[resolutions.length - 1] || source;
+        addRedditMediaItem(items, {
+          type: "image",
+          url: source.url || best.url,
+          thumbnail: best.url || source.url,
+        });
+      });
+    }
+
+    const directUrl = redditCleanMediaUrl(post.media_url || post.url_overridden_by_dest || post.external_url || "");
+    if (directUrl && (redditLooksLikeImage(directUrl) || redditLooksLikeVideo(directUrl))) {
+      addRedditMediaItem(items, { type: redditLooksLikeVideo(directUrl) ? "video" : "image", url: directUrl, thumbnail: post.thumbnail });
+    }
+
+    if (post.thumbnail) addRedditMediaItem(items, { type: "image", url: post.thumbnail, thumbnail: post.thumbnail });
+
+    return items.slice(0, 4);
+  }
+
+  function RedditMediaPreview({ post, compact }) {
+    const items = getRedditMediaItems(post);
+    if (!items.length) return null;
+
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: items.length === 1 ? "minmax(120px, 220px)" : "repeat(auto-fit, minmax(110px, 160px))",
+          gap: 8,
+          maxWidth: items.length === 1 ? 240 : 700,
+          marginTop: 6,
+        }}
+      >
+        {items.map((item, index) => {
+          const src = item.thumbnail || item.url;
+          const isVideo = item.type === "video" || redditLooksLikeVideo(item.url);
+          return (
+            <a
+              key={`${item.url || src}-${index}`}
+              href={item.url || src}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                position: "relative",
+                display: "block",
+                borderRadius: 10,
+                overflow: "hidden",
+                border: "1px solid var(--mantine-color-gray-3)",
+                background: "var(--mantine-color-gray-0)",
+                height: compact ? 96 : 130,
+              }}
+            >
+              {isVideo && redditLooksLikeVideo(src) ? (
+                <Group justify="center" align="center" style={{ width: "100%", height: "100%" }}>
+                  <Badge size="sm" variant="light">Video</Badge>
+                </Group>
+              ) : (
+                <img
+                  src={src}
+                  alt="Reddit media preview"
+                  loading="lazy"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              )}
+              {isVideo && (
+                <Badge size="xs" variant="filled" style={{ position: "absolute", left: 6, bottom: 6 }}>
+                  Video
+                </Badge>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    );
+  }
+
   function RedditPostCard({ post, onSave, compact }) {
     if (!post) return null;
     const title = post.title || "";
-    const body = post.selftext || post.body || "";
-    const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
-    const postUrl = post.permalink ? `https://reddit.com${post.permalink}` : post.url;
+    const body = post.selftext || post.body || post.description || post.caption || post.text || "";
+    const created = redditPostDate(post);
+    const postUrl = post.reddit_url || (post.permalink ? `https://reddit.com${post.permalink}` : post.url);
+    const flair = post.link_flair_text || post.flair || post.post_flair;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+        <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
           <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>{t("competitorLookup.noTitle")}</i>}</Text>
-          {body && <ExpandableText text={body} size="xs" dimmed collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />}
           <Text size="xs" c="dimmed">
             {post.author ? `Posted by u/${post.author}` : ""}
             {post.subreddit ? ` · r/${post.subreddit}` : ""}
@@ -4145,8 +4313,10 @@ async function handleLoadMoreX() {
             ].filter(x => x.val != null && x.val > 0).map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
             ))}
-            {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+            {flair && <Badge variant="outline" size="xs">{flair}</Badge>}
           </Group>
+          <RedditMediaPreview post={post} compact={compact} />
+          {body && <ExpandableText text={body} size="xs" dimmed collapsedLines={compact ? 3 : 5} threshold={compact ? 140 : 260} />}
           {onSave && (
             <Group justify="flex-end">
               {postUrl && (
@@ -4221,7 +4391,10 @@ async function handleLoadMoreX() {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
+    const profileData = results.profile || results.userProfile;
     const detailsData = results.subredditDetails;
+    const singlePost = results.post || results.postDetails || results.postComments?.post;
+    const userPostsArr = results.userPosts?.posts || results.userPosts?.items || [];
     const subredditPostsArr = results.subredditPosts?.posts || [];
     const subredditSearchArr = results.subredditSearch?.posts || [];
     const commentsArr = results.postComments?.comments || [];
@@ -4230,7 +4403,10 @@ async function handleLoadMoreX() {
     const adDetail = results.getAd?.data || results.getAd;
 
     const count =
+      (profileData ? 1 : 0) +
       (detailsData ? 1 : 0) +
+      (singlePost ? 1 : 0) +
+      userPostsArr.length +
       subredditPostsArr.length +
       subredditSearchArr.length +
       commentsArr.length +
@@ -4253,10 +4429,36 @@ async function handleLoadMoreX() {
           </Alert>
         )}
 
+        {profileData && (
+          <>
+            <Divider label="User Profile" labelPosition="center" />
+            <RedditUserCard profile={profileData} />
+          </>
+        )}
+
         {detailsData && (
           <>
             <Divider label={t("competitorLookup.subredditDetails")} labelPosition="center" />
             <RedditSubredditCard details={detailsData} />
+          </>
+        )}
+
+        {singlePost && (
+          <>
+            <Divider label="Post Metrics" labelPosition="center" />
+            <RedditPostCard post={singlePost} onSave={onSave} compact />
+          </>
+        )}
+
+        {userPostsArr.length > 0 && (
+          <>
+            <Group justify="space-between" align="center">
+              <Divider label={`User Posts (${userPostsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={userPostsArr} onSave={onSave} type="post" />
+            </Group>
+            <Stack gap="xs">
+              {userPostsArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
           </>
         )}
 
@@ -4486,11 +4688,11 @@ async function handleLoadMoreX() {
             {connectedPlatforms.reddit && (
               <Tabs.Panel value="reddit" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username to find a user's posts, r/subreddit for communities, paste a Reddit URL, or enter keywords.</Text>
+                  <Text size="sm" c="dimmed">Use u/username or @username for a user, r/subreddit for one community, keywords for posts across Reddit, or paste a Reddit post URL to show the post plus comments.</Text>
                   <Group align="end">
                     <TextInput
                       label="Reddit Search"
-                      placeholder="@username, r/startups, reddit URL, or keyword"
+                      placeholder="u/spez, r/startups, Reddit post URL, or keyword"
                       value={simpleQueries.reddit}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, reddit: e.target.value }))}
                       style={{ flex: 1 }}

@@ -2,6 +2,7 @@ import xRoutes from "./routes/xRoutes.js";
 import linkedinRoutes from "./routes/linkedinRoutes.js";
 import instagramRoutes from "./routes/instagramRoutes.js";
 import tiktokRoutes from "./routes/tiktokRoutes.js";
+import redditRoutes from "./routes/redditRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
@@ -106,6 +107,7 @@ app.use('/api/x', xRoutes);
 app.use('/api/linkedin', linkedinRoutes);
 app.use('/api/instagram', instagramRoutes);
 app.use('/api/tiktok', tiktokRoutes);
+app.use('/api/reddit', redditRoutes);
 
 const {
   GITHUB_TOKEN,
