@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon, Alert, Avatar, Badge, Button, Card, Collapse, Divider,
+  ActionIcon, Alert, AspectRatio, Avatar, Badge, Button, Card, Collapse, Divider,
   Group, LoadingOverlay, Modal, Paper, Select, SimpleGrid, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
@@ -224,7 +224,6 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
 
 function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open video on X", embedFallbackUrl = null }) {
   const items = dedupeMediaForDisplay(media, maxItems);
-
   if (!items.length) {
     const embedUrl = embedFallbackUrl ? instagramEmbedUrl(embedFallbackUrl) : null;
     if (!embedUrl) return null;
@@ -320,6 +319,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
           return null;
         })}
       </SimpleGrid>
+
     </div>
   );
 }
@@ -603,12 +603,160 @@ function XPostCard({ post, onDelete }) {
 
 /* ── YouTube card ────────────────────────────────────────────────────────── */
 
+function getYoutubeThumbnailUrl(thumbnails = null) {
+  if (!thumbnails) return null;
+  if (typeof thumbnails === "string") return thumbnails;
+  return (
+    thumbnails.maxres?.url ||
+    thumbnails.standard?.url ||
+    thumbnails.high?.url ||
+    thumbnails.medium?.url ||
+    thumbnails.default?.url ||
+    null
+  );
+}
+
+function getYoutubeVideoIdFromSavedPost(post = {}, postUrl = null) {
+  const extra = post?.extra || {};
+  const direct =
+    extra.videoId ||
+    extra.youtubeVideoId ||
+    extra.id?.videoId ||
+    post.youtubeVideoId ||
+    post.videoId ||
+    post.platform_post_id;
+
+  if (typeof direct === "string" && /^[a-zA-Z0-9_-]{11}$/.test(direct)) {
+    return direct;
+  }
+
+  const candidates = [
+    postUrl,
+    post.url,
+    extra.url,
+    extra.link,
+    extra.videoUrl,
+    extra.embedUrl,
+    extra.permalink,
+  ].filter(Boolean);
+
+  for (const raw of candidates) {
+    const url = String(raw);
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match?.[1]) return match[1];
+
+    try {
+      const parsed = new URL(url);
+      const v = parsed.searchParams.get("v");
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+    } catch {
+      // Ignore non-URL values.
+    }
+  }
+
+  return null;
+}
+
+function YoutubeThumbnailPreview({ post, postUrl = null }) {
+  const extra = post?.extra || {};
+  const videoId = getYoutubeVideoIdFromSavedPost(post, postUrl);
+  const thumbUrl = extra.thumbnailUrl || getYoutubeThumbnailUrl(extra.thumbnails);
+
+  if (videoId) {
+    return (
+      <AspectRatio
+        ratio={16 / 9}
+        mt="xs"
+        style={{
+          maxWidth: 520,
+          overflow: "hidden",
+          borderRadius: 12,
+          border: "1px solid #edf2f7",
+          background: "#f8f9fa",
+        }}
+      >
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+          title={extra.title || post.title || "YouTube video"}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          style={{ border: 0, width: "100%", height: "100%" }}
+        />
+      </AspectRatio>
+    );
+  }
+
+  if (!thumbUrl) return null;
+
+  return (
+    <a
+      href={postUrl || undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "block",
+        position: "relative",
+        maxWidth: 520,
+        textDecoration: "none",
+      }}
+    >
+      <img
+        src={thumbUrl}
+        alt={extra.title || "YouTube video thumbnail"}
+        loading="lazy"
+        style={{
+          width: "100%",
+          maxHeight: 260,
+          objectFit: "cover",
+          borderRadius: 12,
+          border: "1px solid #edf2f7",
+          background: "#f8f9fa",
+          display: "block",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "rgba(255, 0, 0, 0.88)",
+          color: "white",
+          borderRadius: 999,
+          padding: "8px 13px",
+          fontSize: 13,
+          fontWeight: 800,
+          boxShadow: "0 8px 20px rgba(0,0,0,0.22)",
+        }}
+      >
+        ▶
+      </span>
+    </a>
+  );
+}
+
+function getYouTubeSavedDescription(post, title = "") {
+  const extraDescription = post.extra?.description || post.extra?.snippet?.description || "";
+  if (extraDescription) return extraDescription;
+
+  const content = String(post.content || "").trim();
+  if (!content) return "";
+
+  const cleanTitle = String(title || "").trim();
+  if (cleanTitle && content.startsWith(cleanTitle)) {
+    return content.slice(cleanTitle.length).trim();
+  }
+
+  return content;
+}
+
 function YouTubePostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [showDesc, setShowDesc] = useState(false);
   const title = post.extra?.title || t("savedPosts.untitledVideo");
   const channel = post.extra?.channelTitle || post.extra?.username || post.username || t("savedPosts.unknownChannel");
-  const description = post.extra?.description || "";
+  const description = getYouTubeSavedDescription(post, title);
   const descLong = description.length > 200;
   const tone = post.tone;
   const postUrl = getPostUrl(post);
@@ -649,6 +797,8 @@ function YouTubePostCard({ post, onDelete }) {
         </Group>
 
         <Text fw={600} size="md" lh={1.3}>{title}</Text>
+
+        <YoutubeThumbnailPreview post={post} postUrl={postUrl} />
 
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
@@ -1205,6 +1355,11 @@ export default function SavedPosts() {
                   : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
                 }
               </Group>
+              {(cfg?.label === "X / Twitter" || cfg?.label === "X") && (
+                <Alert variant="light" color="blue" radius="md" py="xs" icon={<IconBrandX size={16} />}>
+                  X videos may only show as thumbnails here. Open the post on X to watch the video.
+                </Alert>
+              )}
               <Collapse in={isOpen}>
                 <div
                   style={{

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
+  AspectRatio,
   Avatar,
   Badge,
   Button,
@@ -1002,7 +1003,6 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
 
 function XMediaPreview({ media, postUrl = null }) {
   const items = dedupeMediaForDisplay(media);
-
   if (!items.length) return null;
 
   return (
@@ -1081,6 +1081,7 @@ function XMediaPreview({ media, postUrl = null }) {
           return null;
         })}
       </SimpleGrid>
+
     </div>
   );
 }
@@ -2368,6 +2369,9 @@ async function handleLoadMoreX() {
           description: data.description || "",
           channelTitle: data.channelTitle || "",
           videoId: data.id || data.videoId || "",
+          url: data.url || ((data.id || data.videoId) ? `https://www.youtube.com/watch?v=${data.id || data.videoId}` : null),
+          thumbnails: data.thumbnails || null,
+          thumbnailUrl: data.thumbnailUrl || getYoutubeThumbnailUrl(data.thumbnails),
         }),
       });
       if (!resp.ok) {
@@ -2846,6 +2850,8 @@ async function handleLoadMoreX() {
     const [saveStatus, setSaveStatus] = useState(null);
     const [showDesc, setShowDesc] = useState(false);
     const descLong = (data.video?.description || "").length > 200;
+    const videoId = data.videoId || data.video?.id || data.video?.videoId;
+    const postUrl = data.video?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
     const date = data.video?.publishedAt
       ? new Date(data.video.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : null;
@@ -2862,7 +2868,7 @@ async function handleLoadMoreX() {
             platform_id: platformIds.youtube,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
-            platform_post_id: data.videoId,
+            platform_post_id: videoId,
             content: data.video.description,
             published_at: data.video.publishedAt,
             likes: data.video.stats.likes || 0,
@@ -2871,7 +2877,10 @@ async function handleLoadMoreX() {
             title: data.video.title,
             description: data.video.description,
             channelTitle: data.video.channelTitle,
-            videoId: data.videoId,
+            videoId,
+            url: postUrl,
+            thumbnails: data.video?.thumbnails || null,
+            thumbnailUrl: data.video?.thumbnailUrl || getYoutubeThumbnailUrl(data.video?.thumbnails),
             user_id: currentUserId,
           }),
         });
@@ -2913,6 +2922,8 @@ async function handleLoadMoreX() {
 
           {/* title */}
           <Text fw={600} size="md" lh={1.3}>{data.video?.title || "Untitled Video"}</Text>
+
+          <YoutubeThumbnailPreview video={{ ...data.video, videoId }} postUrl={postUrl} />
 
           {/* description */}
           {data.video?.description && (
@@ -2969,6 +2980,135 @@ async function handleLoadMoreX() {
     const min = (m[2] || "0").padStart(h ? 2 : 1, "0");
     const sec = (m[3] || "0").padStart(2, "0");
     return `${h}${min}:${sec}`;
+  }
+
+  function getYoutubeThumbnailUrl(thumbnails = null) {
+    if (!thumbnails) return null;
+    if (typeof thumbnails === "string") return thumbnails;
+    return (
+      thumbnails.maxres?.url ||
+      thumbnails.standard?.url ||
+      thumbnails.high?.url ||
+      thumbnails.medium?.url ||
+      thumbnails.default?.url ||
+      null
+    );
+  }
+
+  function getYoutubeVideoId(video = {}, postUrl = null) {
+    const direct =
+      video?.videoId ||
+      video?.youtubeVideoId ||
+      video?.id?.videoId ||
+      (typeof video?.id === "string" ? video.id : null);
+
+    if (typeof direct === "string" && /^[a-zA-Z0-9_-]{11}$/.test(direct)) {
+      return direct;
+    }
+
+    const candidates = [
+      postUrl,
+      video?.url,
+      video?.link,
+      video?.videoUrl,
+      video?.embedUrl,
+      video?.permalink,
+    ].filter(Boolean);
+
+    for (const raw of candidates) {
+      const url = String(raw);
+      const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (match?.[1]) return match[1];
+
+      try {
+        const parsed = new URL(url);
+        const v = parsed.searchParams.get("v");
+        if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+      } catch {
+        // Ignore non-URL values.
+      }
+    }
+
+    return null;
+  }
+
+  function YoutubeThumbnailPreview({ video, postUrl = null, compact = false }) {
+    const videoId = getYoutubeVideoId(video, postUrl);
+    const thumbUrl = video?.thumbnailUrl || getYoutubeThumbnailUrl(video?.thumbnails);
+    const maxWidth = compact ? 280 : 520;
+
+    if (videoId) {
+      return (
+        <AspectRatio
+          ratio={16 / 9}
+          mt="xs"
+          style={{
+            maxWidth,
+            overflow: "hidden",
+            borderRadius: 12,
+            border: "1px solid #edf2f7",
+            background: "#f8f9fa",
+          }}
+        >
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+            title={video?.title || "YouTube video"}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            style={{ border: 0, width: "100%", height: "100%" }}
+          />
+        </AspectRatio>
+      );
+    }
+
+    if (!thumbUrl) return null;
+
+    return (
+      <a
+        href={postUrl || undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "block",
+          position: "relative",
+          maxWidth,
+          textDecoration: "none",
+        }}
+      >
+        <img
+          src={thumbUrl}
+          alt={video?.title || "YouTube video thumbnail"}
+          loading="lazy"
+          style={{
+            width: "100%",
+            maxHeight: compact ? 160 : 260,
+            objectFit: "cover",
+            borderRadius: 12,
+            border: "1px solid #edf2f7",
+            background: "#f8f9fa",
+            display: "block",
+          }}
+        />
+        <span
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "rgba(255, 0, 0, 0.88)",
+            color: "white",
+            borderRadius: 999,
+            padding: compact ? "6px 10px" : "8px 13px",
+            fontSize: compact ? 11 : 13,
+            fontWeight: 800,
+            boxShadow: "0 8px 20px rgba(0,0,0,0.22)",
+          }}
+        >
+          ▶
+        </span>
+      </a>
+    );
   }
 
   function YTChannelCard({ data }) {
@@ -3028,11 +3168,22 @@ async function handleLoadMoreX() {
     const postUrl = video.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
     const likeCount = video.likes;
     const commentCount = video.comments;
+    const description = video.description || video.snippet?.description || "";
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
           <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}{video.duration ? ` · ${parseDuration(video.duration)}` : ""}</Text>
+          <YoutubeThumbnailPreview video={video} postUrl={postUrl} compact={compact} />
+          {description && (
+            <ExpandableText
+              text={description}
+              size={compact ? "xs" : "sm"}
+              dimmed
+              collapsedLines={compact ? 2 : 3}
+              threshold={compact ? 110 : 180}
+            />
+          )}
           {video.channelTitle && <Text size="xs" c="dimmed">Posted by {video.channelTitle}</Text>}
           <Group gap="xs">
             {[
@@ -3043,7 +3194,6 @@ async function handleLoadMoreX() {
             ))}
           </Group>
           <HiddenCountNote likes={likeCount} comments={commentCount} />
-          {!compact && video.description && <ExpandableText text={video.description} size="xs" dimmed collapsedLines={2} threshold={140} />}
           {onSave && (
             <Group justify="flex-end">
               {postUrl && (
@@ -4746,6 +4896,9 @@ async function handleLoadMoreX() {
                     />
                     <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>Search X</Button>
                   </Group>
+                  <Alert variant="light" color="blue" radius="md" icon={<IconInfoCircle size={16} />}>
+                    X videos may only show as thumbnails here. Open the post on X to watch the video.
+                  </Alert>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
                   {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                   {getXNextToken(xResult) && (

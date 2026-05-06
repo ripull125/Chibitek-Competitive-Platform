@@ -1483,6 +1483,8 @@ app.post("/api/posts", async (req, res) => {
     description,
     channelTitle,
     videoId,
+    thumbnails,
+    thumbnailUrl,
     url,
     media,
     author_name,
@@ -1635,19 +1637,33 @@ app.post("/api/posts", async (req, res) => {
     });
     if (metricsErr) throw metricsErr;
 
-    // For YouTube, save additional details
+    // For YouTube, save additional details. Replace the existing row so
+    // re-saving a video can backfill thumbnails and URLs.
     if (isYouTube) {
+      const youtubeExtra = {
+        title,
+        description,
+        channelTitle,
+        videoId,
+        thumbnails: thumbnails || null,
+        thumbnailUrl: thumbnailUrl || null,
+        url: url || null,
+      };
+
+      const { error: deleteDetailsError } = await supabase
+        .from("post_details_platform")
+        .delete()
+        .eq("post_id", post.id);
+      if (deleteDetailsError) {
+        console.error('Error replacing YouTube post details:', deleteDetailsError);
+      }
+
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
-        extra_json: {
-          title,
-          description,
-          channelTitle,
-          videoId,
-        },
+        extra_json: youtubeExtra,
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
-        console.error('Error saving post details:', detailsError);
+        console.error('Error saving YouTube post details:', detailsError);
       }
     }
 
@@ -1788,6 +1804,8 @@ app.get("/api/posts", async (req, res) => {
           description: extra.description,
           channelTitle: extra.channelTitle,
           videoId: extra.videoId,
+          thumbnails: extra.thumbnails,
+          thumbnailUrl: extra.thumbnailUrl,
         },
       };
     });
