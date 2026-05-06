@@ -627,7 +627,7 @@ const resources = {
         intelligenceTitle: "Keyword Intelligence",
         intelligenceIntro1: "Posts are scored by",
         intelligenceWeightedEngagement: "weighted engagement",
-        intelligenceIntro2: "(Comments×5 + Likes×2 + log Views×1 — comments count most because replying takes real intent). Scores are",
+        intelligenceIntro2: "(Comments×5 + Likes×2 — comments count most because replying takes real intent). Scores are",
         intelligenceNormalizedPerAccount: "normalised per account",
         intelligenceIntro3: "so a small creator going 3× their baseline ranks equally to MrBeast doing the same. The",
         intelligenceKpiRange: "KPI (0–100)",

@@ -33,7 +33,6 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconCopy,
-  IconEye,
   IconHeart,
   IconInfoCircle,
   IconMessage,
@@ -2190,7 +2189,6 @@ async function handleLoadMoreX() {
           description: data.description || "",
           channelTitle: data.channelTitle || "",
           videoId: data.id || data.videoId || "",
-          views: data.views ?? 0,
         }),
       });
       if (!resp.ok) {
@@ -2351,7 +2349,6 @@ async function handleLoadMoreX() {
           likes: Math.max(0, data.stats?.diggCount ?? data.statsV2?.diggCount ?? data.statistics?.digg_count ?? data.statistics?.diggCount ?? data.diggCount ?? data.digg_count ?? 0),
           shares: Math.max(0, data.stats?.shareCount ?? data.statsV2?.shareCount ?? data.statistics?.share_count ?? data.statistics?.shareCount ?? data.shareCount ?? data.share_count ?? 0),
           comments: Math.max(0, data.stats?.commentCount ?? data.statsV2?.commentCount ?? data.statistics?.comment_count ?? data.statistics?.commentCount ?? data.commentCount ?? data.comment_count ?? 0),
-          views: 0,
           user_id: currentUserId,
         }),
       });
@@ -2438,7 +2435,7 @@ async function handleLoadMoreX() {
 
   /* ─── Generic save helper (for profiles, comments, transcripts, users, ads) ─── */
 
-  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, views, authorName, authorHandle }) {
+  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, authorName, authorHandle }) {
     if (!currentUserId) throw new Error("Please sign in to save data.");
     const pid = platformIds[platformKey];
     if (!pid) throw new Error(`Unknown platform: ${platformKey}`);
@@ -2456,7 +2453,6 @@ async function handleLoadMoreX() {
         likes: likes ?? 0,
         shares: shares ?? 0,
         comments: comments ?? 0,
-        views: views ?? 0,
         user_id: currentUserId,
         author_name: authorName || username || "",
         author_handle: authorHandle || username || "",
@@ -2590,7 +2586,6 @@ async function handleLoadMoreX() {
             likes: metrics.like_count ?? 0,
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
-            views: metrics.impression_count ?? 0,
             user_id: currentUserId,
           }),
         });
@@ -2698,7 +2693,6 @@ async function handleLoadMoreX() {
             description: data.video.description,
             channelTitle: data.video.channelTitle,
             videoId: data.videoId,
-            views: data.video.stats.views,
             user_id: currentUserId,
           }),
         });
@@ -2763,7 +2757,6 @@ async function handleLoadMoreX() {
           {/* metrics + save */}
           <Group justify="space-between" align="center">
             <Group gap="lg">
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.views || 0).toLocaleString()}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(data.video?.stats?.likes || 0).toLocaleString()}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.comments || 0).toLocaleString()}</Text></Group>
             </Group>
@@ -2819,7 +2812,6 @@ async function handleLoadMoreX() {
           <Group gap="lg" justify="center">
             {[
               { label: "Subscribers", value: fmtNum(data.subscribers) },
-              { label: "Total Views", value: fmtNum(data.totalViews) },
               { label: "Videos", value: fmtNum(data.videoCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
@@ -2865,7 +2857,6 @@ async function handleLoadMoreX() {
           {video.channelTitle && <Text size="xs" c="dimmed">Posted by {video.channelTitle}</Text>}
           <Group gap="xs">
             {[
-              { label: "Views", val: video.views },
               { label: "Likes", val: video.likes },
               { label: "Comments", val: video.comments },
             ].map(({ label, val }) => (
@@ -2941,7 +2932,6 @@ async function handleLoadMoreX() {
               video: {
                 ...results.videoDetails,
                 stats: {
-                  views: results.videoDetails.views,
                   likes: results.videoDetails.likes,
                   comments: results.videoDetails.comments,
                 },
@@ -3326,7 +3316,6 @@ async function handleLoadMoreX() {
     const postUrl = getInstagramPostUrl(post, isVideo);
     const likeCount = getIgMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
     const commentCount = getIgMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
-    const viewCount = getIgMetric(post, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
     const authorHandle = getIgAuthorHandle(post);
     const rawDate = getIgPostDate(post);
     const parsedDate = rawDate
@@ -3337,7 +3326,6 @@ async function handleLoadMoreX() {
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
-    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
 
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "md"} style={{ borderLeft: "3px solid #E1306C" }}>
@@ -3381,7 +3369,6 @@ async function handleLoadMoreX() {
             <Group gap="lg">
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3402,7 +3389,6 @@ async function handleLoadMoreX() {
     const postUrl = getInstagramPostUrl(reel, true);
     const likeCount = getIgMetric(reel, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
     const commentCount = getIgMetric(reel, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
-    const viewCount = getIgMetric(reel, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
     const authorHandle = getIgAuthorHandle(reel);
     const rawDate = getIgPostDate(reel);
     const parsedDate = rawDate
@@ -3413,7 +3399,6 @@ async function handleLoadMoreX() {
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
-    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "xs"} style={{ borderLeft: "3px solid #E1306C" }}>
         <Stack gap="sm">
@@ -3450,7 +3435,6 @@ async function handleLoadMoreX() {
             <Group gap="lg">
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3513,9 +3497,6 @@ async function handleLoadMoreX() {
       value.username ||
       value.like_count != null ||
       value.comment_count != null ||
-      value.play_count != null ||
-      value.view_count != null ||
-      value.views != null ||
       value.taken_at ||
       value.taken_at_timestamp ||
       value.created_at ||
@@ -3532,9 +3513,6 @@ async function handleLoadMoreX() {
       value.username ||
       value.like_count != null ||
       value.comment_count != null ||
-      value.play_count != null ||
-      value.view_count != null ||
-      value.views != null ||
       value.taken_at ||
       value.taken_at_timestamp ||
       value.created_at ||
@@ -3557,9 +3535,6 @@ async function handleLoadMoreX() {
       media: Array.isArray(shell.media) && shell.media.length ? shell.media : inner.media,
       like_count: shell.like_count ?? inner.like_count,
       comment_count: shell.comment_count ?? inner.comment_count,
-      play_count: shell.play_count ?? inner.play_count,
-      view_count: shell.view_count ?? inner.view_count,
-      views: shell.views ?? inner.views,
       taken_at: shell.taken_at ?? inner.taken_at,
       taken_at_timestamp: shell.taken_at_timestamp ?? inner.taken_at_timestamp,
       created_at: shell.created_at ?? inner.created_at,
@@ -5615,7 +5590,7 @@ async function handleLoadMoreX() {
 
             <Alert variant="light" color="blue" icon={<IconInfoCircle size={16} />}>
               {t("competitorLookup.metricsMayBeUnavailable", {
-                defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+                defaultValue: "Some engagement metrics may appear as 0 when they are private or unavailable from the platform's API.",
               })}
             </Alert>
 

@@ -93,7 +93,7 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
         desc: `Demo video ${i} by ${handle}`,
         create_time: Math.floor(Date.now() / 1000) - i * 3600,
         author: { uniqueId: handle, unique_id: handle, nickname: handle },
-        statistics: { digg_count: i + 10, comment_count: i + 2, share_count: i + 1, play_count: 1000 + i },
+        statistics: { digg_count: i + 10, comment_count: i + 2, share_count: i + 1 },
         url: `https://www.tiktok.com/@${handle}/video/1000${i}`,
       }));
       if (path.startsWith('/v3/tiktok/profile/videos')) return { aweme_list: videos, has_more: false, max_cursor: null };
@@ -109,14 +109,14 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
           desc: `Demo video ${id} by ${handle}`,
           create_time: Math.floor(Date.now() / 1000),
           author: { unique_id: handle, nickname: handle },
-          statistics: { digg_count: 99, comment_count: 12, share_count: 5, play_count: 1000 },
+          statistics: { digg_count: 99, comment_count: 12, share_count: 5 },
           url,
         },
       };
     }
     if (path === '/v1/tiktok/search/keyword' || path === '/v1/tiktok/search/hashtag') {
       const q = params.query || params.hashtag || 'demo';
-      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q }, statistics: { digg_count: i + 3, comment_count: i, share_count: i + 1, play_count: 100 + i } } }));
+      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q }, statistics: { digg_count: i + 3, comment_count: i, share_count: i + 1 } } }));
       if (path === '/v1/tiktok/search/hashtag') return { challenge_aweme_list: hits.map(h => h.data), cursor: null };
       return { search_item_list: hits, cursor: null };
     }

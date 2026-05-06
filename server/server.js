@@ -1483,7 +1483,6 @@ app.post("/api/posts", async (req, res) => {
     description,
     channelTitle,
     videoId,
-    views,
     url,
     media,
     author_name,
@@ -1625,14 +1624,14 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments, 'views:', views);
+    console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments);
     const { error: metricsErr } = await supabase.from("post_metrics").insert({
       post_id: post.id,
       snapshot_at: new Date(),
       likes,
       shares,
       comments,
-      other_json: { views: views ?? 0 },
+      other_json: {},
     });
     if (metricsErr) throw metricsErr;
 
@@ -1645,7 +1644,6 @@ app.post("/api/posts", async (req, res) => {
           description,
           channelTitle,
           videoId,
-          views,
         },
       });
       if (detailsError && !isDuplicateKeyError(detailsError)) {
@@ -1699,11 +1697,6 @@ app.post("/api/posts", async (req, res) => {
         product_type: product_type || null,
       };
 
-      // Keep views for platforms that care about them, but do not surface them
-      // for Instagram in the UI because cross-platform keyword tracking uses
-      // likes/shares/comments.
-      if (!isInstagram) socialExtra.views = views ?? 0;
-
       const { error: deleteDetailsError } = await supabase
         .from("post_details_platform")
         .delete()
@@ -1753,7 +1746,18 @@ app.get("/api/posts", async (req, res) => {
     if (error) throw error;
 
     const formattedPosts = posts.map((post) => {
-      const extra = post.post_details_platform?.[0]?.extra_json || {};
+      const extraRaw = post.post_details_platform?.[0]?.extra_json || {};
+      const {
+        views: _views,
+        view_count: _viewCount,
+        viewCount: _viewCountCamel,
+        play_count: _playCount,
+        playCount: _playCountCamel,
+        totalViews: _totalViews,
+        video_view_count: _videoViewCount,
+        videoViewCount: _videoViewCountCamel,
+        ...extra
+      } = extraRaw;
       // Supabase returns an object (not array) for many-to-one FK joins
       const competitorName = post.competitors?.display_name
         ?? post.competitors?.[0]?.display_name
@@ -1774,7 +1778,6 @@ app.get("/api/posts", async (req, res) => {
         likes: post.post_metrics?.[0]?.likes || 0,
         shares: post.post_metrics?.[0]?.shares || 0,
         comments: post.post_metrics?.[0]?.comments || 0,
-        views: post.post_metrics?.[0]?.other_json?.views || extra.views || 0,
         username: authorHandle || undefined,
         extra: {
           ...extra,
@@ -1785,7 +1788,6 @@ app.get("/api/posts", async (req, res) => {
           description: extra.description,
           channelTitle: extra.channelTitle,
           videoId: extra.videoId,
-          views: post.post_metrics?.[0]?.other_json?.views || extra.views || 0,
         },
       };
     });
@@ -3136,7 +3138,6 @@ async function fetchChannelDetails(channelId) {
     thumbnails: ch.snippet.thumbnails,
     country: ch.snippet.country,
     subscribers: Number(ch.statistics.subscriberCount || 0),
-    totalViews: Number(ch.statistics.viewCount || 0),
     videoCount: Number(ch.statistics.videoCount || 0),
     uploadsPlaylistId: ch.contentDetails?.relatedPlaylists?.uploads,
     bannerUrl: ch.brandingSettings?.image?.bannerExternalUrl || null,
@@ -3170,7 +3171,6 @@ async function fetchChannelVideos(channelId, maxResults = 10) {
     channelTitle: v.snippet.channelTitle,
     thumbnails: v.snippet.thumbnails,
     duration: v.contentDetails?.duration,
-    views: Number(v.statistics?.viewCount || 0),
     likes: Number(v.statistics?.likeCount || 0),
     comments: Number(v.statistics?.commentCount || 0),
   }));
@@ -3194,7 +3194,6 @@ async function fetchVideoDetails(videoId) {
     tags: v.snippet.tags || [],
     categoryId: v.snippet.categoryId,
     duration: v.contentDetails?.duration,
-    views: Number(v.statistics?.viewCount || 0),
     likes: Number(v.statistics?.likeCount || 0),
     comments: Number(v.statistics?.commentCount || 0),
     topics: v.topicDetails?.topicCategories || [],
@@ -3226,7 +3225,6 @@ async function searchYouTube(query, maxResults = 10) {
     channelId: v.snippet.channelId,
     thumbnails: v.snippet.thumbnails,
     duration: v.contentDetails?.duration,
-    views: Number(v.statistics?.viewCount || 0),
     likes: Number(v.statistics?.likeCount || 0),
     comments: Number(v.statistics?.commentCount || 0),
   }));
@@ -3338,10 +3336,9 @@ app.get('/api/platforms', async (req, res) => {
 // Bayesian Keyword Performance Index across ALL saved posts.
 //
 // Engagement formula (platform-aware, shares dropped as universal signal):
-//   weightedScore = comments × 5 + likes × 2 + log10(views + 1) × 1
+//   weightedScore = comments × 5 + likes × 2
 //
-// Views are log-scaled to prevent YouTube/TikTok from drowning out text-heavy
-// platforms (Reddit, LinkedIn) where views don't exist.
+// Cross-platform engagement uses public interactions only.
 //
 // Per-account normalisation is applied so a small creator that outperforms their
 // own baseline by 3× ranks equally to a large creator doing the same.
@@ -3448,7 +3445,7 @@ app.get('/api/keywords', async (req, res) => {
     }
 
     // 2. Compute per-post weighted engagement score
-    //    Formula: comments×5 + likes×2 + log10(views+1)×1
+    //    Formula: comments×5 + likes×2
     //    (shares are skipped — not universally available across platforms)
     const scoredPosts = posts.map((p, idx) => {
       // Use the most-recent snapshot if multiple metrics rows exist
@@ -3459,12 +3456,9 @@ app.get('/api/keywords', async (req, res) => {
 
       const likes = Number(m.likes || 0);
       const comments = Number(m.comments || 0);
-      const views = Number(m.other_json?.views || 0);
-
       const weightedScore =
         comments * 5 +
-        likes * 2 +
-        Math.log10(views + 1) * 1;  // log-scaled views avoid YouTube dominating
+        likes * 2;
 
       const platformName = (p.platforms?.name || '').toLowerCase();
       const extraJson = p.post_details_platform?.[0]?.extra_json || {};
@@ -3474,7 +3468,6 @@ app.get('/api/keywords', async (req, res) => {
         weightedScore,
         likes,
         comments,
-        views,
         platform_id: p.platform_id,
         platform_name: platformName,
         competitor_id: p.competitor_id,
@@ -3515,7 +3508,7 @@ app.get('/api/keywords', async (req, res) => {
           kwData[kw] = {
             scores: [], recentScores: [], olderScores: [],
             rawScores: [],
-            totalLikes: 0, totalComments: 0, totalViews: 0,
+            totalLikes: 0, totalComments: 0,
             platforms: new Set(),
           };
         }
@@ -3524,7 +3517,6 @@ app.get('/api/keywords', async (req, res) => {
         d.rawScores.push(post.weightedScore);
         d.totalLikes += post.likes;
         d.totalComments += post.comments;
-        d.totalViews += post.views;
         if (post.platform_name) d.platforms.add(post.platform_name);
         if (isRecent) d.recentScores.push(post.normalizedScore);
         else d.olderScores.push(post.normalizedScore);
@@ -3577,7 +3569,6 @@ app.get('/api/keywords', async (req, res) => {
         trendDir,
         totalLikes: d.totalLikes,
         totalComments: d.totalComments,
-        totalViews: d.totalViews,
         platforms,
       });
     });

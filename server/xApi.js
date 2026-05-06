@@ -21,8 +21,7 @@ const USER_FIELDS = [
   "pinned_tweet_id",
 ].join(",");
 
-// Do not include impression_count as a top-level tweet field. It comes back
-// inside public_metrics when your X access tier supports it.
+// Keep requested X fields focused on comparable public engagement.
 const TWEET_FIELDS = [
   "id",
   "text",
@@ -486,10 +485,6 @@ function normalizeTweet(tweet, users = [], fallbackHandle = null, media = []) {
         tweet.public_metrics?.bookmark_count ??
         tweet.legacy?.bookmark_count ??
         0,
-      impression_count:
-        tweet.public_metrics?.impression_count ??
-        tweet.legacy?.impression_count ??
-        0,
     },
     author: author ? normalizeUser(author) : null,
     _authorUsername: authorUsername,
@@ -687,7 +682,6 @@ function mapScrapeCreatorsTweet(rawTweet, fallbackHandle = null) {
         like_count: legacy.favorite_count ?? tweet?.favorite_count ?? tweet?.like_count ?? 0,
         quote_count: legacy.quote_count ?? tweet?.quote_count ?? 0,
         bookmark_count: legacy.bookmark_count ?? tweet?.bookmark_count ?? 0,
-        impression_count: legacy.view_count ?? legacy.impression_count ?? tweet?.impression_count ?? 0,
       },
       url: tweet?.url || (id ? `https://x.com/${handle || "i/web"}/status/${id}` : null),
       _authorUsername: handle,

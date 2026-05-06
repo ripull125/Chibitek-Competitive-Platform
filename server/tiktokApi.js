@@ -251,6 +251,22 @@ function normalizeAuthor(raw = {}) {
 function normalizeTikTokVideo(raw = {}, fallback = {}) {
   const v = unwrapVideo(raw) || {};
   const stats = v.stats || v.statsV2 || v.statistics || v.stats_v2 || {};
+  const {
+    playCount: _statsPlayCount,
+    play_count: _statsPlayCountSnake,
+    viewCount: _statsViewCount,
+    view_count: _statsViewCountSnake,
+    views: _statsViews,
+    ...engagementStats
+  } = stats;
+  const {
+    playCount: _playCount,
+    play_count: _playCountSnake,
+    viewCount: _viewCount,
+    view_count: _viewCountSnake,
+    views: _views,
+    ...videoWithoutViewMetrics
+  } = v;
   const author = normalizeAuthor(v);
   const videoId = String(v.aweme_id || v.awemeId || v.id_str || v.id || v.video_id || v.item_id || fallback.videoId || "");
   const authorHandle = author.uniqueId || author.unique_id || fallback.handle || handleFromTikTokUrl(v.share_url || v.url || "") || "user";
@@ -258,7 +274,7 @@ function normalizeTikTokVideo(raw = {}, fallback = {}) {
   const createdAt = v.createTime ?? v.create_time ?? v.created_at ?? v.publishTime ?? v.createTimeISO ?? v.create_time_utc ?? null;
 
   return {
-    ...v,
+    ...videoWithoutViewMetrics,
     id: videoId || v.id,
     aweme_id: videoId || v.aweme_id,
     desc: v.desc || v.description || v.video_description || v.title || "",
@@ -269,9 +285,8 @@ function normalizeTikTokVideo(raw = {}, fallback = {}) {
     share_url: postUrl,
     author,
     stats: {
-      ...stats,
-      // Intentionally do not normalize/display play/view counts. The UI and
-      // saves should focus on the more reliable public engagement metrics.
+      ...engagementStats,
+      // Keep TikTok stats focused on reliable public engagement metrics.
       diggCount: pickNumber(stats.diggCount, stats.digg_count, stats.likeCount, stats.like_count, v.like_count, v.digg_count, v.diggCount) ?? 0,
       commentCount: pickNumber(stats.commentCount, stats.comment_count, v.comment_count, v.commentCount) ?? 0,
       shareCount: pickNumber(stats.shareCount, stats.share_count, v.share_count, v.shareCount, v.forward_count, stats.forward_count) ?? 0,
@@ -312,7 +327,7 @@ function normalizeProfile(resp, handle = null) {
       nickname: user?.nickname || user?.name || clean,
     },
     stats: {
-      ...stats,
+      ...engagementStats,
       followerCount: pickNumber(stats.followerCount, stats.follower_count, user?.followerCount, user?.follower_count) ?? null,
       followingCount: pickNumber(stats.followingCount, stats.following_count, user?.followingCount, user?.following_count) ?? null,
       heartCount: pickNumber(stats.heartCount, stats.heart, stats.diggCount, user?.heartCount, user?.heart) ?? null,
