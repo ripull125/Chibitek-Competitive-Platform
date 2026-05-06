@@ -12,6 +12,7 @@ import {
   Group,
   LoadingOverlay,
   ScrollArea,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -129,6 +130,181 @@ function HiddenCountNote({ likes, comments }) {
     <Text size="xs" c="dimmed">
       Note: {hiddenLabel} count is hidden by the creator.
     </Text>
+  );
+}
+
+const DEFAULT_SORT_MODE = "date_desc";
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "metrics_desc", label: "Highest total metrics" },
+  { value: "likes_desc", label: "Most likes" },
+  { value: "comments_desc", label: "Most comments" },
+  { value: "shares_desc", label: "Most shares" },
+];
+
+function parseMetricValue(value) {
+  if (value == null || value === "" || isHiddenCount(value)) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return 0;
+  const match = text.match(/^(-?[0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+  if (!match) {
+    const n = Number(text);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const base = Number(match[1]);
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : suffix === "b" ? 1_000_000_000 : 1;
+  return Number.isFinite(base) ? Math.max(0, Math.round(base * multiplier)) : 0;
+}
+
+function firstMetric(...values) {
+  for (const value of values) {
+    if (value == null || value === "" || isHiddenCount(value)) continue;
+    const parsed = parseMetricValue(value);
+    if (parsed !== 0) return parsed;
+    const numericZero = Number(value) === 0 || String(value).trim() === "0";
+    if (numericZero) return 0;
+  }
+  return 0;
+}
+
+function getSortableLikes(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.likes,
+    post.likeCount,
+    post.like_count,
+    post.likesCount,
+    post.reactionCount,
+    post.reactions_count,
+    post.score,
+    post.ups,
+    stats.likes,
+    stats.likeCount,
+    stats.like_count,
+    stats.diggCount,
+    stats.digg_count,
+    statisticsValue(stats, "like"),
+    metrics.like_count,
+    metrics.likes
+  );
+}
+
+function statisticsValue(stats = {}, prefix) {
+  if (!stats || typeof stats !== "object") return undefined;
+  if (prefix === "like") return stats.digg_count ?? stats.diggCount ?? stats.like_count ?? stats.likeCount ?? stats.likes;
+  if (prefix === "comment") return stats.comment_count ?? stats.commentCount ?? stats.comments;
+  if (prefix === "share") return stats.share_count ?? stats.shareCount ?? stats.forward_count ?? stats.share_count_total ?? stats.shares;
+  return undefined;
+}
+
+function getSortableComments(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.comments,
+    post.commentCount,
+    post.comment_count,
+    post.commentsCount,
+    post.num_comments,
+    post.replyCount,
+    post.reply_count,
+    stats.comments,
+    stats.commentCount,
+    stats.comment_count,
+    statisticsValue(stats, "comment"),
+    metrics.reply_count,
+    metrics.comment_count,
+    metrics.comments
+  );
+}
+
+function getSortableShares(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.shares,
+    post.shareCount,
+    post.share_count,
+    post.retweetCount,
+    post.retweet_count,
+    post.reposts,
+    stats.shares,
+    stats.shareCount,
+    stats.share_count,
+    stats.forward_count,
+    statisticsValue(stats, "share"),
+    metrics.retweet_count,
+    metrics.share_count,
+    metrics.shares
+  );
+}
+
+function getSortableTotalMetrics(post = {}) {
+  return getSortableLikes(post) + getSortableComments(post) + getSortableShares(post);
+}
+
+function getSortableDate(post = {}) {
+  const raw =
+    post.published_at ??
+    post.publishedAt ??
+    post.datePublished ??
+    post.created_at ??
+    post.createdAt ??
+    post.created_utc ??
+    post.created ??
+    post.createdTime ??
+    post.createTime ??
+    post.create_time ??
+    post.publishTime ??
+    post.timestamp ??
+    post.taken_at ??
+    post.taken_at_timestamp;
+
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
+  if (!Array.isArray(posts)) return [];
+  const mode = sortMode || DEFAULT_SORT_MODE;
+  const decorated = posts.map((post, index) => ({ post, index }));
+
+  decorated.sort((a, b) => {
+    let diff = 0;
+    if (mode === "date_asc") diff = getSortableDate(a.post) - getSortableDate(b.post);
+    else if (mode === "metrics_desc") diff = getSortableTotalMetrics(b.post) - getSortableTotalMetrics(a.post);
+    else if (mode === "likes_desc") diff = getSortableLikes(b.post) - getSortableLikes(a.post);
+    else if (mode === "comments_desc") diff = getSortableComments(b.post) - getSortableComments(a.post);
+    else if (mode === "shares_desc") diff = getSortableShares(b.post) - getSortableShares(a.post);
+    else diff = getSortableDate(b.post) - getSortableDate(a.post);
+
+    return diff || a.index - b.index;
+  });
+
+  return decorated.map(({ post }) => post);
+}
+
+function SortSelect({ value, onChange, compact = false }) {
+  return (
+    <Select
+      label={compact ? undefined : "Sort posts"}
+      aria-label="Sort posts"
+      size="xs"
+      value={value}
+      onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
+      data={SORT_OPTIONS}
+      checkIconPosition="right"
+      allowDeselect={false}
+      w={compact ? 190 : 210}
+    />
   );
 }
 
@@ -1242,7 +1418,7 @@ function XUserListCard({ users, title, onSaveUser }) {
   );
 }
 
-function XResults({ data, onSave }) {
+function XResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
   const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
@@ -1253,6 +1429,10 @@ function XResults({ data, onSave }) {
     const u = (users || []).find(u => u.id === authorId);
     return u?.username || "";
   };
+
+  const userTweets = sortPostsForDisplay(results.userTweets || [], sortMode);
+  const mentionTweets = sortPostsForDisplay(results.userMentions?.tweets || [], sortMode);
+  const searchTweets = sortPostsForDisplay(results.searchTweets?.tweets || [], sortMode);
 
   return (
     <Stack gap="md">
@@ -1282,14 +1462,14 @@ function XResults({ data, onSave }) {
       {results.following && <XUserListCard users={results.following} title={t("competitorLookup.following")} onSaveUser={(u) => onSave("user", u)} />}
 
       {/* User Tweets */}
-      {results.userTweets?.length > 0 && (
+      {userTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.tweetsCount", { count: results.userTweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.userTweets} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.tweetsCount", { count: userTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={userTweets} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.userTweets.map((t, i) => (
+            {userTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1302,14 +1482,14 @@ function XResults({ data, onSave }) {
       )}
 
       {/* User Mentions */}
-      {results.userMentions?.tweets?.length > 0 && (
+      {mentionTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.mentionsCount", { count: results.userMentions.tweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.userMentions.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.mentionsCount", { count: mentionTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={mentionTweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.userMentions.tweets.map((t, i) => (
+            {mentionTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1334,14 +1514,14 @@ function XResults({ data, onSave }) {
       )}
 
       {/* Search Tweets */}
-      {results.searchTweets?.tweets?.length > 0 && (
+      {searchTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.searchResultsCount", { count: results.searchTweets.tweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.searchTweets.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.searchResultsCount", { count: searchTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={searchTweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.searchTweets.tweets.map((t, i) => (
+            {searchTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1358,17 +1538,18 @@ function XResults({ data, onSave }) {
 
 /* ─── End X Results ──────────────────────────────────────────────────────── */
 
-function LinkedinPostList({ title, posts, onSave }) {
+function LinkedinPostList({ title, posts, onSave, sortMode = DEFAULT_SORT_MODE }) {
   if (!posts?.length) return null;
+  const sortedPosts = sortPostsForDisplay(posts, sortMode);
 
   return (
     <div>
       <Group justify="space-between" align="center" my="xs">
         <Divider label={`${title} (${posts.length})`} style={{ flex: 1 }} />
-        <SaveAllButton items={posts} onSave={onSave} type="post" />
+        <SaveAllButton items={sortedPosts} onSave={onSave} type="post" />
       </Group>
       <Stack gap="sm">
-        {posts.map((post, i) => (
+        {sortedPosts.map((post, i) => (
           <LinkedinPostCard key={post.url || post.id || i} post={post} onSave={onSave} />
         ))}
       </Stack>
@@ -1376,7 +1557,7 @@ function LinkedinPostList({ title, posts, onSave }) {
   );
 }
 
-function LinkedinResults({ data, onSave }) {
+function LinkedinResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
   const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
@@ -1392,9 +1573,10 @@ function LinkedinResults({ data, onSave }) {
     if (key === "post" || key.startsWith("keyword_post_")) postResults.push(value);
   });
 
-  const profilePosts = Array.isArray(results.profilePosts) ? results.profilePosts : [];
-  const companyPosts = Array.isArray(results.companyPosts) ? results.companyPosts : [];
-  const searchPosts = Array.isArray(results.searchPosts) ? results.searchPosts : [];
+  const profilePosts = sortPostsForDisplay(Array.isArray(results.profilePosts) ? results.profilePosts : [], sortMode);
+  const companyPosts = sortPostsForDisplay(Array.isArray(results.companyPosts) ? results.companyPosts : [], sortMode);
+  const searchPosts = sortPostsForDisplay(Array.isArray(results.searchPosts) ? results.searchPosts : [], sortMode);
+  const sortedPostResults = sortPostsForDisplay(postResults, sortMode);
 
   return (
     <Stack gap="md">
@@ -1418,16 +1600,16 @@ function LinkedinResults({ data, onSave }) {
         <LinkedinProfileCard key={`profile-${i}`} profile={profile} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} />
+      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} sortMode={sortMode} />
 
       {companyResults.map((company, i) => (
         <LinkedinCompanyCard key={`company-${i}`} company={company} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} />
-      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} />
+      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} sortMode={sortMode} />
+      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} sortMode={sortMode} />
 
-      {postResults.map((post, i) => (
+      {sortedPostResults.map((post, i) => (
         <LinkedinPostCard key={`post-${i}`} post={post} onSave={onSave} />
       ))}
     </Stack>
@@ -1526,6 +1708,7 @@ export default function CompetitorLookup() {
     tiktok: "",
     reddit: "",
   });
+  const [sortMode, setSortMode] = useState(cached.sortMode || DEFAULT_SORT_MODE);
 
   // Persist results + inputs to sessionStorage so they survive tab navigation
   useEffect(() => {
@@ -1537,6 +1720,7 @@ export default function CompetitorLookup() {
       xInputs, youtubeInputs, redditInputs,
       quickLookupResult,
       simpleQueries,
+      sortMode,
     });
   }, [
     result, linkedinResult, xResult, youtubeResult,
@@ -1546,6 +1730,7 @@ export default function CompetitorLookup() {
     xInputs, youtubeInputs, redditInputs,
     quickLookupResult,
     simpleQueries,
+    sortMode,
   ]);
 
   // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
@@ -2874,14 +3059,16 @@ async function handleLoadMoreX() {
     );
   }
 
-  function YoutubeResults({ data, onSave, t }) {
+  function YoutubeResults({ data, onSave, t, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
+    const sortedChannelVideos = sortPostsForDisplay(results.channelVideos || [], sortMode);
+    const sortedSearch = sortPostsForDisplay(results.search || [], sortMode);
     const count =
       (results.channelDetails ? 1 : 0) +
-      (results.channelVideos?.length || 0) +
+      sortedChannelVideos.length +
       (results.videoDetails ? 1 : 0) +
-      (results.search?.length || 0);
+      sortedSearch.length;
 
     return (
       <Stack gap="md">
@@ -2905,14 +3092,14 @@ async function handleLoadMoreX() {
           </>
         )}
 
-        {results.channelVideos?.length > 0 && (
+        {sortedChannelVideos.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Channel Videos (${results.channelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={results.channelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+              <Divider label={`Channel Videos (${sortedChannelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={sortedChannelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
-              {results.channelVideos.map((v) => (
+              {sortedChannelVideos.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
               ))}
             </Stack>
@@ -2935,14 +3122,14 @@ async function handleLoadMoreX() {
           </>
         )}
 
-        {results.search?.length > 0 && (
+        {sortedSearch.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={t("competitorLookup.searchResultsCount", { count: results.search.length })} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={results.search.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+              <Divider label={t("competitorLookup.searchResultsCount", { count: sortedSearch.length })} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={sortedSearch.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
-              {results.search.map((v) => (
+              {sortedSearch.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
               ))}
             </Stack>
@@ -3563,22 +3750,22 @@ async function handleLoadMoreX() {
     return inner;
   }
 
-  function InstagramResults({ data, onSave }) {
+  function InstagramResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
     // Normalize arrays defensively. Some ScrapeCreators Instagram account
     // responses return { posts: [...] }, some return { data: { items: [...] } },
     // and some return a single object. Never call .map on a non-array.
-    const postsArr = toIgArray(results.userPosts).map(unwrapIgResultPost).filter(Boolean);
-    const reelsSearchArr = toIgArray(results.reelsSearch).map(unwrapIgResultPost).filter(Boolean);
-    const userReelsArr = toIgArray(results.userReels).map((r) => {
+    const postsArr = sortPostsForDisplay(toIgArray(results.userPosts).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const reelsSearchArr = sortPostsForDisplay(toIgArray(results.reelsSearch).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const userReelsArr = sortPostsForDisplay(toIgArray(results.userReels).map((r) => {
       if (isLikelyNormalizedIgPost(r)) return r;
       const candidate = r?.media && !Array.isArray(r.media) ? r.media : r;
       return unwrapIgResultPost(candidate);
-    }).filter(Boolean);
-    const highlightItems = toIgArray(results.highlightDetail).map(unwrapIgResultPost).filter(Boolean);
-    const searchPostsArr = toIgArray(results.searchPosts).map(unwrapIgResultPost).filter(Boolean);
+    }).filter(Boolean), sortMode);
+    const highlightItems = sortPostsForDisplay(toIgArray(results.highlightDetail).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const searchPostsArr = sortPostsForDisplay(toIgArray(results.searchPosts).map(unwrapIgResultPost).filter(Boolean), sortMode);
 
     const count =
       (results.profile ? 1 : 0) +
@@ -3879,14 +4066,14 @@ async function handleLoadMoreX() {
     );
   }
 
-  function TiktokResults({ data, onSave }) {
+  function TiktokResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
     // Profile & stats
     const profileData = results.profile;
     // Profile videos from profile endpoint's itemList OR from profileVideos call
-    const profileVideos = results.profileVideos?.itemList || results.profile?.itemList || [];
+    const profileVideos = sortPostsForDisplay((results.profileVideos?.itemList || results.profile?.itemList || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
     const showProfileVideos = results.profileVideos || (results.profile?.itemList?.length > 0 && !results.profileVideos);
     // Following & Followers
     const followingList = results.following?.followings || results.following?.following_list || [];
@@ -3897,8 +4084,8 @@ async function handleLoadMoreX() {
     const singleVideo = results.video || results.post || null;
     // Search results
     const searchUsersList = results.searchUsers?.user_list || [];
-    const searchHashtagList = results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || [];
-    const searchKeywordList = results.searchKeyword?.search_item_list || [];
+    const searchHashtagList = sortPostsForDisplay((results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
+    const searchKeywordList = sortPostsForDisplay((results.searchKeyword?.search_item_list || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
 
     const count =
       (profileData ? 1 : 0) +
@@ -4012,13 +4199,12 @@ async function handleLoadMoreX() {
           <>
             <Group justify="space-between" align="center">
               <Divider label={t("competitorLookup.keywordSearchCount", { count: searchKeywordList.length })} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={searchKeywordList.map(item => unwrapTikTokVideo(item))} onSave={onSave} type="post" />
+              <SaveAllButton items={searchKeywordList} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
-              {searchKeywordList.map((item, i) => {
-                const v = unwrapTikTokVideo(item);
-                return <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />;
-              })}
+              {searchKeywordList.map((v, i) => (
+                <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />
+              ))}
             </Stack>
           </>
         )}
@@ -4356,19 +4542,19 @@ async function handleLoadMoreX() {
     );
   }
 
-  function RedditResults({ data, onSave }) {
+  function RedditResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
     const profileData = results.profile || results.userProfile;
     const detailsData = results.subredditDetails;
     const singlePost = results.post || results.postDetails || results.postComments?.post;
-    const userPostsArr = results.userPosts?.posts || results.userPosts?.items || [];
-    const subredditPostsArr = results.subredditPosts?.posts || [];
-    const subredditSearchArr = results.subredditSearch?.posts || [];
-    const commentsArr = results.postComments?.comments || [];
-    const searchArr = results.search?.posts || [];
-    const adsArr = results.searchAds?.ads || [];
+    const userPostsArr = sortPostsForDisplay(results.userPosts?.posts || results.userPosts?.items || [], sortMode);
+    const subredditPostsArr = sortPostsForDisplay(results.subredditPosts?.posts || [], sortMode);
+    const subredditSearchArr = sortPostsForDisplay(results.subredditSearch?.posts || [], sortMode);
+    const commentsArr = sortPostsForDisplay(results.postComments?.comments || [], sortMode);
+    const searchArr = sortPostsForDisplay(results.search?.posts || [], sortMode);
+    const adsArr = sortPostsForDisplay(results.searchAds?.ads || [], sortMode);
     const adDetail = results.getAd?.data || results.getAd;
 
     const count =
@@ -4496,7 +4682,7 @@ async function handleLoadMoreX() {
     );
   }
 
-  const posts = Array.isArray(result?.posts) ? result.posts : [];
+  const posts = sortPostsForDisplay(Array.isArray(result?.posts) ? result.posts : [], sortMode);
   const SHOW_GLOBAL_LOOKUP = false;
   const SHOW_ADVANCED_LOOKUP = false;
 
@@ -4511,14 +4697,17 @@ async function handleLoadMoreX() {
               {t("competitorLookup.subtitle")}
             </Text>
           </div>
-          {creditsRemaining != null && (
-            <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
-              <Text size="xs" c="dimmed" fw={500}>{t("competitorLookup.creditsRemaining")}</Text>
-              <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
-                {creditsRemaining.toLocaleString()}
-              </Text>
-            </Card>
-          )}
+          <Stack align="flex-end" gap={6}>
+            <SortSelect value={sortMode} onChange={setSortMode} />
+            {creditsRemaining != null && (
+              <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
+                <Text size="xs" c="dimmed" fw={500}>{t("competitorLookup.creditsRemaining")}</Text>
+                <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
+                  {creditsRemaining.toLocaleString()}
+                </Text>
+              </Card>
+            )}
+          </Stack>
         </Group>
 
         {!Object.values(connectedPlatforms).some(Boolean) && (
@@ -4558,7 +4747,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>Search X</Button>
                   </Group>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
-                  {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                  {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                   {getXNextToken(xResult) && (
                     <Group justify="center">
                       <Button variant="light" loading={xLoadingMore} onClick={handleLoadMoreX}>
@@ -4586,7 +4775,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={youtubeLoading} onClick={handleSimpleYoutubeSubmit}>Search YouTube</Button>
                   </Group>
                   {youtubeError && <Alert color="red" title={t("competitorLookup.youtubeError")}>{youtubeError}</Alert>}
-                  {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />}
+                  {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4607,7 +4796,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={linkedinLoading} onClick={handleSimpleLinkedinSubmit}>Search LinkedIn</Button>
                   </Group>
                   {linkedinError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{linkedinError}</Alert>}
-                  {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
+                  {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4628,7 +4817,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={instagramLoading} onClick={handleSimpleInstagramSubmit}>Search Instagram</Button>
                   </Group>
                   {instagramError && <Alert color="red" title={t("competitorLookup.instagramError")}>{instagramError}</Alert>}
-                  {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} />}
+                  {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4649,7 +4838,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={tiktokLoading} onClick={handleSimpleTiktokSubmit}>Search TikTok</Button>
                   </Group>
                   {tiktokError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{tiktokError}</Alert>}
-                  {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />}
+                  {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4670,7 +4859,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={redditLoading} onClick={handleSimpleRedditSubmit}>Search Reddit</Button>
                   </Group>
                   {redditError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{redditError}</Alert>}
-                  {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} />}
+                  {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4922,7 +5111,7 @@ async function handleLoadMoreX() {
                         </Alert>
                       )}
 
-                      {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                      {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                     </Stack>
                   </Tabs.Panel>
                 )}
@@ -5013,7 +5202,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {youtubeResult && (
-                        <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />
+                        <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5094,7 +5283,7 @@ async function handleLoadMoreX() {
                         </Alert>
                       )}
 
-                      {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
+                      {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} sortMode={sortMode} />}
                     </Stack>
                   </Tabs.Panel>
                 )}
@@ -5219,7 +5408,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {instagramResult && (
-                        <InstagramResults data={instagramResult} onSave={handleInstagramSave} />
+                        <InstagramResults data={instagramResult} onSave={handleInstagramSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5351,7 +5540,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {tiktokResult && (
-                        <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />
+                        <TiktokResults data={tiktokResult} onSave={handleTiktokSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5476,7 +5665,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {redditResult && (
-                        <RedditResults data={redditResult} onSave={handleRedditSave} />
+                        <RedditResults data={redditResult} onSave={handleRedditSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>

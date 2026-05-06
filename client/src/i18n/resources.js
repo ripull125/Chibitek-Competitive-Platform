@@ -88,7 +88,7 @@ const resources = {
         signInToDelete: "Sign in to delete saved items.",
         failedDeletePost: "Failed to delete post",
         deleteError: "Failed to delete post: {{message}}",
-        metricsMayBeUnavailable: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+        metricsMayBeUnavailable: "Some metrics (e.g. likes) may appear as 0 because they are private. Sorting a post that doesn't have certain metrics (e.g. shares) automatically sorts by newest",
         platformFallback: "Platform {{platformId}}",
         platforms: {
           x: "X / Twitter",

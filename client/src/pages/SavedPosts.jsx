@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon, Alert, Avatar, Badge, Button, Card, Collapse, Divider,
-  Group, LoadingOverlay, Modal, Paper, SimpleGrid, Stack, Text, Title, Tooltip,
+  Group, LoadingOverlay, Modal, Paper, Select, SimpleGrid, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
   IconBrandTiktok, IconBrandX, IconBrandYoutube,
   IconChevronDown, IconChevronUp,
-  IconExternalLink, IconEye, IconHeart, IconInfoCircle,
+  IconExternalLink, IconHeart, IconInfoCircle,
   IconMessage, IconRepeat, IconTrash,
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
@@ -30,6 +30,95 @@ function Metric({ icon, value }) {
       {icon}
       <Text size="xs" c="dimmed" lh={1}>{label}</Text>
     </Group>
+  );
+}
+
+
+const DEFAULT_SORT_MODE = "date_desc";
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "metrics_desc", label: "Highest total metrics" },
+  { value: "likes_desc", label: "Most likes" },
+  { value: "comments_desc", label: "Most comments" },
+  { value: "shares_desc", label: "Most shares" },
+];
+
+function parseMetricValue(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return 0;
+  const match = text.match(/^(-?[0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+  if (!match) {
+    const n = Number(text);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const base = Number(match[1]);
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : suffix === "b" ? 1_000_000_000 : 1;
+  return Number.isFinite(base) ? Math.max(0, Math.round(base * multiplier)) : 0;
+}
+
+function getSortableDate(post = {}) {
+  const raw = post.published_at ?? post.publishedAt ?? post.datePublished ?? post.created_at ?? post.createdAt ?? post.created_utc ?? post.created ?? post.timestamp ?? post.extra?.published_at;
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getSortableLikes(post = {}) {
+  return parseMetricValue(post.likes ?? post.extra?.likes ?? post.extra?.like_count ?? post.extra?.likeCount ?? 0);
+}
+
+function getSortableComments(post = {}) {
+  return parseMetricValue(post.comments ?? post.extra?.comments ?? post.extra?.comment_count ?? post.extra?.commentCount ?? 0);
+}
+
+function getSortableShares(post = {}) {
+  return parseMetricValue(post.shares ?? post.extra?.shares ?? post.extra?.share_count ?? post.extra?.shareCount ?? 0);
+}
+
+function getSortableTotalMetrics(post = {}) {
+  return getSortableLikes(post) + getSortableComments(post) + getSortableShares(post);
+}
+
+function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
+  if (!Array.isArray(posts)) return [];
+  const mode = sortMode || DEFAULT_SORT_MODE;
+  const decorated = posts.map((post, index) => ({ post, index }));
+
+  decorated.sort((a, b) => {
+    let diff = 0;
+    if (mode === "date_asc") diff = getSortableDate(a.post) - getSortableDate(b.post);
+    else if (mode === "metrics_desc") diff = getSortableTotalMetrics(b.post) - getSortableTotalMetrics(a.post);
+    else if (mode === "likes_desc") diff = getSortableLikes(b.post) - getSortableLikes(a.post);
+    else if (mode === "comments_desc") diff = getSortableComments(b.post) - getSortableComments(a.post);
+    else if (mode === "shares_desc") diff = getSortableShares(b.post) - getSortableShares(a.post);
+    else diff = getSortableDate(b.post) - getSortableDate(a.post);
+
+    return diff || a.index - b.index;
+  });
+
+  return decorated.map(({ post }) => post);
+}
+
+function SortSelect({ value, onChange }) {
+  return (
+    <Select
+      label="Sort posts"
+      aria-label="Sort saved posts"
+      size="xs"
+      value={value}
+      onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
+      data={SORT_OPTIONS}
+      allowDeselect={false}
+      checkIconPosition="right"
+      w={210}
+    />
   );
 }
 
@@ -954,6 +1043,11 @@ export default function SavedPosts() {
   const [collapsedSections, setCollapsedSections] = useState({});
   const [deleteAllModal, setDeleteAllModal] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [sortMode, setSortMode] = useState(() => localStorage.getItem("savedPostsSortMode") || DEFAULT_SORT_MODE);
+
+  useEffect(() => {
+    localStorage.setItem("savedPostsSortMode", sortMode);
+  }, [sortMode]);
 
   useEffect(() => {
     const newMap = {};
@@ -1055,29 +1149,32 @@ export default function SavedPosts() {
       <LoadingOverlay visible={loading} />
 
       {/* page header */}
-      <Group justify="space-between" align="center">
+      <Group justify="space-between" align="flex-start">
         <Title order={2}>{t("savedPosts.title")}</Title>
-        <Group gap="sm">
-          {posts.length > 0 && (
-            <Button
-              color="red"
-              variant="light"
-              size="xs"
-              leftSection={<IconTrash size={14} />}
-              onClick={() => setDeleteAllModal(true)}
-            >
-              Delete All
-            </Button>
-          )}
-          <Badge variant="filled" size="lg" radius="sm" color="blue">
-            {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
-          </Badge>
-        </Group>
+        <Stack align="flex-end" gap={6}>
+          <Group gap="sm">
+            {posts.length > 0 && (
+              <Button
+                color="red"
+                variant="light"
+                size="xs"
+                leftSection={<IconTrash size={14} />}
+                onClick={() => setDeleteAllModal(true)}
+              >
+                Delete All
+              </Button>
+            )}
+            <Badge variant="filled" size="lg" radius="sm" color="blue">
+              {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
+            </Badge>
+          </Group>
+          {posts.length > 0 && <SortSelect value={sortMode} onChange={setSortMode} />}
+        </Stack>
       </Group>
 
       <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
         {t("savedPosts.metricsMayBeUnavailable", {
-          defaultValue: "Some metrics (e.g. likes) may appear as 0 because they are private.",
+          defaultValue: "Some engagement metrics may appear as 0 because they are private or unavailable from the platform's API.",
         })}
       </Alert>
 
@@ -1090,7 +1187,7 @@ export default function SavedPosts() {
       )}
 
       {sortedKeys.map((platformId) => {
-        const platformPosts = grouped[platformId];
+        const platformPosts = sortPostsForDisplay(grouped[platformId], sortMode);
         const cfg = platformMap[platformId];
         const PlatformIcon = cfg?.icon;
         const PlatformCard = cfg?.Card || GenericPostCard;
