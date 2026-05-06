@@ -222,7 +222,7 @@ const resources = {
         hideTranscript: "Hide transcript",
         showTranscript: "Show transcript",
         noTranscriptAvailable: "No transcript available for this video.",
-        metricsMayBeUnavailable: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+        metricsMayBeUnavailable: "Some metrics (e.g. likes) may appear as 0 because they are private. Sorting a post that doesn't have certain metrics (e.g. shares) automatically sorts by newest",
         youtubeNotAllowCaptions: "YouTube does not allow downloading captions for this video.",
         noTitle: "No title",
         noDescription: "No description",

@@ -8,7 +8,7 @@ import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
   IconBrandTiktok, IconBrandX, IconBrandYoutube,
   IconChevronDown, IconChevronUp,
-  IconExternalLink, IconHeart, IconInfoCircle,
+  IconExternalLink, IconHeart,
   IconMessage, IconRepeat, IconTrash,
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
@@ -109,7 +109,6 @@ function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
 function SortSelect({ value, onChange }) {
   return (
     <Select
-      label="Sort posts"
       aria-label="Sort saved posts"
       size="xs"
       value={value}
@@ -117,7 +116,7 @@ function SortSelect({ value, onChange }) {
       data={SORT_OPTIONS}
       allowDeselect={false}
       checkIconPosition="right"
-      w={210}
+      w={190}
     />
   );
 }
@@ -249,7 +248,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
   }
 
   return (
-    <div style={{ maxWidth: items.length === 1 ? 420 : 560 }}>
+    <div style={{ maxWidth: items.length === 1 ? 420 : 560, width: "100%" }}>
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
         {items.map((item, index) => {
           const key = item.media_key || item.url || item.preview_image_url || index;
@@ -346,7 +345,7 @@ function InstagramMediaPreview({ media, postUrl = null }) {
   if (!imageItems.length) {
     if (!postUrl) return null;
     return (
-      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460 }}>
+      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460, width: "100%" }}>
         <Stack gap={4}>
           <Text size="xs" c="dimmed">
             Instagram photos/videos are not available from the API for inline preview.
@@ -615,7 +614,7 @@ function YouTubePostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #ff0000" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -694,7 +693,7 @@ function LinkedInPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #0A66C2" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #0A66C2" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -766,7 +765,7 @@ function InstagramPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #E1306C" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -838,7 +837,7 @@ function TikTokPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #000" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #000" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -911,7 +910,7 @@ function RedditPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #FF4500" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -976,7 +975,7 @@ function GenericPostCard({ post, onDelete }) {
   const tone = post.tone;
   const postUrl = getPostUrl(post);
   return (
-    <Card withBorder radius="md" p="lg">
+    <Card withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap" }}>{post.content}</Text>
@@ -1149,34 +1148,26 @@ export default function SavedPosts() {
       <LoadingOverlay visible={loading} />
 
       {/* page header */}
-      <Group justify="space-between" align="flex-start">
+      <Group justify="space-between" align="center" wrap="wrap">
         <Title order={2}>{t("savedPosts.title")}</Title>
-        <Stack align="flex-end" gap={6}>
-          <Group gap="sm">
-            {posts.length > 0 && (
-              <Button
-                color="red"
-                variant="light"
-                size="xs"
-                leftSection={<IconTrash size={14} />}
-                onClick={() => setDeleteAllModal(true)}
-              >
-                Delete All
-              </Button>
-            )}
-            <Badge variant="filled" size="lg" radius="sm" color="blue">
-              {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
-            </Badge>
-          </Group>
+        <Group gap="sm" align="center" wrap="wrap">
           {posts.length > 0 && <SortSelect value={sortMode} onChange={setSortMode} />}
-        </Stack>
+          {posts.length > 0 && (
+            <Button
+              color="red"
+              variant="light"
+              size="xs"
+              leftSection={<IconTrash size={14} />}
+              onClick={() => setDeleteAllModal(true)}
+            >
+              Delete All
+            </Button>
+          )}
+          <Badge variant="filled" size="lg" radius="sm" color="blue">
+            {posts.length} {posts.length === 1 ? t("common.post") : t("common.posts")}
+          </Badge>
+        </Group>
       </Group>
-
-      <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
-        {t("savedPosts.metricsMayBeUnavailable", {
-          defaultValue: "Some engagement metrics may appear as 0 because they are private or unavailable from the platform's API.",
-        })}
-      </Alert>
 
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
@@ -1194,34 +1185,52 @@ export default function SavedPosts() {
         const isOpen = !collapsedSections[platformId];
 
         return (
-          <Stack key={platformId} gap="sm">
-            <Group
-              gap={8}
-              align="center"
-              onClick={() => setCollapsedSections(prev => ({ ...prev, [platformId]: !prev[platformId] }))}
-              style={{ cursor: "pointer", userSelect: "none" }}
-            >
-              {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
-              <Text fw={700} size="sm">
-                {cfg?.label || t("savedPosts.platformFallback", { platformId })} ({platformPosts.length})
-              </Text>
-              {isOpen
-                ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
-                : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
-              }
-            </Group>
-            <Collapse in={isOpen}>
-              <Stack gap="sm">
-                {platformPosts.map((p) => (
-                  <PlatformCard
-                    key={p.id}
-                    post={p}
-                    onDelete={() => setDeleteModal({ open: true, postId: p.id })}
-                  />
-                ))}
-              </Stack>
-            </Collapse>
-          </Stack>
+          <Paper key={platformId} withBorder radius="lg" p="md">
+            <Stack gap="md">
+              <Group
+                justify="space-between"
+                align="center"
+                onClick={() => setCollapsedSections(prev => ({ ...prev, [platformId]: !prev[platformId] }))}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                <Group gap={8} align="center">
+                  {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
+                  <Text fw={700} size="sm">
+                    {cfg?.label || t("savedPosts.platformFallback", { platformId })}
+                  </Text>
+                  <Badge size="sm" variant="light" color="gray">{platformPosts.length}</Badge>
+                </Group>
+                {isOpen
+                  ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
+                  : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
+                }
+              </Group>
+              <Collapse in={isOpen}>
+                <div
+                  style={{
+                    columns: platformPosts.length > 1 ? "420px 2" : "auto",
+                    columnGap: 16,
+                  }}
+                >
+                  {platformPosts.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        breakInside: "avoid",
+                        pageBreakInside: "avoid",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <PlatformCard
+                        post={p}
+                        onDelete={() => setDeleteModal({ open: true, postId: p.id })}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Collapse>
+            </Stack>
+          </Paper>
         );
       })}
 
