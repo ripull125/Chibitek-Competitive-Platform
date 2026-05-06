@@ -128,15 +128,17 @@ function normalizeLinkedInPost(raw = {}, fallbackAuthor = {}) {
     id,
     url,
     link: url,
-    name: post.name || title,
-    title: post.title || title,
-    headline: post.headline || title,
+    name: post.name || title || "",
+    title: post.title || title || "",
+    headline: post.headline || title || "",
     description: text,
     text,
     datePublished: post.datePublished || post.publishedAt || post.created_at || post.date || null,
     likeCount: post.likeCount ?? post.reactionCount ?? post.numLikes ?? post.likes ?? 0,
     shareCount: post.shareCount ?? post.numShares ?? post.reposts ?? 0,
     commentCount: post.commentCount ?? post.numComments ?? post.commentsCount ?? post.comments?.length ?? 0,
+    comments: [],
+    topComments: [],
     image,
     thumbnailUrl: post.thumbnailUrl || image || null,
     author: {
@@ -183,6 +185,7 @@ function recentGoogleDate(daysBack = 90) {
 function linkedInPostUrlFromHit(hit) {
   const url = String(hit?.url || hit?.link || "").trim();
   if (!url || !/linkedin\.com\//i.test(url)) return null;
+  if (/commentUrn=|comments?|reply/i.test(url)) return null;
   if (/linkedin\.com\/(posts|pulse)\//i.test(url) || /linkedin\.com\/feed\/update\//i.test(url)) return url;
   return null;
 }

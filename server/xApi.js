@@ -319,35 +319,83 @@ function normalizeUser(user) {
   };
 }
 
+function normalizeVideoVariant(v = {}) {
+  if (!v || typeof v !== "object") return null;
+  const url = v.url || v.src || v.href || v.playbackUrl || v.playback_url || "";
+  if (!url) return null;
+
+  return {
+    bitrate: v.bitrate ?? v.bit_rate ?? null,
+    content_type: v.content_type || v.contentType || v.mime_type || v.mimeType || v.type || "",
+    url,
+  };
+}
+
+function collectVideoVariants(media = {}) {
+  const variantArrays = [
+    media.variants,
+    media.video_info?.variants,
+    media.videoInfo?.variants,
+    media.video?.variants,
+    media.video?.video_info?.variants,
+    media.video?.videoInfo?.variants,
+  ];
+
+  const directUrls = [
+    media.video_url,
+    media.videoUrl,
+    media.playback_url,
+    media.playbackUrl,
+    media.source_url,
+    media.sourceUrl,
+    media.video?.url,
+    media.video?.src,
+    media.video?.playback_url,
+    media.video?.playbackUrl,
+  ]
+    .filter(Boolean)
+    .map((url) => ({ url, content_type: /\.m3u8(?:\?|$)/i.test(String(url)) ? "application/vnd.apple.mpegurl" : "video/mp4" }));
+
+  return [...variantArrays.filter(Array.isArray).flat(), ...directUrls]
+    .map(normalizeVideoVariant)
+    .filter(Boolean);
+}
+
+function firstPlayableVideoUrl(variants = []) {
+  const normalized = (variants || []).filter((v) => v?.url);
+  const mp4s = normalized
+    .filter((v) => /mp4/i.test(String(v.content_type || "")) || /\.mp4(?:\?|$)/i.test(String(v.url || "")))
+    .sort((a, b) => (Number(b.bitrate) || 0) - (Number(a.bitrate) || 0));
+  const hls = normalized.find((v) => /mpegurl|m3u8/i.test(String(v.content_type || "")) || /\.m3u8(?:\?|$)/i.test(String(v.url || "")));
+  return mp4s[0]?.url || hls?.url || null;
+}
+
 function normalizeMedia(media) {
   if (!media) return null;
 
+  const variants = collectVideoVariants(media);
+  const type = media.type || (variants.length ? "video" : "photo");
+  const preview =
+    media.preview_image_url ||
+    media.previewImageUrl ||
+    media.thumbnail_url ||
+    media.thumbnailUrl ||
+    media.poster ||
+    media.media_url_https ||
+    media.media_url ||
+    null;
+
   return {
-    media_key: media.media_key || media.id || "",
-    type: media.type || "photo",
-    url: media.url || media.media_url_https || media.media_url || null,
-    preview_image_url:
-      media.preview_image_url ||
-      media.media_url_https ||
-      media.media_url ||
-      null,
-    width: media.width ?? media.sizes?.large?.w ?? null,
-    height: media.height ?? media.sizes?.large?.h ?? null,
-    duration_ms: media.duration_ms ?? media.video_info?.duration_millis ?? null,
+    media_key: media.media_key || media.id || media.id_str || "",
+    type,
+    url: media.url || media.media_url_https || media.media_url || preview || null,
+    preview_image_url: preview,
+    video_url: firstPlayableVideoUrl(variants),
+    width: media.width ?? media.sizes?.large?.w ?? media.original_info?.width ?? null,
+    height: media.height ?? media.sizes?.large?.h ?? media.original_info?.height ?? null,
+    duration_ms: media.duration_ms ?? media.video_info?.duration_millis ?? media.videoInfo?.durationMillis ?? null,
     public_metrics: media.public_metrics || {},
-    variants: Array.isArray(media.variants)
-      ? media.variants.map((v) => ({
-          bitrate: v.bitrate ?? null,
-          content_type: v.content_type || v.contentType || v.mime_type || v.type || "",
-          url: v.url || "",
-        }))
-      : Array.isArray(media.video_info?.variants)
-        ? media.video_info.variants.map((v) => ({
-          bitrate: v.bitrate ?? null,
-          content_type: v.content_type || v.contentType || v.mime_type || v.type || "",
-          url: v.url || "",
-        }))
-        : [],
+    variants,
   };
 }
 

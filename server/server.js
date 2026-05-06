@@ -2411,15 +2411,18 @@ app.post('/api/linkedin/save', async (req, res) => {
           author: data.author,
           commentCount: data.commentCount,
           likeCount: data.likeCount,
-          topComments: (data.comments || []).slice(0, 5),
         },
       });
 
       return res.json({ saved: true, competitor_id: competitor.id, post_id: post.id });
     }
 
-    // Generic sub-item save for activity, companyPost, comment, article
-    if (['activity', 'companyPost', 'comment', 'article'].includes(type)) {
+    // Generic sub-item save for activity, companyPost, and article. LinkedIn comments are intentionally ignored.
+    if (type === 'comment') {
+      return res.json({ saved: false, skipped: true, reason: 'LinkedIn comments are not saved.' });
+    }
+
+    if (['activity', 'companyPost', 'article'].includes(type)) {
       const authorName = data.author || data.profileName || data.companyName || 'LinkedIn';
       const platformUserId = authorName;
       const content = data.text || data.headline || data.body || '';

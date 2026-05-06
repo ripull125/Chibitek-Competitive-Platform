@@ -591,15 +591,14 @@ function LinkedinPostCard({ post, onSave }) {
     return el.value;
   };
 
-  const title = decode(post.name) || t("competitorLookup.untitledPost");
+  const title = decode(post.name || post.title || "");
   const headline = decode(post.headline);
-  const content = decode(post.description);
+  const content = decode(post.description || post.text || "");
   const authorName = post.author?.name || post.author;
   const authorFollowers = post.author?.followers;
   const thumb = post.thumbnailUrl;
   const likes = post.likeCount || 0;
   const comments = post.commentCount || 0;
-  const commentsArr = post.comments || [];
   const moreArticles = post.moreArticles || [];
 
   return (
@@ -608,9 +607,11 @@ function LinkedinPostCard({ post, onSave }) {
         {/* Header */}
         <Group justify="space-between" align="start">
           <div style={{ flex: 1 }}>
-            <Text fw={700} size="lg" lineClamp={2}>{title}</Text>
+            {title && (
+              <Text fw={700} size="lg" lineClamp={2}>{title}</Text>
+            )}
             {headline && headline !== title && (
-              <Text size="sm" c="dimmed" mt={4} lineClamp={2}>{headline}</Text>
+              <Text size="sm" c="dimmed" mt={title ? 4 : 0} lineClamp={2}>{headline}</Text>
             )}
           </div>
           <Group gap="xs">
@@ -670,40 +671,6 @@ function LinkedinPostCard({ post, onSave }) {
           </div>
         )}
 
-        {/* Comments */}
-        {commentsArr.length > 0 && (
-          <div>
-            <Group justify="space-between" align="center" my="xs">
-              <Divider label={t("competitorLookup.commentsCount", { count: commentsArr.length })} style={{ flex: 1 }} />
-              {commentsArr.length > 1 && (
-                <SaveAllButton items={commentsArr.slice(0, 6)} onSave={(_type, c) => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} type="comment" />
-              )}
-            </Group>
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-              {commentsArr.slice(0, 6).map((c, i) => (
-                <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
-                  <Group gap={6} wrap="nowrap" mb={2}>
-                    <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || t("competitorLookup.unknown")}</Text>
-                    {c.datePublished && (
-                      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>{new Date(c.datePublished).toLocaleDateString()}</Text>
-                    )}
-                  </Group>
-                  <Text size="xs" lineClamp={2} c="dimmed">{decode(c.text || c.description) || "—"}</Text>
-                  {(c.likeCount != null || c.commentCount != null) && (
-                    <Group gap={4} mt={2}>
-                      {c.likeCount != null && <Badge size="xs" variant="light">❤️ {c.likeCount}</Badge>}
-                      {c.commentCount != null && <Badge size="xs" variant="light">💬 {c.commentCount}</Badge>}
-                    </Group>
-                  )}
-                  <Group justify="flex-end" mt={4}>
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
-                  </Group>
-                </Card>
-              ))}
-            </SimpleGrid>
-          </div>
-        )}
-
         {/* More Articles */}
         {moreArticles.length > 0 && (
           <div>
@@ -747,14 +714,38 @@ function LinkedinPostCard({ post, onSave }) {
 
 /* ─── X / Twitter Result Components ──────────────────────────────────────── */
 
-function bestVideoVariant(variants = []) {
-  if (!Array.isArray(variants)) return null;
+function bestVideoVariant(mediaOrVariants = []) {
+  const media = Array.isArray(mediaOrVariants) ? {} : (mediaOrVariants || {});
+  const variants = Array.isArray(mediaOrVariants)
+    ? mediaOrVariants
+    : [
+        ...(Array.isArray(media.variants) ? media.variants : []),
+        ...(Array.isArray(media.video_info?.variants) ? media.video_info.variants : []),
+        ...(Array.isArray(media.videoInfo?.variants) ? media.videoInfo.variants : []),
+        ...(Array.isArray(media.video?.variants) ? media.video.variants : []),
+      ];
 
-  const normalized = variants
+  const directCandidates = Array.isArray(mediaOrVariants)
+    ? []
+    : [
+        media.video_url,
+        media.videoUrl,
+        media.playback_url,
+        media.playbackUrl,
+        media.source_url,
+        media.sourceUrl,
+        media.video?.url,
+        media.video?.src,
+      ];
+
+  const normalized = [
+    ...variants,
+    ...directCandidates.filter(Boolean).map((url) => ({ url })),
+  ]
     .filter((v) => v?.url)
     .map((v) => ({
       ...v,
-      _contentType: String(v.content_type || v.contentType || v.mime_type || v.type || "").toLowerCase(),
+      _contentType: String(v.content_type || v.contentType || v.mime_type || v.mimeType || v.type || "").toLowerCase(),
       _url: String(v.url || ""),
     }));
 
@@ -843,9 +834,12 @@ function XMediaPreview({ media, postUrl = null }) {
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
         {items.map((item, index) => {
           const key = item.media_key || item.url || item.preview_image_url || index;
-          const isVideo = item.type === "video" || item.type === "animated_gif";
-          const videoUrl = bestVideoVariant(item.variants);
-          const imageUrl = item.url || item.preview_image_url;
+          const isVideo = item.type === "video" || item.type === "animated_gif" || Boolean(item.video_url || item.videoUrl);
+          const videoUrl = bestVideoVariant(item);
+          const rawImageUrl = item.preview_image_url || item.thumbnail_url || item.thumbnailUrl || item.poster || item.url;
+          const imageUrl = isVideo && /\.(mp4|m3u8)(?:\?|$)/i.test(String(rawImageUrl || ""))
+            ? item.preview_image_url || item.thumbnail_url || item.thumbnailUrl || item.poster || null
+            : rawImageUrl;
 
           const mediaStyle = {
             width: "100%",
