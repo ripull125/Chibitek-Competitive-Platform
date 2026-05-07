@@ -1885,9 +1885,11 @@ export default function CompetitorLookup() {
     for (const base of backends) {
       const url = `${base.replace(/\/+$/, "")}${path}`;
       try {
+        const headers = { "Content-Type": "application/json" };
+        if (currentUserId) headers["x-user-id"] = currentUserId;
         const resp = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         });
         const ct = resp.headers.get("content-type") || "";
