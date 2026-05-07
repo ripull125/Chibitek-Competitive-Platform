@@ -153,6 +153,15 @@ export default function ChatInput() {
   const requestAbortRef = useRef(null);
   const hasHydratedRef = useRef(false);
 
+  const getActiveUserId = async () => {
+    if (currentUserId) return currentUserId;
+    if (!supabase) return null;
+    const { data } = await supabase.auth.getUser();
+    const uid = data?.user?.id || null;
+    if (uid) setCurrentUserId(uid);
+    return uid;
+  };
+
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
@@ -252,17 +261,22 @@ export default function ChatInput() {
     setIsSending(true);
 
     try {
+      const activeUserId = await getActiveUserId();
       const modelMeta = getModelMeta(aiModelChoice);
       const controller = new AbortController();
       requestAbortRef.current = controller;
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
+        },
         signal: controller.signal,
         body: JSON.stringify({
           messages: payloadMessages,
           attachments,
+          user_id: activeUserId || undefined,
           llmProvider: modelMeta?.provider,
           chatModel: aiModelChoice,
         }),
@@ -302,16 +316,20 @@ export default function ChatInput() {
     if (isSending) return;
     setIsSending(true);
     try {
+      const activeUserId = await getActiveUserId();
       const modelMeta = getModelMeta(aiModelChoice);
       const controller = new AbortController();
       requestAbortRef.current = controller;
       const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
+        },
         signal: controller.signal,
         body: JSON.stringify({
           messages: [{ role: "user", content: SUMMARY_PROMPT }],
-          user_id: currentUserId || undefined,
+          user_id: activeUserId || undefined,
           llmProvider: modelMeta?.provider,
           chatModel: aiModelChoice,
         }),
@@ -404,13 +422,17 @@ export default function ChatInput() {
     setIsSaving(true);
     setSaveNotice("");
     try {
+      const activeUserId = await getActiveUserId();
       const response = await fetch(apiUrl('/api/chat/conversations'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
+        },
         body: JSON.stringify({
           title: titleOverride || buildConversationTitle(conversation, t, t),
           conversation,
-          user_id: currentUserId,
+          user_id: activeUserId || currentUserId,
         }),
       });
 
