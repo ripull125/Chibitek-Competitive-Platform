@@ -536,6 +536,17 @@ function getPostUrl(post) {
     return `https://www.youtube.com/watch?v=${vid}`;
   }
 
+  // Reddit. Some deployments use id 6, others use id 10 depending on seed/migration order.
+  if (platformId === 6 || platformId === 10 || String(post.platform_name || post.platform || '').toLowerCase() === 'reddit') {
+    const directUrl = post.url || post.extra?.url || post.extra?.permalink;
+    if (directUrl && /^https?:\/\//i.test(String(directUrl))) return directUrl;
+    if (post.extra?.permalink) return `https://www.reddit.com${post.extra.permalink}`;
+    const subreddit = post.extra?.subreddit || post.subreddit;
+    const cleanPid = String(pid || '').replace(/^t3_/, '');
+    if (subreddit && cleanPid) return `https://www.reddit.com/r/${subreddit}/comments/${cleanPid}`;
+    if (cleanPid) return `https://www.reddit.com/comments/${cleanPid}`;
+  }
+
   return null;
 }
 /* ── X / Twitter card ────────────────────────────────────────────────────── */

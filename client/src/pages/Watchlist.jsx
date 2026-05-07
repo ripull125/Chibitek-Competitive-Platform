@@ -44,6 +44,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconEye,
+  IconExternalLink,
 } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
@@ -60,58 +61,76 @@ function getPlatforms(t) {
   };
 }
 
-/* ── Auto-scraper uses the same simple flow as the social search pages ── */
-function getPlatformSearchPlaceholders(t) {
+/* ── Scrape-type options per platform ──────────────────────────────── */
+function getScrapeTypes(t) {
   return {
-    x: t("watchlist.placeholders.xSearch", { defaultValue: "@openai or AI agents" }),
-    youtube: t("watchlist.placeholders.youtubeSearch", { defaultValue: "channel, video URL, or search term" }),
-    reddit: t("watchlist.placeholders.redditSearch", { defaultValue: "r/artificial or search term" }),
-    linkedin: t("watchlist.placeholders.linkedinSearch", { defaultValue: "profile/company/post URL or keyword" }),
-    instagram: t("watchlist.placeholders.instagramSearch", { defaultValue: "@natgeo, profile URL, post URL, or keyword" }),
-    tiktok: t("watchlist.placeholders.tiktokSearch", { defaultValue: "@tiktok, profile URL, or keyword" }),
+    x: [
+      { value: "user_posts",    label: t("watchlist.scrapeTypes.userPosts"),    placeholder: t("watchlist.placeholders.atElon") },
+      { value: "user_mentions", label: t("watchlist.scrapeTypes.userMentions"),  placeholder: t("watchlist.placeholders.atOpenAi") },
+      { value: "followers",     label: t("watchlist.scrapeTypes.followersList"), placeholder: t("watchlist.placeholders.atGithub") },
+      { value: "following",     label: t("watchlist.scrapeTypes.followingList"), placeholder: t("watchlist.placeholders.atGithub") },
+      { value: "search",        label: t("watchlist.scrapeTypes.searchQuery"),   placeholder: t("watchlist.placeholders.aiAgents") },
+    ],
+    youtube: [
+      { value: "channel_videos",  label: t("watchlist.scrapeTypes.channelVideos"),  placeholder: t("watchlist.placeholders.channelUrlOrHandle") },
+      { value: "channel_details", label: t("watchlist.scrapeTypes.channelDetails"),  placeholder: t("watchlist.placeholders.channelUrlOrHandle") },
+      { value: "video_details",   label: t("watchlist.scrapeTypes.videoDetails"),    placeholder: t("watchlist.placeholders.videoUrlOrId") },
+      { value: "video_comments",  label: t("watchlist.scrapeTypes.videoComments"),   placeholder: t("watchlist.placeholders.videoUrlOrId") },
+      { value: "search",          label: t("watchlist.scrapeTypes.search"),           placeholder: t("watchlist.placeholders.searchQuery") },
+    ],
+    reddit: [
+      { value: "subreddit_posts",   label: t("watchlist.scrapeTypes.subredditPosts"),   placeholder: t("watchlist.placeholders.subredditMcp") },
+      { value: "subreddit_details", label: t("watchlist.scrapeTypes.subredditDetails"),  placeholder: t("watchlist.placeholders.subredditArtificial") },
+      { value: "search",            label: t("watchlist.scrapeTypes.search"),             placeholder: t("watchlist.placeholders.searchQuery") },
+    ],
+    linkedin: [
+      { value: "profile", label: t("watchlist.scrapeTypes.profile"),      placeholder: t("watchlist.placeholders.linkedinProfileUrl") },
+      { value: "company", label: t("watchlist.scrapeTypes.companyPage"),  placeholder: t("watchlist.placeholders.linkedinCompanyUrl") },
+      { value: "post",    label: t("watchlist.scrapeTypes.singlePost"),   placeholder: t("watchlist.placeholders.linkedinPostUrl") },
+    ],
+    instagram: [
+      { value: "profile",     label: t("watchlist.scrapeTypes.profile"),     placeholder: t("watchlist.placeholders.atNatgeo") },
+      { value: "user_posts",  label: t("watchlist.scrapeTypes.userPosts"),   placeholder: t("watchlist.placeholders.atNatgeo") },
+      { value: "user_reels",  label: t("watchlist.scrapeTypes.userReels"),   placeholder: t("watchlist.placeholders.atNatgeo") },
+    ],
+    tiktok: [
+      { value: "profile",         label: t("watchlist.scrapeTypes.profile"),        placeholder: t("watchlist.placeholders.atTiktok") },
+      { value: "profile_videos",  label: t("watchlist.scrapeTypes.profileVideos"),  placeholder: t("watchlist.placeholders.atTiktok") },
+      { value: "search",          label: t("watchlist.scrapeTypes.keywordSearch"),  placeholder: t("watchlist.placeholders.searchKeyword") },
+    ],
   };
 }
 
 /* ── Config fields shown per platform+scrape_type ──────────────────── */
 // Each entry: { key (in config JSON), label, type, default, min, max, description }
 function getConfigFields(t) {
-  const maxResults = (defaultVal, max = 100) => [
-    { key: "max_results", label: t("watchlist.config.maxResults"), type: "number", defaultVal, min: 1, max },
-  ];
   return {
-    x: { search: maxResults(10, 100) },
-    youtube: { search: maxResults(10, 50) },
-    reddit: { search: maxResults(25, 100) },
-    linkedin: { search: maxResults(10, 25) },
-    instagram: { search: maxResults(12, 50) },
-    tiktok: { search: maxResults(20, 50) },
+    x: {
+      user_posts:    [{ key: "max_results", label: t("watchlist.config.maxPosts"),      type: "number", defaultVal: 10, min: 1, max: 100 }],
+      user_mentions: [{ key: "max_results", label: t("watchlist.config.maxMentions"),   type: "number", defaultVal: 10, min: 1, max: 100 }],
+      followers:     [{ key: "max_results", label: t("watchlist.config.maxFollowers"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      following:     [{ key: "max_results", label: t("watchlist.config.maxFollowing"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      search:        [{ key: "max_results", label: t("watchlist.config.maxResults"),    type: "number", defaultVal: 10, min: 1, max: 100 }],
+    },
+    youtube: {
+      channel_videos: [{ key: "max_results", label: t("watchlist.config.maxVideos"),    type: "number", defaultVal: 10, min: 1, max: 50 }],
+      video_comments: [{ key: "max_results", label: t("watchlist.config.maxComments"),  type: "number", defaultVal: 20, min: 1, max: 100 }],
+      search:         [{ key: "max_results", label: t("watchlist.config.maxResults"),   type: "number", defaultVal: 10, min: 1, max: 50 }],
+    },
+    reddit: {
+      subreddit_posts: [{ key: "max_results", label: t("watchlist.config.maxPosts"),   type: "number", defaultVal: 25, min: 1, max: 100 }],
+      search:          [{ key: "max_results", label: t("watchlist.config.maxResults"),  type: "number", defaultVal: 25, min: 1, max: 100 }],
+    },
+    linkedin: {},
+    instagram: {
+      user_posts:  [{ key: "max_results", label: t("watchlist.config.maxPosts"),  type: "number", defaultVal: 12, min: 1, max: 50 }],
+      user_reels:  [{ key: "max_results", label: t("watchlist.config.maxReels"),  type: "number", defaultVal: 12, min: 1, max: 50 }],
+    },
+    tiktok: {
+      profile_videos: [{ key: "max_results", label: t("watchlist.config.maxVideos"),   type: "number", defaultVal: 20, min: 1, max: 50 }],
+      search:         [{ key: "max_results", label: t("watchlist.config.maxResults"),  type: "number", defaultVal: 20, min: 1, max: 50 }],
+    },
   };
-}
-
-const DEFAULT_SORT_MODE = "date_desc";
-const SORT_OPTIONS = [
-  { value: "date_desc", label: "Newest first" },
-  { value: "date_asc", label: "Oldest first" },
-  { value: "metrics_desc", label: "Most engagement" },
-  { value: "likes_desc", label: "Most likes" },
-  { value: "comments_desc", label: "Most comments" },
-  { value: "shares_desc", label: "Most shares" },
-];
-
-function SortSelect({ value, onChange, compact = true }) {
-  return (
-    <Select
-      label={compact ? undefined : "Sort posts"}
-      aria-label="Sort posts"
-      size="xs"
-      value={value || DEFAULT_SORT_MODE}
-      onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
-      data={SORT_OPTIONS}
-      checkIconPosition="right"
-      allowDeselect={false}
-      w={compact ? 190 : 210}
-    />
-  );
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
@@ -150,7 +169,7 @@ function relativeTime(dateStr, t) {
 export default function Watchlist() {
   const { t } = useTranslation();
   const PLATFORMS = useMemo(() => getPlatforms(t), [t]);
-  const SEARCH_PLACEHOLDERS = useMemo(() => getPlatformSearchPlaceholders(t), [t]);
+  const SCRAPE_TYPES = useMemo(() => getScrapeTypes(t), [t]);
   const CONFIG_FIELDS = useMemo(() => getConfigFields(t), [t]);
 
   /* ── state ───────────────────────── */
@@ -163,8 +182,6 @@ export default function Watchlist() {
   const [cardResults, setCardResults] = useState({});
   // which cards have their results expanded
   const [expandedCards, setExpandedCards] = useState(new Set());
-  const [sortModesByItem, setSortModesByItem] = useState({});
-  const [modalSortMode, setModalSortMode] = useState(DEFAULT_SORT_MODE);
 
   // set of platform_post_ids the user already saved
   const [savedPostIds, setSavedPostIds] = useState(new Set());
@@ -176,7 +193,7 @@ export default function Watchlist() {
   // add-item form
   const [addOpen, setAddOpen] = useState(false);
   const [formPlatform, setFormPlatform] = useState("x");
-  const [formType, setFormType] = useState("search");
+  const [formType, setFormType] = useState("");
   const [formTarget, setFormTarget] = useState("");
   const [formLabel, setFormLabel] = useState("");
   const [formConfig, setFormConfig] = useState({});
@@ -231,7 +248,7 @@ export default function Watchlist() {
   /* ── add item ────────────────────── */
   const handleAdd = async () => {
     setFormError("");
-    if (!formTarget.trim()) {
+    if (!formType || !formTarget.trim()) {
       setFormError(t("watchlist.scrapeTypeTargetRequired"));
       return;
     }
@@ -253,7 +270,7 @@ export default function Watchlist() {
         method: "POST",
         body: JSON.stringify({
           platform: formPlatform,
-          scrape_type: "search",
+          scrape_type: formType,
           target: formTarget.trim(),
           label: formLabel.trim() || formTarget.trim(),
           config: configToSend,
@@ -262,7 +279,7 @@ export default function Watchlist() {
       setAddOpen(false);
       setFormTarget("");
       setFormLabel("");
-      setFormType("search");
+      setFormType("");
       setFormConfig({});
       await loadItems();
     } catch (err) {
@@ -344,12 +361,18 @@ export default function Watchlist() {
 
   /* ── derived helpers ─────────────── */
   const enabledCount = useMemo(() => items.filter((i) => i.enabled).length, [items]);
-  // reset config when platform changes
-  useEffect(() => { setFormType("search"); setFormConfig({}); }, [formPlatform]);
+  const currentScrapeTypes = SCRAPE_TYPES[formPlatform] || [];
+
+  // reset form type + config when platform changes
+  useEffect(() => { setFormType(""); setFormConfig({}); }, [formPlatform]);
+  // reset config when scrape type changes
+  useEffect(() => { setFormConfig({}); }, [formType]);
+
+  const selectedTypeMeta = currentScrapeTypes.find((s) => s.value === formType);
 
   /* ═══ render ═══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "24px 32px", width: "100%", maxWidth: "min(100%, 1500px)", margin: "0 auto" }}>
+    <div style={{ padding: "24px 32px", maxWidth: 960 }}>
       <Group justify="space-between" mb="md">
         <div>
           <Title order={2}>
@@ -426,7 +449,7 @@ export default function Watchlist() {
                       {pMeta.label}
                     </Badge>
                     <Badge size="sm" variant="outline">
-                      {item.scrape_type === "search" ? t("watchlist.autoSearch", { defaultValue: "search" }) : item.scrape_type.replace(/_/g, " ")}
+                      {item.scrape_type.replace(/_/g, " ")}
                     </Badge>
                   </Group>
                   <Group gap={8}>
@@ -490,7 +513,6 @@ export default function Watchlist() {
                         leftSection={<IconEye size={12} />}
                         onClick={() => {
                           setViewData({ label: item.label, platform: item.platform, scrapeType: result.scrape_type || item.scrape_type, data: result.data });
-                          setModalSortMode(sortModesByItem[item.id] || DEFAULT_SORT_MODE);
                           setViewOpen(true);
                         }}
                       >
@@ -515,15 +537,13 @@ export default function Watchlist() {
                 {/* ── Inline results ───────────────────────────────── */}
                 <Collapse in={isExpanded && result?.success && !!result?.data}>
                   <Divider my={8} />
-                  <ScrollArea h={620} type="auto" offsetScrollbars>
+                  <ScrollArea h={320} type="auto" offsetScrollbars>
                     <ResultsRenderer
                       platform={item.platform}
                       scrapeType={result?.scrape_type || item.scrape_type}
                       data={result?.data}
                       savedPostIds={savedPostIds}
                       onSaved={(pid) => setSavedPostIds((prev) => new Set(prev).add(pid))}
-                      sortMode={sortModesByItem[item.id] || DEFAULT_SORT_MODE}
-                      onSortChange={(next) => setSortModesByItem((prev) => ({ ...prev, [item.id]: next }))}
                     />
                   </ScrollArea>
                 </Collapse>
@@ -548,10 +568,17 @@ export default function Watchlist() {
             onChange={(v) => setFormPlatform(v)}
           />
 
+          <Select
+            label={t("watchlist.scrapeType")}
+            placeholder={t("watchlist.selectWhatToScrape")}
+            data={currentScrapeTypes.map((s) => ({ value: s.value, label: s.label }))}
+            value={formType}
+            onChange={(v) => setFormType(v)}
+          />
 
           <TextInput
-            label={t("watchlist.target", { defaultValue: "Search" })}
-            placeholder={SEARCH_PLACEHOLDERS[formPlatform] || t("watchlist.usernameUrlOrSearchQuery")}
+            label={t("watchlist.target")}
+            placeholder={selectedTypeMeta?.placeholder || t("watchlist.usernameUrlOrSearchQuery")}
             value={formTarget}
             onChange={(e) => setFormTarget(e.currentTarget.value)}
           />
@@ -627,19 +654,11 @@ export default function Watchlist() {
             </Group>
           ) : t("watchlist.scrapedData")
         }
-        fullScreen
+        size="xl"
       >
         {viewData?.data && (
-          <ScrollArea h="calc(100vh - 110px)" type="auto" offsetScrollbars>
-            <ResultsRenderer
-              platform={viewData.platform}
-              scrapeType={viewData.scrapeType}
-              data={viewData.data}
-              savedPostIds={savedPostIds}
-              onSaved={(pid) => setSavedPostIds((prev) => new Set(prev).add(pid))}
-              sortMode={modalSortMode}
-              onSortChange={setModalSortMode}
-            />
+          <ScrollArea h={480} type="auto" offsetScrollbars>
+            <ResultsRenderer platform={viewData.platform} scrapeType={viewData.scrapeType} data={viewData.data} savedPostIds={savedPostIds} onSaved={(pid) => setSavedPostIds((prev) => new Set(prev).add(pid))} />
           </ScrollArea>
         )}
       </Modal>
@@ -674,23 +693,34 @@ function parseDuration(iso) {
   return `${h}${min}:${sec}`;
 }
 
+function getYouTubeVideoId(value) {
+  if (!value) return null;
+
+  if (typeof value === "object") {
+    return value.videoId || value.video_id || value.id || null;
+  }
+
+  const str = String(value);
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) return str;
+
+  try {
+    const url = new URL(str);
+    return (
+      url.searchParams.get("v") ||
+      url.pathname.match(/\/(shorts|embed)\/([^/?#]+)/)?.[2] ||
+      (url.hostname.includes("youtu.be") ? url.pathname.replace(/^\//, "").split(/[?#]/)[0] : null)
+    );
+  } catch {
+    return null;
+  }
+}
 
 /* ── Platform names for save-post API ──────────────────────────────── */
 const PLATFORM_NAMES = { x: 'x', instagram: 'instagram', linkedin: 'linkedin', reddit: 'reddit', youtube: 'youtube', tiktok: 'tiktok' };
 
-/* ── Reject non-http(s) URLs to prevent javascript: URI injection ──── */
-function isSafeUrl(url) {
-  try {
-    const { protocol } = new URL(url);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 /* ── Make a card clickable to open source ───────────────────────────── */
 function cardLinkProps(url) {
-  if (!url || !isSafeUrl(url)) return {};
+  if (!url) return {};
   return {
     onClick: (e) => {
       if (e.target.closest('button, a, [role="button"]')) return;
@@ -698,6 +728,63 @@ function cardLinkProps(url) {
     },
     style: { cursor: 'pointer' },
   };
+}
+
+function getOriginalPostUrl(platform, post = {}) {
+  if (!post) return null;
+  if (post.url || post.link || post.permalink || post.share_url || post.webVideoUrl) {
+    const url = post.url || post.link || post.permalink || post.share_url || post.webVideoUrl;
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) return url;
+  }
+
+  if (platform === 'youtube') {
+    const videoId = getYouTubeVideoId(post.id) || getYouTubeVideoId(post.videoId) || getYouTubeVideoId(post.video_id) || getYouTubeVideoId(post.url) || getYouTubeVideoId(post.link);
+    return videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
+  }
+
+  if (platform === 'reddit') {
+    if (post.permalink) return String(post.permalink).startsWith('http') ? post.permalink : `https://www.reddit.com${post.permalink}`;
+    const subreddit = post.subreddit || post.subreddit_name_prefixed?.replace(/^r\//, '');
+    const id = post.id || String(post.name || '').replace(/^t3_/, '');
+    return subreddit && id ? `https://www.reddit.com/r/${subreddit}/comments/${id}` : null;
+  }
+
+  if (platform === 'x') {
+    const id = post.id || post.platform_post_id;
+    return id ? `https://x.com/i/web/status/${id}` : null;
+  }
+
+  if (platform === 'instagram') {
+    const shortcode = post.shortcode || post.code;
+    return shortcode ? `https://www.instagram.com/p/${shortcode}/` : null;
+  }
+
+  if (platform === 'tiktok') {
+    const id = post.id || post.videoId;
+    const author = typeof post.author === 'string' ? post.author : post.author?.uniqueId || post.author?.nickname || post.username;
+    return id && author ? `https://www.tiktok.com/@${author}/video/${id}` : null;
+  }
+
+  return null;
+}
+
+function ViewOriginalButton({ url }) {
+  const { t } = useTranslation();
+  if (!url) return null;
+  return (
+    <Button
+      component="a"
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant="subtle"
+      size="compact-xs"
+      leftSection={<IconExternalLink size={12} />}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {t("watchlist.viewOriginal", { defaultValue: "View original" })}
+    </Button>
+  );
 }
 
 /* ── Save-to-Saved-Posts button (matches CompetitorLookup style) ──── */
@@ -753,22 +840,86 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
   );
 }
 
+
+function SaveAllButton({ platform, posts, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const unsaved = (posts || []).filter((p) => p?.postId && !savedPostIds?.has(String(p.postId)));
+
+  if (!unsaved.length) return null;
+
+  const handleSaveAll = async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSaving(true);
+    setDone(false);
+    try {
+      const uid = await getUserId();
+      for (const p of unsaved) {
+        await apiFetch("/api/posts", {
+          method: "POST",
+          body: JSON.stringify({
+            platform_name: PLATFORM_NAMES[platform] || platform,
+            platform_user_id: String(p.authorId || "unknown"),
+            platform_post_id: String(p.postId),
+            content: (p.content || "").slice(0, 2000),
+            published_at: p.publishedAt
+              ? new Date(typeof p.publishedAt === "number" ? (p.publishedAt > 1e12 ? p.publishedAt : p.publishedAt * 1000) : p.publishedAt).toISOString()
+              : new Date().toISOString(),
+            likes: Number(p.likes) || 0,
+            shares: Number(p.shares) || 0,
+            comments: Number(p.comments) || 0,
+            user_id: uid,
+            ...(p.extra || {}),
+          }),
+        });
+        if (onSaved) onSaved(String(p.postId));
+      }
+      setDone(true);
+    } catch (err) {
+      console.error("Save all failed:", err);
+      setDone(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Button size="compact-xs" variant="light" color={done ? "green" : "blue"} loading={saving} onClick={handleSaveAll}>
+      {done
+        ? t("watchlist.saved", { defaultValue: "Saved" })
+        : t("watchlist.saveAll", { defaultValue: `Save all (${unsaved.length})` })}
+    </Button>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    ResultsRenderer — smart platform-aware display
    ═══════════════════════════════════════════════════════════════════════ */
-function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE, onSortChange }) {
+function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   const [showRaw, setShowRaw] = useState(false);
 
   if (!data) return <Text size="sm" c="dimmed" ta="center" py="sm">{t("watchlist.noDataReturned")}</Text>;
 
+  const savablePosts = getSavablePostsForResult(platform, scrapeType, data);
+
   return (
     <Stack gap="sm">
-      <Group justify="flex-end">
-        <SortSelect value={sortMode} onChange={onSortChange || (() => {})} />
-      </Group>
+      {savablePosts.length > 1 && (
+        <Group justify="flex-end">
+          <SaveAllButton
+            platform={platform}
+            posts={savablePosts}
+            savedPostIds={savedPostIds}
+            onSaved={onSaved}
+          />
+        </Group>
+      )}
+
       {/* Platform-specific rendering — each renderer handles its own data extraction */}
-      <PlatformRenderer platform={platform} scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />
+      <PlatformRenderer platform={platform} scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />
 
       {/* Toggle raw JSON */}
       <Button
@@ -790,15 +941,15 @@ function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved, so
 }
 
 /* ── Platform dispatcher ────────────────────────────────────────────── */
-function PlatformRenderer({ platform, scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function PlatformRenderer({ platform, scrapeType, data, savedPostIds, onSaved }) {
   switch (platform) {
-    case "x":        return <XRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    case "youtube":  return <YouTubeRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    case "reddit":   return <RedditRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    case "linkedin": return <LinkedInRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    case "instagram":return <InstagramRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    case "tiktok":   return <TikTokRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} sortMode={sortMode} />;
-    default:         return <GenericRenderer data={data} sortMode={sortMode} />;
+    case "x":        return <XRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "youtube":  return <YouTubeRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "reddit":   return <RedditRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "linkedin": return <LinkedInRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "instagram":return <InstagramRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    case "tiktok":   return <TikTokRenderer scrapeType={scrapeType} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />;
+    default:         return <GenericRenderer data={data} />;
   }
 }
 
@@ -822,143 +973,42 @@ function extractArray(data, ...keys) {
   return null;
 }
 
-function parseMetricValue(value) {
-  if (value == null || value === "") return 0;
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const normalized = String(value).trim().toLowerCase().replace(/,/g, "");
-  if (!normalized || normalized === "hidden") return 0;
-  const match = normalized.match(/^([0-9]*\.?[0-9]+)\s*([kmb])?$/i);
-  if (!match) {
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  const base = Number(match[1]);
-  const multiplier = match[2] === "k" ? 1_000 : match[2] === "m" ? 1_000_000 : match[2] === "b" ? 1_000_000_000 : 1;
-  return Number.isFinite(base) ? base * multiplier : 0;
-}
+function getSavablePostsForResult(platform, scrapeType, data) {
+  if (!data) return [];
+  const raw = (() => {
+    if (platform === "youtube") return (data?.id && data?.title) ? [data] : (extractArray(data, "items", "videos") || []);
+    if (platform === "reddit") return (extractArray(data, "posts", "children", "data") || []).map((p) => p.data || p);
+    if (platform === "x") return extractArray(data, "tweets", "data") || [];
+    if (platform === "instagram") return (extractArray(data, "posts", "items", "reels", "data") || []).map((p) => p.node || p.media || p);
+    if (platform === "tiktok") return (extractArray(data, "itemList", "search_item_list", "items", "data", "videos") || []).map((p) => p.data || p);
+    return [];
+  })();
 
-function firstMetric(...values) {
-  for (const value of values) {
-    const parsed = parseMetricValue(value);
-    if (parsed !== 0 || value === 0 || value === "0") return parsed;
-  }
-  return 0;
-}
-
-function getSortableLikes(post = {}) {
-  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || post.public_metrics || {};
-  return firstMetric(post.likes, post.likeCount, post.like_count, post.likesCount, post.diggCount, post.digg_count, post.score, post.ups, stats.likes, stats.likeCount, stats.like_count, stats.diggCount, stats.digg_count);
-}
-
-function getSortableComments(post = {}) {
-  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || post.public_metrics || {};
-  return firstMetric(post.comments, post.commentCount, post.comment_count, post.commentsCount, post.num_comments, post.replyCount, post.reply_count, stats.comments, stats.commentCount, stats.comment_count, stats.reply_count);
-}
-
-function getSortableShares(post = {}) {
-  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || post.public_metrics || {};
-  return firstMetric(post.shares, post.shareCount, post.share_count, post.retweetCount, post.retweet_count, post.reposts, stats.shares, stats.shareCount, stats.share_count, stats.retweet_count);
-}
-
-function getSortableDate(post = {}) {
-  const raw = post.published_at ?? post.publishedAt ?? post.datePublished ?? post.created_at ?? post.createdAt ?? post.created_utc ?? post.created ?? post.createdTime ?? post.createTime ?? post.create_time ?? post.publishTime ?? post.timestamp ?? post.taken_at ?? post.taken_at_timestamp;
-  if (raw == null || raw === "") return 0;
-  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
-  const numeric = Number(raw);
-  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
-  if (!Array.isArray(posts)) return [];
-  const decorated = posts.map((post, index) => ({ post, index }));
-  decorated.sort((a, b) => {
-    let diff = 0;
-    if (sortMode === "date_asc") diff = getSortableDate(a.post) - getSortableDate(b.post);
-    else if (sortMode === "metrics_desc") diff = (getSortableLikes(b.post) + getSortableComments(b.post) + getSortableShares(b.post)) - (getSortableLikes(a.post) + getSortableComments(a.post) + getSortableShares(a.post));
-    else if (sortMode === "likes_desc") diff = getSortableLikes(b.post) - getSortableLikes(a.post);
-    else if (sortMode === "comments_desc") diff = getSortableComments(b.post) - getSortableComments(a.post);
-    else if (sortMode === "shares_desc") diff = getSortableShares(b.post) - getSortableShares(a.post);
-    else diff = getSortableDate(b.post) - getSortableDate(a.post);
-    return diff || a.index - b.index;
-  });
-  return decorated.map(({ post }) => post);
-}
-
-function getYouTubeVideoId(value) {
-  if (!value) return null;
-  if (/^[a-zA-Z0-9_-]{11}$/.test(String(value))) return String(value);
-  try {
-    const url = new URL(value);
-    return url.searchParams.get("v") || url.pathname.match(/\/(shorts|embed)\/([^/?#]+)/)?.[2] || null;
-  } catch {
+  return raw.map((post) => {
+    if (platform === "youtube") {
+      const videoId = getYouTubeVideoId(post.id) || getYouTubeVideoId(post.videoId) || getYouTubeVideoId(post.video_id) || getYouTubeVideoId(post.url) || getYouTubeVideoId(post.link);
+      if (!videoId) return null;
+      return { postId: videoId, authorId: post.channelId || post.channelTitle, content: post.title || post.description, publishedAt: post.publishedAt, likes: post.likes, comments: post.comments, extra: { title: post.title, description: post.description, channelTitle: post.channelTitle, videoId, url: `https://www.youtube.com/watch?v=${videoId}` } };
+    }
+    if (platform === "reddit") {
+      const id = post.id || String(post.name || "").replace(/^t3_/, "");
+      if (!id) return null;
+      return { postId: id, authorId: post.author, content: post.title || post.selftext, publishedAt: post.created_utc || post.created, likes: post.score ?? post.ups, comments: post.num_comments, extra: { username: post.author, author_handle: post.author, subreddit: post.subreddit, permalink: post.permalink, url: getOriginalPostUrl("reddit", post) } };
+    }
+    if (platform === "x") return { postId: post.id, authorId: post.author_id, content: post.text, publishedAt: post.created_at, likes: post.public_metrics?.like_count, shares: post.public_metrics?.retweet_count, comments: post.public_metrics?.reply_count, extra: { url: getOriginalPostUrl("x", post) } };
+    if (platform === "instagram") return { postId: post.id || post.shortcode || post.code, authorId: post.username || post.owner?.username, content: post.caption || post.text, likes: post.like_count ?? post.likes, comments: post.comment_count ?? post.comments, extra: { username: post.username || post.owner?.username, shortcode: post.shortcode || post.code, url: getOriginalPostUrl("instagram", post) } };
+    if (platform === "tiktok") {
+      const author = typeof post.author === "string" ? post.author : post.author?.uniqueId || post.author?.nickname;
+      return { postId: post.id, authorId: author, content: post.desc || post.description || post.title, publishedAt: post.createTime, likes: post.diggCount ?? post.likes, comments: post.commentCount ?? post.comments, shares: post.shareCount ?? post.shares, extra: { username: author, url: getOriginalPostUrl("tiktok", post) } };
+    }
     return null;
-  }
-}
-
-function YouTubeEmbed({ videoId, title }) {
-  if (!videoId) return null;
-  return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", borderRadius: 12, overflow: "hidden", background: "#000" }}>
-      <iframe
-        title={title || "YouTube video"}
-        src={`https://www.youtube.com/embed/${videoId}`}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-      />
-    </div>
-  );
-}
-
-function ExpandableText({
-  text,
-  initialLines = 3,
-  size = "sm",
-  dimmed = false,
-  maxLengthForButton = 140,
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!text) return null;
-
-  const value = String(text);
-
-  return (
-    <Stack gap={4}>
-      <Text
-        size={size}
-        c={dimmed ? "dimmed" : undefined}
-        lineClamp={expanded ? undefined : initialLines}
-        style={{ whiteSpace: "pre-wrap" }}
-      >
-        {value}
-      </Text>
-
-      {value.length > maxLengthForButton && (
-        <Button
-          variant="subtle"
-          size="compact-xs"
-          w="fit-content"
-          p={0}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setExpanded((v) => !v);
-          }}
-        >
-          {expanded ? "Less" : "More"}
-        </Button>
-      )}
-    </Stack>
-  );
+  }).filter((p) => p?.postId);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
    X / Twitter
    ═══════════════════════════════════════════════════════════════════════ */
-function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function XRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   if (scrapeType === "followers" || scrapeType === "following") {
     const users = extractArray(data, "data", "users") || [];
@@ -994,7 +1044,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
 
   // Tweets: user_posts, user_mentions, search
   // user_posts returns [...tweets], mentions/search returns { tweets: [...], users: [...] }
-  const tweets = sortPostsForDisplay(extractArray(data, "tweets", "data") || [], sortMode);
+  const tweets = extractArray(data, "tweets", "data") || [];
   const tweetUsers = data?.users || [];
   const findAuthor = (authorId) => tweetUsers.find((u) => u.id === authorId);
 
@@ -1017,7 +1067,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
                   <Text size="xs" fw={600}>@{author.username}</Text>
                 </Group>
               )}
-              <ExpandableText text={t.text} size="sm" initialLines={3} />
+              <Text size="sm" lineClamp={3} style={{ whiteSpace: "pre-wrap" }}>{t.text}</Text>
               <Group gap={6} wrap="wrap">
                 <Badge variant="light" size="xs">❤️ {fmtNum(m.like_count)}</Badge>
                 <Badge variant="light" size="xs">🔁 {fmtNum(m.retweet_count)}</Badge>
@@ -1032,7 +1082,8 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
                     {t("watchlist.viewArrow")}
                   </Text>
                 </Group>
-                <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} savedPostIds={savedPostIds} onSaved={onSaved} />
+                <ViewOriginalButton url={tweetUrl} />
+                <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username, url: tweetUrl }} savedPostIds={savedPostIds} onSaved={onSaved} />
               </Group>
             </Stack>
           </Card>
@@ -1045,9 +1096,9 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
 /* ═══════════════════════════════════════════════════════════════════════
    YouTube
    ═══════════════════════════════════════════════════════════════════════ */
-function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
-
+  // Channel details — single object
   if (scrapeType === "channel_details") {
     const ch = data;
     return (
@@ -1055,106 +1106,126 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = D
         <Stack gap="sm">
           <Group gap="sm">
             {ch.thumbnails?.medium?.url && (
-              <img src={ch.thumbnails.medium.url} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover" }} />
+              <img src={ch.thumbnails.medium.url} alt="" style={{ width: 56, height: 56, borderRadius: "50%" }} />
             )}
             <div>
-              <Text fw={700} size="xl">{ch.title}</Text>
-              {ch.customUrl && <Text size="sm" c="dimmed">{ch.customUrl}</Text>}
+              <Text fw={700} size="lg">{ch.title}</Text>
+              {ch.customUrl && <Text size="xs" c="dimmed">{ch.customUrl}</Text>}
             </div>
           </Group>
           {ch.bannerUrl && (
-            <img src={ch.bannerUrl} alt="banner" style={{ width: "100%", maxHeight: 180, objectFit: "cover", borderRadius: 10 }} />
+            <img src={ch.bannerUrl} alt="banner" style={{ width: "100%", maxHeight: 100, objectFit: "cover", borderRadius: 6 }} />
           )}
-          <Group gap="xl">
-            {ch.subscribers != null && (
-              <Badge size="lg" variant="light">{t("watchlist.subscribers")}: {fmtNum(ch.subscribers)}</Badge>
-            )}
-            {ch.videoCount != null && (
-              <Badge size="lg" variant="light">{t("watchlist.videos")}: {fmtNum(ch.videoCount)}</Badge>
-            )}
+          <Group gap="xl" justify="center">
+            {[
+              { label: t("watchlist.subscribers"), value: fmtNum(ch.subscribers) },
+              { label: t("watchlist.videos"), value: fmtNum(ch.videoCount) },
+            ].map(({ label, value }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="md">{value}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
           </Group>
-          {ch.description && <ExpandableText text={ch.description} size="sm" dimmed initialLines={5} />}
+          {ch.description && <Text size="xs" c="dimmed" lineClamp={3}>{ch.description}</Text>}
           {ch.country && <Text size="xs" c="dimmed">{t("watchlist.countryLabel")} {ch.country}</Text>}
         </Stack>
       </Card>
     );
   }
 
+  // Video details — single object
   if (scrapeType === "video_details") {
     const v = data;
-    const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.url);
+    const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.videoId) || getYouTubeVideoId(v.video_id) || getYouTubeVideoId(v.url) || getYouTubeVideoId(v.link);
+    const thumb = v.thumbnails?.medium?.url || v.thumbnails?.default?.url;
     return (
       <Card withBorder radius="md" p="md">
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-          <Stack gap={6}>
-            <YouTubeEmbed videoId={vidId} title={v.title} />
-            {v.duration && <Badge size="sm" color="dark" w="fit-content">{parseDuration(v.duration)}</Badge>}
-          </Stack>
-          <Stack gap="sm">
-            <Text fw={700} size="xl" lineClamp={3}>{v.title}</Text>
-            <Text size="sm" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
+        <Group gap="sm" wrap="nowrap" align="start">
+          {thumb && (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <img src={thumb} alt="" style={{ width: 180, borderRadius: 6, display: "block" }} />
+              {v.duration && (
+                <Badge size="xs" style={{ position: "absolute", bottom: 4, right: 4, background: "rgba(0,0,0,.8)", color: "#fff" }}>
+                  {parseDuration(v.duration)}
+                </Badge>
+              )}
+            </div>
+          )}
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={600} lineClamp={2}>{v.title}</Text>
+            <Text size="xs" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
             <Group gap={6}>
-              {v.likes != null && <Badge variant="light" size="sm">❤️ {fmtNum(v.likes)}</Badge>}
-              {v.comments != null && <Badge variant="light" size="sm">💬 {fmtNum(v.comments)}</Badge>}
+              <Badge variant="light" size="xs">❤️ {fmtNum(v.likes)}</Badge>
+              <Badge variant="light" size="xs">💬 {fmtNum(v.comments)}</Badge>
             </Group>
-            {v.description && <ExpandableText text={v.description} size="sm" dimmed initialLines={6} />}
+            {v.description && <Text size="xs" c="dimmed" lineClamp={3}>{v.description}</Text>}
             <Group justify="flex-end">
-              <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId }} savedPostIds={savedPostIds} onSaved={onSaved} />
+              <ViewOriginalButton url={getOriginalPostUrl("youtube", { ...v, id: vidId })} />
+              <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, url: getOriginalPostUrl("youtube", { ...v, id: vidId }) }} savedPostIds={savedPostIds} onSaved={onSaved} />
             </Group>
           </Stack>
-        </SimpleGrid>
+        </Group>
       </Card>
     );
   }
 
+  // Video comments — returns [{ author, text, likes, ... }]
   if (scrapeType === "video_comments") {
-    const comments = sortPostsForDisplay(extractArray(data, "comments") || [], sortMode);
+    const comments = extractArray(data, "comments") || [];
     if (!comments.length) return <Text size="sm" c="dimmed">{t("watchlist.noCommentsReturned")}</Text>;
     return (
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
         {comments.map((c, i) => (
-          <Card key={i} withBorder radius="md" p="md">
-            <Group gap={8} mb={6} wrap="nowrap">
-              {c.authorImage && <img src={c.authorImage} alt="" style={{ width: 28, height: 28, borderRadius: "50%" }} />}
-              <Text size="sm" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
+          <Card key={i} withBorder radius="sm" p="xs">
+            <Group gap={6} mb={4} wrap="nowrap">
+              {c.authorImage && <img src={c.authorImage} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />}
+              <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{c.author}</Text>
               {c.likes > 0 && <Badge size="xs" variant="light">❤️ {c.likes}</Badge>}
             </Group>
-            <ExpandableText text={c.text} size="sm" initialLines={4} />
-            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={4}>{t("watchlist.replyCount", { count: c.replyCount })}</Text>}
+            <Text size="xs" lineClamp={3}>{c.text}</Text>
+            {c.replyCount > 0 && <Text size="xs" c="dimmed" mt={2}>{t("watchlist.replyCount", { count: c.replyCount })}</Text>}
           </Card>
         ))}
       </SimpleGrid>
     );
   }
 
-  const rawVideos = (data?.id && data?.title) ? [data] : (extractArray(data, "items", "videos") || []);
-  const videos = sortPostsForDisplay(rawVideos, sortMode);
+  // Videos list: channel_videos, search — returns [{ id, title, thumbnails, ... }]
+  const videos = extractArray(data, "items", "videos") || [];
   if (!videos.length) return <Text size="sm" c="dimmed">{t("watchlist.noVideosReturned")}</Text>;
-
   return (
-    <Stack gap="md">
+    <Stack gap="xs">
       {videos.map((v, i) => {
-        const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.url);
+        const thumb = v.thumbnails?.medium?.url || v.thumbnails?.default?.url;
+        const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.videoId) || getYouTubeVideoId(v.video_id) || getYouTubeVideoId(v.url) || getYouTubeVideoId(v.link);
+        const videoUrl = vidId ? `https://youtube.com/watch?v=${vidId}` : null;
         return (
-          <Card key={vidId || v.id || i} withBorder radius="md" p="md">
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-              <Stack gap={6}>
-                <YouTubeEmbed videoId={vidId} title={v.title} />
-                {v.duration && <Badge size="sm" color="dark" w="fit-content">{parseDuration(v.duration)}</Badge>}
-              </Stack>
-              <Stack gap="sm" style={{ minWidth: 0 }}>
-                <Text size="xl" fw={700} lineClamp={3}>{v.title}</Text>
-                <Text size="sm" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
+          <Card key={v.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(videoUrl)}>
+            <Group gap="sm" wrap="nowrap" align="start">
+              {thumb && (
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <img src={thumb} alt="" style={{ width: 120, borderRadius: 4, display: "block" }} />
+                  {v.duration && (
+                    <Badge size="xs" style={{ position: "absolute", bottom: 2, right: 2, background: "rgba(0,0,0,.8)", color: "#fff", fontSize: 10 }}>
+                      {parseDuration(v.duration)}
+                    </Badge>
+                  )}
+                </div>
+              )}
+              <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                <Text size="sm" fw={600} lineClamp={2}>{v.title}</Text>
+                <Text size="xs" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
                 <Group gap={6}>
-                  {v.likes != null && <Badge variant="light" size="sm">❤️ {fmtNum(v.likes)}</Badge>}
-                  {v.comments != null && <Badge variant="light" size="sm">💬 {fmtNum(v.comments)}</Badge>}
+                      <Badge variant="light" size="xs">❤️ {fmtNum(v.likes)}</Badge>
+                  <Badge variant="light" size="xs">💬 {fmtNum(v.comments)}</Badge>
                 </Group>
-                {v.description && <ExpandableText text={v.description} size="sm" dimmed initialLines={5} />}
                 <Group justify="flex-end">
-                  <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId }} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <ViewOriginalButton url={getOriginalPostUrl("youtube", { ...v, id: vidId })} />
+              <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, url: getOriginalPostUrl("youtube", { ...v, id: vidId }) }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
               </Stack>
-            </SimpleGrid>
+            </Group>
           </Card>
         );
       })}
@@ -1165,7 +1236,7 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = D
 /* ═══════════════════════════════════════════════════════════════════════
    Reddit
    ═══════════════════════════════════════════════════════════════════════ */
-function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function RedditRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   // Subreddit details — single object
   if (scrapeType === "subreddit_details") {
@@ -1194,7 +1265,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
             ))}
           </Group>
           {(sub.public_description || sub.description) && (
-            <ExpandableText text={sub.public_description || sub.description} size="xs" dimmed initialLines={4} />
+            <Text size="xs" c="dimmed" lineClamp={4}>{sub.public_description || sub.description}</Text>
           )}
         </Stack>
       </Card>
@@ -1205,7 +1276,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
   // ScrapeCreators returns { posts: [...] } for Reddit
   const posts = extractArray(data, "posts", "children", "data") || [];
   // Each post might be wrapped: { data: { ... } } (Reddit listing style)
-  const normalizedPosts = sortPostsForDisplay(posts.map(p => p.data || p), sortMode);
+  const normalizedPosts = posts.map(p => p.data || p);
 
   if (!normalizedPosts.length) return <Text size="sm" c="dimmed">{t("watchlist.noPostsReturned")}</Text>;
 
@@ -1222,7 +1293,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={600} lineClamp={2}>{post.title || <i>{t("watchlist.noTitle")}</i>}</Text>
-                {post.selftext && <ExpandableText text={post.selftext} size="xs" dimmed initialLines={2} />}
+                {post.selftext && <Text size="xs" c="dimmed" lineClamp={2}>{post.selftext.slice(0, 200)}</Text>}
                 <Group gap={6}>
                   {post.author && <Text size="xs" c="dimmed">u/{post.author}</Text>}
                   {post.subreddit && <Text size="xs" c="dimmed">r/{post.subreddit}</Text>}
@@ -1235,9 +1306,10 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
                     {post.total_awards_received > 0 && <Badge variant="light" size="xs" color="yellow">🏆 {post.total_awards_received}</Badge>}
                     {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
                   </Group>
-                  <SaveBtn platform="reddit" postId={post.id || post.name} authorId={post.author} content={post.title || post.selftext} publishedAt={post.created_utc || post.created} likes={post.score ?? post.ups} comments={post.num_comments} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <ViewOriginalButton url={getOriginalPostUrl("reddit", post)} />
+                  <SaveBtn platform="reddit" postId={post.id || String(post.name || "").replace(/^t3_/, "")} authorId={post.author} content={post.title || post.selftext} publishedAt={post.created_utc || post.created} likes={post.score ?? post.ups} comments={post.num_comments} extra={{ username: post.author, author_handle: post.author, subreddit: post.subreddit, permalink: post.permalink, url: getOriginalPostUrl("reddit", post) }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
-                {post.url && !post.url.includes("reddit.com") && isSafeUrl(post.url) && (
+                {post.url && !post.url.includes("reddit.com") && (
                   <Text size="xs" c="blue" component="a" href={post.url} target="_blank" rel="noopener" lineClamp={1}>
                     {post.url}
                   </Text>
@@ -1254,7 +1326,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
 /* ═══════════════════════════════════════════════════════════════════════
    LinkedIn
    ═══════════════════════════════════════════════════════════════════════ */
-function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   const d = data?.data || data;
 
@@ -1284,7 +1356,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
               </Stack>
             )}
           </Group>
-          {d.about && <ExpandableText text={d.about} size="xs" dimmed initialLines={4} />}
+          {d.about && <Text size="xs" c="dimmed" lineClamp={4}>{d.about}</Text>}
 
           {/* Experience */}
           {d.experience?.length > 0 && (
@@ -1308,7 +1380,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
               <Divider label={t("watchlist.recentActivity")} labelPosition="center" />
               {(d.activity || d.recentPosts || []).slice(0, 3).map((post, i) => (
                 <Card key={i} withBorder radius="sm" p="xs">
-                  <ExpandableText text={post.text || post.title || post.content} size="xs" initialLines={2} />
+                  <Text size="xs" lineClamp={2}>{post.text || post.title || post.content}</Text>
                   {(post.likes != null || post.comments != null) && (
                     <Group gap={6} mt={4}>
                       {post.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.likes)}</Badge>}
@@ -1343,8 +1415,8 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
               <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.employees || d.employeeCount)}</Text><Text size="xs" c="dimmed">{t("watchlist.employees")}</Text></Stack>
             )}
           </Group>
-          {d.description && <ExpandableText text={d.description} size="xs" dimmed initialLines={4} />}
-          {d.website && isSafeUrl(d.website) && <Text size="xs" c="blue" component="a" href={d.website} target="_blank" rel="noopener">{d.website}</Text>}
+          {d.description && <Text size="xs" c="dimmed" lineClamp={4}>{d.description}</Text>}
+          {d.website && <Text size="xs" c="blue" component="a" href={d.website} target="_blank" rel="noopener">{d.website}</Text>}
         </Stack>
       </Card>
     );
@@ -1363,7 +1435,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
             </div>
           </Group>
         )}
-        <ExpandableText text={d.text || d.content || d.title} size="sm" initialLines={6} />
+        <Text size="sm" lineClamp={6} style={{ whiteSpace: "pre-wrap" }}>{d.text || d.content || d.title}</Text>
         <Group gap={6}>
           {d.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(d.likes)}</Badge>}
           {d.comments != null && <Badge variant="light" size="xs">💬 {fmtNum(d.comments)}</Badge>}
@@ -1378,7 +1450,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
 /* ═══════════════════════════════════════════════════════════════════════
    Instagram
    ═══════════════════════════════════════════════════════════════════════ */
-function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   // Profile
   if (scrapeType === "profile") {
@@ -1407,8 +1479,8 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
               </Stack>
             ))}
           </Group>
-          {(p.biography || p.bio) && <ExpandableText text={p.biography || p.bio} size="xs" dimmed initialLines={3} />}
-          {p.external_url && isSafeUrl(p.external_url) && <Text size="xs" c="blue" component="a" href={p.external_url} target="_blank" rel="noopener">{p.external_url}</Text>}
+          {(p.biography || p.bio) && <Text size="xs" c="dimmed" lineClamp={3}>{p.biography || p.bio}</Text>}
+          {p.external_url && <Text size="xs" c="blue" component="a" href={p.external_url} target="_blank" rel="noopener">{p.external_url}</Text>}
         </Stack>
       </Card>
     );
@@ -1418,7 +1490,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
   // ScrapeCreators: user_posts = { posts: [{ node: {...} }] }, user_reels = { items: [{ media: {...} }] }
   const isReels = scrapeType === "user_reels";
   const rawItems = extractArray(data, "posts", "items", "reels", "data") || [];
-  const postItems = sortPostsForDisplay(rawItems.map(p => p.node || p.media || p), sortMode);
+  const postItems = rawItems.map(p => p.node || p.media || p);
 
   if (!postItems.length) return <Text size="sm" c="dimmed">{isReels ? t("watchlist.noReelsReturned") : t("watchlist.noPostsReturned")}</Text>;
 
@@ -1451,14 +1523,15 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
                 </div>
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                {(post.caption || post.text) && <ExpandableText text={post.caption || post.text} size="xs" initialLines={3} />}
+                {(post.caption || post.text) && <Text size="xs" lineClamp={3}>{(post.caption || post.text)?.slice(0, 200)}</Text>}
                 {post.username && <Text size="xs" c="dimmed">@{post.username}</Text>}
                 <Group justify="space-between" align="center">
                   <Group gap={6} wrap="wrap">
                     {(post.like_count ?? post.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.like_count ?? post.likes)}</Badge>}
                     {(post.comment_count ?? post.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(post.comment_count ?? post.comments)}</Badge>}
                   </Group>
-                  <SaveBtn platform="instagram" postId={post.id || post.shortcode || post.code} authorId={post.username || post.owner?.username} content={post.caption || post.text} likes={post.like_count ?? post.likes} comments={post.comment_count ?? post.comments} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <ViewOriginalButton url={getOriginalPostUrl("instagram", post)} />
+                  <SaveBtn platform="instagram" postId={post.id || post.shortcode || post.code} authorId={post.username || post.owner?.username} content={post.caption || post.text} likes={post.like_count ?? post.likes} comments={post.comment_count ?? post.comments} extra={{ username: post.username || post.owner?.username, shortcode: post.shortcode || post.code, url: getOriginalPostUrl("instagram", post) }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
                 {(post.timestamp || post.taken_at) && <Text size="xs" c="dimmed">{fmtDate(post.timestamp || post.taken_at)}</Text>}
               </Stack>
@@ -1473,7 +1546,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
 /* ═══════════════════════════════════════════════════════════════════════
    TikTok
    ═══════════════════════════════════════════════════════════════════════ */
-function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
+function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved }) {
   const { t } = useTranslation();
   // Profile
   if (scrapeType === "profile") {
@@ -1503,7 +1576,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
               </Stack>
             ))}
           </Group>
-          {(p.signature || p.bio) && <ExpandableText text={p.signature || p.bio} size="xs" dimmed initialLines={3} />}
+          {(p.signature || p.bio) && <Text size="xs" c="dimmed" lineClamp={3}>{p.signature || p.bio}</Text>}
         </Stack>
       </Card>
     );
@@ -1511,7 +1584,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
 
   // Videos: profile_videos, search
   // ScrapeCreators: { itemList: [...] } or { search_item_list: [...] }
-  const videos = sortPostsForDisplay(extractArray(data, "itemList", "search_item_list", "items", "data", "videos") || [], sortMode);
+  const videos = extractArray(data, "itemList", "search_item_list", "items", "data", "videos") || [];
 
   if (!videos.length) return <Text size="sm" c="dimmed">{t("watchlist.noVideosReturned")}</Text>;
 
@@ -1529,7 +1602,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
                 <img src={cover} alt="" style={{ width: 64, height: 86, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                <ExpandableText text={vid.desc || vid.description || vid.title} size="xs" initialLines={3} />
+                <Text size="xs" lineClamp={3}>{vid.desc || vid.description || vid.title}</Text>
                 {vid.author && <Text size="xs" c="dimmed">@{typeof vid.author === "string" ? vid.author : vid.author.uniqueId || vid.author.nickname}</Text>}
                 <Group justify="space-between" align="center">
                   <Group gap={6} wrap="wrap">
@@ -1537,7 +1610,8 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
                     {(vid.commentCount ?? vid.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(vid.commentCount ?? vid.comments)}</Badge>}
                     {(vid.shareCount ?? vid.shares) != null && <Badge variant="light" size="xs">🔗 {fmtNum(vid.shareCount ?? vid.shares)}</Badge>}
                   </Group>
-                  <SaveBtn platform="tiktok" postId={vid.id} authorId={ttAuthor} content={vid.desc || vid.description || vid.title} likes={vid.diggCount ?? vid.likes} comments={vid.commentCount ?? vid.comments} shares={vid.shareCount ?? vid.shares} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <ViewOriginalButton url={getOriginalPostUrl("tiktok", vid)} />
+                  <SaveBtn platform="tiktok" postId={vid.id} authorId={ttAuthor} content={vid.desc || vid.description || vid.title} likes={vid.diggCount ?? vid.likes} comments={vid.commentCount ?? vid.comments} shares={vid.shareCount ?? vid.shares} extra={{ username: ttAuthor, url: getOriginalPostUrl("tiktok", vid) }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
                 {vid.createTime && <Text size="xs" c="dimmed">{fmtDate(vid.createTime)}</Text>}
               </Stack>
@@ -1552,7 +1626,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
 /* ═══════════════════════════════════════════════════════════════════════
    Generic fallback — auto-detects arrays in the data
    ═══════════════════════════════════════════════════════════════════════ */
-function GenericRenderer({ data, sortMode = DEFAULT_SORT_MODE }) {
+function GenericRenderer({ data }) {
   const { t } = useTranslation();
   // Try to find an array of items anywhere in the data
   let list;
@@ -1568,7 +1642,6 @@ function GenericRenderer({ data, sortMode = DEFAULT_SORT_MODE }) {
     }
   }
   if (!list) list = [data]; // fallback: treat as single item
-  list = sortPostsForDisplay(list, sortMode);
 
   return (
     <Stack gap="xs">
@@ -1592,7 +1665,7 @@ function GenericRenderer({ data, sortMode = DEFAULT_SORT_MODE }) {
           <Card key={idx} withBorder radius="sm" p="xs">
             <Text size="sm" fw={600} lineClamp={2}>{title}</Text>
             {description && title !== description.slice(0, title.length) && (
-              <ExpandableText text={description} size="xs" dimmed initialLines={2} />
+              <Text size="xs" c="dimmed" lineClamp={2} mt={2}>{description.slice(0, 200)}</Text>
             )}
             {stats.length > 0 && (
               <Group gap={6} mt={4}>
