@@ -917,6 +917,8 @@ async function updatePostTone(post_id, user_id, tone) {
  * Analyzes tone of the message and optionally persists it to the database.
  */
 app.post('/api/tone', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { message, post_id, user_id } = req.body;
     if (!message) {
@@ -988,7 +990,7 @@ app.get("/read", async (req, res) => {
 
 app.post("/api/delete", async (req, res) => {
   const providedAuth = req.get("x-scraper-auth") || req.headers["x-scraper-auth"];
-  if (process.env.SCRAPER_AUTH && providedAuth !== process.env.SCRAPER_AUTH) {
+  if (!process.env.SCRAPER_AUTH || providedAuth !== process.env.SCRAPER_AUTH) {
     console.warn(`Unauthorized delete attempt from ${req.ip}`);
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -1009,6 +1011,9 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   const { llmProvider, chatModel: requestedModel } = req.body || {};
   let chatConfig = resolveChatConfig({ requestedProvider: llmProvider, requestedModel });
 
@@ -1021,7 +1026,6 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const { messages = [], attachments = [] } = req.body || {};
-    const userId = getUserIdFromRequest(req);
     const latestPosts = await fetchLatestPostsContext(userId);
 
     const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
@@ -1467,6 +1471,8 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 });
 
 app.post("/api/posts", async (req, res) => {
+  const callerUserId = requireUserId(req, res);
+  if (!callerUserId) return;
   const {
     platform_id: rawPlatformId,
     platform_name,
@@ -1938,6 +1944,8 @@ function normalizeLinkedinUrl(raw, type) {
  * Calls the relevant Scrape Creators endpoints in parallel and returns combined results.
  */
 app.post('/api/linkedin/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     console.log('[Debug][LinkedIn] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {} } = req.body;
@@ -2558,6 +2566,8 @@ function extractIgUsername(input) {
  *   /v1/instagram/user/highlights→ { handle }
  */
 app.post('/api/instagram/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -2776,6 +2786,8 @@ function extractTkUsername(input) {
  *   /v1/tiktok/search/keyword   → { query }
  */
 app.post('/api/tiktok/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     console.log('[Debug][TikTok] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
@@ -2979,6 +2991,8 @@ function extractSubreddit(input) {
  *   /v1/reddit/ad                 → { id }
  */
 app.post('/api/reddit/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -3257,6 +3271,8 @@ async function searchYouTube(query, maxResults = 10) {
  *         inputs: { channelUrl, videoUrl, searchQuery } }
  */
 app.post('/api/youtube/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -4186,6 +4202,8 @@ function normalizeLookupItems(source, raw) {
 }
 
 app.post('/api/lookup/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const query = String(req.body?.query || '').trim();
     const limit = Math.min(150, Math.max(10, Number(req.body?.limit) || 60));

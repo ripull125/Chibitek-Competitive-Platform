@@ -678,9 +678,19 @@ function parseDuration(iso) {
 /* ── Platform names for save-post API ──────────────────────────────── */
 const PLATFORM_NAMES = { x: 'x', instagram: 'instagram', linkedin: 'linkedin', reddit: 'reddit', youtube: 'youtube', tiktok: 'tiktok' };
 
+/* ── Reject non-http(s) URLs to prevent javascript: URI injection ──── */
+function isSafeUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /* ── Make a card clickable to open source ───────────────────────────── */
 function cardLinkProps(url) {
-  if (!url) return {};
+  if (!url || !isSafeUrl(url)) return {};
   return {
     onClick: (e) => {
       if (e.target.closest('button, a, [role="button"]')) return;
@@ -1227,7 +1237,7 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
                   </Group>
                   <SaveBtn platform="reddit" postId={post.id || post.name} authorId={post.author} content={post.title || post.selftext} publishedAt={post.created_utc || post.created} likes={post.score ?? post.ups} comments={post.num_comments} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
-                {post.url && !post.url.includes("reddit.com") && (
+                {post.url && !post.url.includes("reddit.com") && isSafeUrl(post.url) && (
                   <Text size="xs" c="blue" component="a" href={post.url} target="_blank" rel="noopener" lineClamp={1}>
                     {post.url}
                   </Text>
@@ -1334,7 +1344,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
             )}
           </Group>
           {d.description && <ExpandableText text={d.description} size="xs" dimmed initialLines={4} />}
-          {d.website && <Text size="xs" c="blue" component="a" href={d.website} target="_blank" rel="noopener">{d.website}</Text>}
+          {d.website && isSafeUrl(d.website) && <Text size="xs" c="blue" component="a" href={d.website} target="_blank" rel="noopener">{d.website}</Text>}
         </Stack>
       </Card>
     );
@@ -1398,7 +1408,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
             ))}
           </Group>
           {(p.biography || p.bio) && <ExpandableText text={p.biography || p.bio} size="xs" dimmed initialLines={3} />}
-          {p.external_url && <Text size="xs" c="blue" component="a" href={p.external_url} target="_blank" rel="noopener">{p.external_url}</Text>}
+          {p.external_url && isSafeUrl(p.external_url) && <Text size="xs" c="blue" component="a" href={p.external_url} target="_blank" rel="noopener">{p.external_url}</Text>}
         </Stack>
       </Card>
     );

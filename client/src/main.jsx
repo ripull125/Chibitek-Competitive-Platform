@@ -7,8 +7,11 @@ import AppTourProvider from "./tour/AppTourProvider.jsx";
 import {
   MantineProvider,
   ScrollArea,
-  ColorSchemeScript
+  ColorSchemeScript,
+  localStorageColorSchemeManager,
 } from "@mantine/core";
+
+const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color-scheme" });
 import "@mantine/core/styles.css";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -63,9 +66,9 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="light" />
+    <ColorSchemeScript defaultColorScheme="light" colorSchemeManager={colorSchemeManager} />
     <I18nextProvider i18n={i18n}>
-      <MantineProvider defaultColorScheme="light">
+      <MantineProvider defaultColorScheme="light" colorSchemeManager={colorSchemeManager}>
         <BrowserRouter>
           {/* IMPORTANT: provider must wrap BOTH login and app */}
           <AppTourProvider>
