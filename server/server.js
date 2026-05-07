@@ -98,7 +98,7 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'x-user-id'],
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -917,6 +917,8 @@ async function updatePostTone(post_id, user_id, tone) {
  * Analyzes tone of the message and optionally persists it to the database.
  */
 app.post('/api/tone', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { message, post_id, user_id } = req.body;
     if (!message) {
@@ -988,7 +990,7 @@ app.get("/read", async (req, res) => {
 
 app.post("/api/delete", async (req, res) => {
   const providedAuth = req.get("x-scraper-auth") || req.headers["x-scraper-auth"];
-  if (process.env.SCRAPER_AUTH && providedAuth !== process.env.SCRAPER_AUTH) {
+  if (!process.env.SCRAPER_AUTH || providedAuth !== process.env.SCRAPER_AUTH) {
     console.warn(`Unauthorized delete attempt from ${req.ip}`);
     return res.status(401).json({ error: "Unauthorized" });
   }
@@ -1009,6 +1011,9 @@ app.post("/api/delete", async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
   const { llmProvider, chatModel: requestedModel } = req.body || {};
   let chatConfig = resolveChatConfig({ requestedProvider: llmProvider, requestedModel });
 
@@ -1021,7 +1026,6 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const { messages = [], attachments = [] } = req.body || {};
-    const userId = getUserIdFromRequest(req);
     const latestPosts = await fetchLatestPostsContext(userId);
 
     const sanitizedMessages = Array.isArray(messages) ? messages.slice(-20) : [];
@@ -1467,6 +1471,8 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
 });
 
 app.post("/api/posts", async (req, res) => {
+  const callerUserId = requireUserId(req, res);
+  if (!callerUserId) return;
   const {
     platform_id: rawPlatformId,
     platform_name,
@@ -1938,6 +1944,8 @@ function normalizeLinkedinUrl(raw, type) {
  * Calls the relevant Scrape Creators endpoints in parallel and returns combined results.
  */
 app.post('/api/linkedin/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     console.log('[Debug][LinkedIn] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {} } = req.body;
@@ -2558,6 +2566,8 @@ function extractIgUsername(input) {
  *   /v1/instagram/user/highlights→ { handle }
  */
 app.post('/api/instagram/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -2776,6 +2786,8 @@ function extractTkUsername(input) {
  *   /v1/tiktok/search/keyword   → { query }
  */
 app.post('/api/tiktok/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     console.log('[Debug][TikTok] request body:', JSON.stringify(req.body).slice(0, 1000));
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
@@ -2979,6 +2991,8 @@ function extractSubreddit(input) {
  *   /v1/reddit/ad                 → { id }
  */
 app.post('/api/reddit/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -3257,6 +3271,8 @@ async function searchYouTube(query, maxResults = 10) {
  *         inputs: { channelUrl, videoUrl, searchQuery } }
  */
 app.post('/api/youtube/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const { options = {}, inputs = {}, limit: rawLimit } = req.body;
     const limit = Math.min(100, Math.max(10, Number(rawLimit) || 10));
@@ -3676,13 +3692,14 @@ app.post('/api/watchlist', async (req, res) => {
     if (!userId) return;
 
     const { platform, scrape_type, target, label, config } = req.body;
-    if (!platform || !scrape_type || !target) {
-      return res.status(400).json({ error: 'platform, scrape_type and target are required.' });
+    const effectiveScrapeType = scrape_type || 'search';
+    if (!platform || !target) {
+      return res.status(400).json({ error: 'platform and target are required.' });
     }
 
     const { data, error } = await supabase
       .from('watchlist_items')
-      .insert({ user_id: userId, platform, scrape_type, target, label: label || target, config: config || {} })
+      .insert({ user_id: userId, platform, scrape_type: effectiveScrapeType, target, label: label || target, config: config || {} })
       .select()
       .single();
 
@@ -3815,128 +3832,232 @@ function trimToLimit(data, limit) {
   return data;
 }
 
+
+function stripViewMetrics(value) {
+  const blocked = new Set([
+    'views', 'view', 'view_count', 'viewCount', 'viewsCount', 'play_count', 'playCount',
+    'playcount', 'plays', 'totalViews', 'video_view_count', 'videoViewCount', 'videoPlayCount'
+  ]);
+  if (Array.isArray(value)) return value.map(stripViewMetrics);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !blocked.has(key))
+      .map(([key, val]) => [key, stripViewMetrics(val)])
+  );
+}
+
 /**
  * Core dispatcher — given a watchlist item, call the right API and return raw data.
  * Post-processes results to trim to the configured max_results.
  */
 async function executeWatchlistItem(item) {
   const raw = await _executeWatchlistScrape(item);
+  const cleaned = stripViewMetrics(raw);
   const limit = item.config?.max_results;
-  return limit ? trimToLimit(raw, limit) : raw;
+  return limit ? trimToLimit(cleaned, limit) : cleaned;
+}
+
+
+function isUrlLike(value) {
+  return /^https?:\/\//i.test(String(value || '').trim());
+}
+
+function cleanHandle(value) {
+  return String(value || '').trim().replace(/^@/, '').replace(/^u\//i, '').replace(/^r\//i, '');
+}
+
+function extractInstagramHandle(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  if (!isUrlLike(raw)) return cleanHandle(raw);
+  try {
+    const url = new URL(raw);
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (['p', 'reel', 'tv'].includes((parts[0] || '').toLowerCase())) return '';
+    return cleanHandle(parts[0] || '');
+  } catch {
+    return cleanHandle(raw);
+  }
+}
+
+function extractTikTokHandle(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const urlHandle = raw.match(/tiktok\.com\/@([^/?#]+)/i)?.[1];
+  if (urlHandle) return cleanHandle(urlHandle);
+  return cleanHandle(raw);
+}
+
+function isProbablyYouTubeVideo(input) {
+  const raw = String(input || '').trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return true;
+  return /youtu\.be\/|youtube\.com\/(watch\?|shorts\/|embed\/)/i.test(raw);
+}
+
+function isProbablyChannelInput(input) {
+  const raw = String(input || '').trim();
+  return /^@/.test(raw) || /youtube\.com\/(channel\/|c\/|user\/|@)/i.test(raw) || /^UC[a-zA-Z0-9_-]{22}$/.test(raw);
+}
+
+async function discoverLinkedInByKeyword(query, limit = 10) {
+  const googleResp = await scrapeCreators('/v1/google/search', { query: `${query} site:linkedin.com` });
+  const hits = googleResp?.results || googleResp?.data || [];
+  const tasks = [];
+  const labels = [];
+  for (const h of hits) {
+    const url = (h.url || h.link || '').toString();
+    if (!/linkedin\.com\//i.test(url)) continue;
+    if (tasks.length >= Math.min(limit, 5)) break;
+    const endpointType = /\/company\//i.test(url)
+      ? 'company'
+      : (/\/posts\//i.test(url) || /\/pulse\//i.test(url))
+        ? 'post'
+        : 'profile';
+    const endpoint = endpointType === 'company'
+      ? '/v1/linkedin/company'
+      : endpointType === 'post'
+        ? '/v1/linkedin/post'
+        : '/v1/linkedin/profile';
+    labels.push(endpointType);
+    tasks.push(scrapeCreators(endpoint, { url }));
+  }
+  const settled = await Promise.allSettled(tasks);
+  return {
+    query,
+    results: settled.map((r, i) => r.status === 'fulfilled' ? { type: labels[i], data: r.value } : { type: labels[i], error: r.reason?.message || String(r.reason) }),
+  };
 }
 
 async function _executeWatchlistScrape(item) {
-  const { platform, scrape_type, target, config = {} } = item;
+  const { platform, scrape_type = 'search', target, config = {} } = item;
+  const limit = Number(config.max_results) || undefined;
+  const normalizedType = scrape_type || 'search';
 
   switch (platform) {
-    /* ── X / Twitter ─────────────────────────────────────── */
     case 'x': {
-      const username = target.replace(/^@/, '').trim();
-      const user = await getUserIdByUsername(username);
-      switch (scrape_type) {
-        case 'user_posts':
-          {
-            const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
+      if (normalizedType !== 'search') {
+        const username = target.replace(/^@/, '').trim();
+        const user = await getUserIdByUsername(username);
+        switch (normalizedType) {
+          case 'user_posts': {
+            const postsResult = await fetchPostsByUserId(user.id, limit || 10);
             return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
           }
-        case 'user_mentions':
-          return fetchUserMentions(user.id, config.max_results || 10);
-        case 'followers':
-          return fetchFollowers(user.id, config.max_results || 20);
-        case 'following':
-          return fetchFollowing(user.id, config.max_results || 20);
-        case 'search':
-          return searchRecentTweets(target, config.max_results || 10);
-        default:
-          throw new Error(`Unknown X scrape_type: ${scrape_type}`);
+          case 'user_mentions': return fetchUserMentions(user.id, limit || 10);
+          case 'followers': return fetchFollowers(user.id, limit || 20);
+          case 'following': return fetchFollowing(user.id, limit || 20);
+          default: throw new Error(`Unknown X scrape_type: ${normalizedType}`);
+        }
       }
+      if (/^@/.test(String(target).trim())) {
+        const username = target.replace(/^@/, '').trim();
+        const user = await getUserIdByUsername(username);
+        const postsResult = await fetchPostsByUserId(user.id, limit || 10);
+        return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
+      }
+      return searchRecentTweets(target, limit || 10);
     }
 
-    /* ── YouTube ─────────────────────────────────────────── */
     case 'youtube': {
-      switch (scrape_type) {
-        case 'channel_videos': {
-          const channelId = await resolveChannelId(target);
-          return fetchChannelVideos(channelId, config.max_results || 10);
+      if (normalizedType !== 'search') {
+        switch (normalizedType) {
+          case 'channel_videos': {
+            const channelId = await resolveChannelId(target);
+            return fetchChannelVideos(channelId, limit || 10);
+          }
+          case 'channel_details': {
+            const channelId = await resolveChannelId(target);
+            return fetchChannelDetails(channelId);
+          }
+          case 'video_details': {
+            const vid = extractYouTubeVideoId(target);
+            if (!vid) throw new Error('Invalid YouTube video URL or ID');
+            return fetchVideoDetails(vid);
+          }
+          default: throw new Error(`Unknown YouTube scrape_type: ${normalizedType}`);
         }
-        case 'channel_details': {
-          const channelId = await resolveChannelId(target);
-          return fetchChannelDetails(channelId);
-        }
-        case 'video_details': {
-          const vid = extractYouTubeVideoId(target);
-          if (!vid) throw new Error('Invalid YouTube video URL or ID');
-          return fetchVideoDetails(vid);
-        }
-        case 'search':
-          return searchYouTube(target, config.max_results || 10);
-        default:
-          throw new Error(`Unknown YouTube scrape_type: ${scrape_type}`);
       }
+      if (isProbablyYouTubeVideo(target)) {
+        const vid = extractYouTubeVideoId(target);
+        if (!vid) throw new Error('Invalid YouTube video URL or ID');
+        return fetchVideoDetails(vid);
+      }
+      if (isProbablyChannelInput(target)) {
+        const channelId = await resolveChannelId(target);
+        return fetchChannelVideos(channelId, limit || 10);
+      }
+      return searchYouTube(target, limit || 10);
     }
 
-    /* ── Reddit ──────────────────────────────────────────── */
     case 'reddit': {
-      const limit = config.max_results || 25;
-      switch (scrape_type) {
-        case 'subreddit_posts': {
-          const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, limit);
+      const l = limit || 25;
+      if (normalizedType !== 'search') {
+        switch (normalizedType) {
+          case 'subreddit_posts': return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: cleanHandle(target), trim: true }, l);
+          case 'subreddit_details': return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: cleanHandle(target), trim: true });
+          default: throw new Error(`Unknown Reddit scrape_type: ${normalizedType}`);
         }
-        case 'subreddit_details': {
-          const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub, trim: true });
-        }
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, limit);
-        default:
-          throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
       }
+      if (/^r\//i.test(String(target).trim()) || /reddit\.com\/r\//i.test(String(target))) {
+        const sub = String(target).match(/(?:reddit\.com\/r\/|^r\/)([^/?#\s]+)/i)?.[1] || cleanHandle(target);
+        return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, l);
+      }
+      return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, l);
     }
 
-    /* ── LinkedIn ────────────────────────────────────────── */
     case 'linkedin': {
-      switch (scrape_type) {
-        case 'profile':
-          return scrapeCreators('/v1/linkedin/profile', { url: target });
-        case 'company':
-          return scrapeCreators('/v1/linkedin/company', { url: target });
-        case 'post':
-          return scrapeCreators('/v1/linkedin/post', { url: target });
-        default:
-          throw new Error(`Unknown LinkedIn scrape_type: ${scrape_type}`);
+      if (normalizedType !== 'search') {
+        switch (normalizedType) {
+          case 'profile': return scrapeCreators('/v1/linkedin/profile', { url: normalizeLinkedinUrl(target, 'profile') });
+          case 'company': return scrapeCreators('/v1/linkedin/company', { url: normalizeLinkedinUrl(target, 'company') });
+          case 'post': return scrapeCreators('/v1/linkedin/post', { url: normalizeLinkedinUrl(target, 'post') });
+          default: throw new Error(`Unknown LinkedIn scrape_type: ${normalizedType}`);
+        }
       }
+      if (isUrlLike(target) && /linkedin\.com\//i.test(target)) {
+        if (/\/company\//i.test(target)) return scrapeCreators('/v1/linkedin/company', { url: normalizeLinkedinUrl(target, 'company') });
+        if (/\/posts\//i.test(target) || /\/pulse\//i.test(target) || /\/feed\//i.test(target)) return scrapeCreators('/v1/linkedin/post', { url: normalizeLinkedinUrl(target, 'post') });
+        return scrapeCreators('/v1/linkedin/profile', { url: normalizeLinkedinUrl(target, 'profile') });
+      }
+      return discoverLinkedInByKeyword(target, limit || 10);
     }
 
-    /* ── Instagram ───────────────────────────────────────── */
     case 'instagram': {
-      const handle = target.replace(/^@/, '').trim();
-      switch (scrape_type) {
-        case 'profile':
-          return scrapeCreators('/v1/instagram/profile', { handle, trim: true });
-        case 'user_posts':
-          return scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle, trim: true }, config.max_results || 12);
-        case 'user_reels':
-          return scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle, trim: true }, config.max_results || 12);
-        default:
-          throw new Error(`Unknown Instagram scrape_type: ${scrape_type}`);
+      const l = limit || 12;
+      if (normalizedType !== 'search') {
+        const handle = extractInstagramHandle(target);
+        switch (normalizedType) {
+          case 'profile': return scrapeCreators('/v1/instagram/profile', { handle, trim: true });
+          case 'user_posts': return scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle, trim: true }, l);
+          case 'user_reels': return scrapeCreatorsPaginated('/v1/instagram/user/reels', { handle, trim: true }, l);
+          default: throw new Error(`Unknown Instagram scrape_type: ${normalizedType}`);
+        }
       }
+      if (isUrlLike(target) && /instagram\.com\/(p|reel|tv)\//i.test(target)) {
+        return scrapeCreators('/v1/instagram/post', { url: target, trim: true });
+      }
+      const handle = extractInstagramHandle(target);
+      if (/^@/.test(String(target).trim()) || /instagram\.com\//i.test(String(target))) {
+        return scrapeCreatorsPaginated('/v2/instagram/user/posts', { handle, trim: true }, l);
+      }
+      return scrapeCreators('/v1/google/search', { query: `${target} site:instagram.com` });
     }
 
-    /* ── TikTok ──────────────────────────────────────────── */
     case 'tiktok': {
-      const handle = target.replace(/^@/, '').trim();
-      const limit = config.max_results || 20;
-      switch (scrape_type) {
-        case 'profile':
-          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
-        case 'profile_videos':
-          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, limit);
-        default:
-          throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
+      const l = limit || 20;
+      if (normalizedType !== 'search') {
+        const handle = extractTikTokHandle(target);
+        switch (normalizedType) {
+          case 'profile': return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
+          case 'profile_videos': return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
+          default: throw new Error(`Unknown TikTok scrape_type: ${normalizedType}`);
+        }
       }
+      if (/^@/.test(String(target).trim()) || /tiktok\.com\/@/i.test(String(target))) {
+        return scrapeCreators('/v1/tiktok/profile', { handle: extractTikTokHandle(target), trim: true });
+      }
+      return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, l);
     }
 
     default:
@@ -4081,6 +4202,8 @@ function normalizeLookupItems(source, raw) {
 }
 
 app.post('/api/lookup/search', async (req, res) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
   try {
     const query = String(req.body?.query || '').trim();
     const limit = Math.min(150, Math.max(10, Number(req.body?.limit) || 60));

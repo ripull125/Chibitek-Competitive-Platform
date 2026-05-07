@@ -53,7 +53,7 @@
   min-height: 244px;
   /* +8px */
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--mantine-color-body);
   box-shadow: 0 12px 28px rgba(17, 24, 39, 0.08);
 }
 
@@ -73,7 +73,7 @@
   /* +0.5px */
   font-weight: 800;
   letter-spacing: 0.085em;
-  color: rgba(17, 24, 39, 0.55);
+  color: var(--mantine-color-dimmed);
 }
 
 .rowTitle {
@@ -87,7 +87,7 @@
   margin-top: -2px;
   font-size: 13.5px;
   /* +0.5px */
-  color: rgba(17, 24, 39, 0.62);
+  color: var(--mantine-color-dimmed);
 }
 
 .actionBtn {
@@ -319,4 +319,25 @@
   .colAction {
     justify-content: flex-start;
   }
+}
+
+:global([data-mantine-color-scheme="dark"]) .inlineForm {
+  background: var(--mantine-color-dark-6);
+  border-color: var(--mantine-color-dark-4);
+}
+
+:global([data-mantine-color-scheme="dark"]) .listWrap {
+  background: var(--mantine-color-dark-7);
+  border-color: var(--mantine-color-dark-4);
+}
+
+:global([data-mantine-color-scheme="dark"]) .listHead,
+:global([data-mantine-color-scheme="dark"]) .userListHead {
+  background: var(--mantine-color-dark-6);
+}
+
+:global([data-mantine-color-scheme="dark"]) .listRow,
+:global([data-mantine-color-scheme="dark"]) .userListRow {
+  background: var(--mantine-color-dark-7);
+  border-color: var(--mantine-color-dark-5);
 }

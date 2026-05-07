@@ -16,8 +16,11 @@ import {
   Loader,
   Divider,
   Badge,
+  SegmentedControl,
+  Center,
+  useMantineColorScheme,
 } from "@mantine/core";
-import { IconTrash, IconWorld } from "@tabler/icons-react";
+import { IconTrash, IconWorld, IconSun, IconMoon, IconDeviceDesktop } from "@tabler/icons-react";
 import { useAppTour } from "../tour/AppTourProvider.jsx";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -51,6 +54,7 @@ function SettingsCard({ label, title, description, children, className = "" }) {
 export default function Settings() {
   const { t } = useTranslation();
   const { language, setLanguage } = useAppLanguage();
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const navigate = useNavigate();
   const tour = useAppTour();
   const [accessRole, setAccessRole] = useState("user");
@@ -435,6 +439,48 @@ export default function Settings() {
                 {languageLabel}
               </Text>
             </Group>
+          </SettingsCard>
+
+          <SettingsCard
+            label="APPEARANCE"
+            title="Theme"
+            description="Choose light, dark, or match your system."
+          >
+            <SegmentedControl
+              value={colorScheme}
+              onChange={setColorScheme}
+              radius="xl"
+              size="sm"
+              data={[
+                {
+                  value: "light",
+                  label: (
+                    <Center gap={6}>
+                      <IconSun size={14} />
+                      <span>Light</span>
+                    </Center>
+                  ),
+                },
+                {
+                  value: "dark",
+                  label: (
+                    <Center gap={6}>
+                      <IconMoon size={14} />
+                      <span>Dark</span>
+                    </Center>
+                  ),
+                },
+                {
+                  value: "auto",
+                  label: (
+                    <Center gap={6}>
+                      <IconDeviceDesktop size={14} />
+                      <span>System</span>
+                    </Center>
+                  ),
+                },
+              ]}
+            />
           </SettingsCard>
 
           <SettingsCard
