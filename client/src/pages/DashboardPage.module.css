@@ -38,6 +38,12 @@
   box-shadow: 0 6px 20px rgba(20, 20, 20, 0.08);
 }
 
+.kpiLabel {
+  min-height: 34px;
+  line-height: 1.25;
+  letter-spacing: 0.05em;
+}
+
 .kpiValue {
   font-size: 28px;
   line-height: 1;

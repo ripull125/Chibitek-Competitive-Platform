@@ -34,7 +34,7 @@ import {
   IconChartLine,
   IconDownload,
   IconExternalLink,
-  IconEye,
+  IconShare3,
   IconHeart,
   IconMessage,
   IconMessageChatbot,
@@ -188,7 +188,6 @@ function useAnalytics(posts, keywords, platformIdMap) {
     const totalPosts = taggedPosts.length;
     const totalLikes = taggedPosts.reduce((s, p) => s + (p.likes || 0), 0);
     const totalComments = taggedPosts.reduce((s, p) => s + (p.comments || 0), 0);
-    const totalViews = taggedPosts.reduce((s, p) => s + (p.views || p.extra?.views || 0), 0);
     const totalShares = taggedPosts.reduce((s, p) => s + (p.shares || 0), 0);
     const totalEngagement = totalLikes + totalComments + totalShares;
     const avgEngagement = totalPosts ? Math.round(totalEngagement / totalPosts) : 0;
@@ -201,19 +200,17 @@ function useAnalytics(posts, keywords, platformIdMap) {
     taggedPosts.forEach((p) => {
       const d = (p.published_at || p.created_at || "").slice(0, 10);
       if (!d) return;
-      if (!byDay[d]) byDay[d] = { date: d, likes: 0, comments: 0, shares: 0, views: 0, posts: 0, _byPlatform: {} };
+      if (!byDay[d]) byDay[d] = { date: d, likes: 0, comments: 0, shares: 0, posts: 0, _byPlatform: {} };
       byDay[d].likes += p.likes || 0;
       byDay[d].comments += p.comments || 0;
       byDay[d].shares += p.shares || 0;
-      byDay[d].views += p.views || p.extra?.views || 0;
       byDay[d].posts += 1;
       // per-platform
       const plat = p._platform;
-      if (!byDay[d]._byPlatform[plat]) byDay[d]._byPlatform[plat] = { likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      if (!byDay[d]._byPlatform[plat]) byDay[d]._byPlatform[plat] = { likes: 0, comments: 0, shares: 0, posts: 0 };
       byDay[d]._byPlatform[plat].likes += p.likes || 0;
       byDay[d]._byPlatform[plat].comments += p.comments || 0;
       byDay[d]._byPlatform[plat].shares += p.shares || 0;
-      byDay[d]._byPlatform[plat].views += p.views || p.extra?.views || 0;
       byDay[d]._byPlatform[plat].posts += 1;
     });
     const engagementOverTime = Object.values(byDay)
@@ -224,11 +221,10 @@ function useAnalytics(posts, keywords, platformIdMap) {
     const byPlatform = {};
     taggedPosts.forEach((p) => {
       const name = p._platform;
-      if (!byPlatform[name]) byPlatform[name] = { platform: name, likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      if (!byPlatform[name]) byPlatform[name] = { platform: name, likes: 0, comments: 0, shares: 0, posts: 0 };
       byPlatform[name].likes += p.likes || 0;
       byPlatform[name].comments += p.comments || 0;
       byPlatform[name].shares += p.shares || 0;
-      byPlatform[name].views += p.views || p.extra?.views || 0;
       byPlatform[name].posts += 1;
     });
     const platformBreakdown = Object.values(byPlatform)
@@ -263,11 +259,10 @@ function useAnalytics(posts, keywords, platformIdMap) {
     const byCompetitor = {};
     taggedPosts.forEach((p) => {
       const name = p.username || p.extra?.author_handle || p.extra?.username || "Unknown";
-      if (!byCompetitor[name]) byCompetitor[name] = { name, likes: 0, comments: 0, shares: 0, views: 0, posts: 0 };
+      if (!byCompetitor[name]) byCompetitor[name] = { name, likes: 0, comments: 0, shares: 0, posts: 0 };
       byCompetitor[name].likes += p.likes || 0;
       byCompetitor[name].comments += p.comments || 0;
       byCompetitor[name].shares += p.shares || 0;
-      byCompetitor[name].views += p.views || p.extra?.views || 0;
       byCompetitor[name].posts += 1;
     });
     const competitors = Object.values(byCompetitor)
@@ -276,7 +271,7 @@ function useAnalytics(posts, keywords, platformIdMap) {
       .slice(0, 6);
 
     return {
-      totalPosts, totalLikes, totalComments, totalViews, totalShares,
+      totalPosts, totalLikes, totalComments, totalShares,
       totalEngagement, avgEngagement, engagementOverTime, platformBreakdown,
       platformNames, topPosts, topKeywords, toneDistribution, competitors,
     };
@@ -327,28 +322,29 @@ function KPIStrip({ analytics }) {
   const { t } = useTranslation();
   const kpis = [
     { label: t("dashboard.kpiTotalPosts", { defaultValue: "Total Posts" }), value: analytics.totalPosts, icon: IconChartDots, color: "blue" },
-    { label: t("dashboard.kpiTotalEngagement", { defaultValue: "Total Engagement" }), value: fmtK(analytics.totalEngagement), icon: IconHeart, color: "pink" },
-    { label: t("dashboard.kpiAvgEngagement", { defaultValue: "Avg Engagement" }), value: fmtK(analytics.avgEngagement), icon: IconTrendingUp, color: "teal" },
-    { label: t("dashboard.kpiTotalViews", { defaultValue: "Total Views" }), value: fmtK(analytics.totalViews), icon: IconEye, color: "violet" },
+    { label: t("dashboard.kpiTotalEngagement", { defaultValue: "Total Engagement" }), value: fmtK(analytics.totalEngagement), icon: IconSparkles, color: "pink" },
+    { label: t("dashboard.kpiTotalLikes", { defaultValue: "Total Likes" }), value: fmtK(analytics.totalLikes), icon: IconHeart, color: "red" },
     { label: t("dashboard.kpiTotalComments", { defaultValue: "Total Comments" }), value: fmtK(analytics.totalComments), icon: IconMessage, color: "orange" },
+    { label: t("dashboard.kpiTotalShares", { defaultValue: "Total Shares" }), value: fmtK(analytics.totalShares), icon: IconShare3, color: "violet" },
+    { label: t("dashboard.kpiAvgEngagement", { defaultValue: "Avg Engagement" }), value: fmtK(analytics.avgEngagement), icon: IconTrendingUp, color: "teal" },
     { label: t("dashboard.kpiPlatforms", { defaultValue: "Platforms" }), value: analytics.platformNames.length, icon: IconUsers, color: "cyan" },
   ];
 
   return (
-    <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md" data-tour="dashboard-kpis">
+    <SimpleGrid cols={{ base: 2, sm: 3, lg: 7 }} spacing="md" data-tour="dashboard-kpis">
       {kpis.map((k) => {
         const Icon = k.icon;
         return (
           <Card key={k.label} withBorder shadow="xs" radius="lg" p="lg" className={classes.kpiCard}>
-            <Group gap="sm" align="center" mb={8}>
+            <Stack gap={8} align="flex-start">
               <ThemeIcon variant="light" color={k.color} radius="md" size={32}>
                 <Icon size={18} />
               </ThemeIcon>
-              <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+              <Text size="xs" c="dimmed" fw={700} tt="uppercase" className={classes.kpiLabel}>
                 {k.label}
               </Text>
-            </Group>
-            <Text fw={800} size="xl" className={classes.kpiValue}>{k.value}</Text>
+              <Text fw={800} size="xl" className={classes.kpiValue}>{k.value}</Text>
+            </Stack>
           </Card>
         );
       })}
@@ -365,12 +361,18 @@ function EngagementTimeline({ data, platformNames }) {
   const [platformFilter, setPlatformFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
   const [metric, setMetric] = useState("all");
+  const [scaleMode, setScaleMode] = useState("raw");
 
   const DATE_RANGES = [
     { value: "all", label: t("dashboard.dateAllTime", { defaultValue: "All time" }) },
     { value: "7", label: t("dashboard.dateLast7", { defaultValue: "Last 7 days" }) },
     { value: "30", label: t("dashboard.dateLast30", { defaultValue: "Last 30 days" }) },
     { value: "90", label: t("dashboard.dateLast90", { defaultValue: "Last 90 days" }) },
+  ];
+
+  const SCALE_OPTIONS = [
+    { value: "raw", label: t("dashboard.scaleRaw", { defaultValue: "Raw values" }) },
+    { value: "relative", label: t("dashboard.scaleRelative", { defaultValue: "Balanced trend" }) },
   ];
 
   const platformOptions = useMemo(() => [
@@ -394,20 +396,43 @@ function EngagementTimeline({ data, platformNames }) {
     if (platformFilter !== "all") {
       result = result.map((d) => {
         const platData = d._byPlatform?.[platformFilter];
-        if (!platData) return { ...d, likes: 0, comments: 0, shares: 0, views: 0, engagement: 0 };
+        if (!platData) return { ...d, likes: 0, comments: 0, shares: 0, engagement: 0 };
         return {
           ...d,
           likes: platData.likes,
           comments: platData.comments,
           shares: platData.shares,
-          views: platData.views,
           engagement: platData.likes + platData.comments + platData.shares,
         };
-      }).filter((d) => d.engagement > 0 || d.likes > 0 || d.comments > 0 || d.shares > 0 || d.views > 0);
+      }).filter((d) => d.engagement > 0 || d.likes > 0 || d.comments > 0 || d.shares > 0);
     }
 
     return result;
-  }, [data, platformFilter, dateRange, metric]);
+  }, [data, platformFilter, dateRange]);
+
+  const chartData = useMemo(() => {
+    if (scaleMode !== "relative") return filteredData;
+    const maxLikes = Math.max(...filteredData.map((d) => d.likes || 0), 0) || 1;
+    const maxComments = Math.max(...filteredData.map((d) => d.comments || 0), 0) || 1;
+    const maxShares = Math.max(...filteredData.map((d) => d.shares || 0), 0) || 1;
+    return filteredData.map((d) => ({
+      ...d,
+      likesScaled: Math.round(((d.likes || 0) / maxLikes) * 100),
+      commentsScaled: Math.round(((d.comments || 0) / maxComments) * 100),
+      sharesScaled: Math.round(((d.shares || 0) / maxShares) * 100),
+    }));
+  }, [filteredData, scaleMode]);
+
+  const tooltipFormatter = (value, name, props) => {
+    if (scaleMode !== "relative") return fmtK(value);
+    const rawKey = String(props?.dataKey || "").replace("Scaled", "");
+    const rawValue = props?.payload?.[rawKey] || 0;
+    return `${Math.round(Number(value) || 0)}% (${fmtK(rawValue)} raw)`;
+  };
+
+  const yTickFormatter = scaleMode === "relative" ? (v) => `${v}%` : fmtK;
+  const yDomain = scaleMode === "relative" ? [0, 100] : undefined;
+  const keyFor = (base) => scaleMode === "relative" ? `${base}Scaled` : base;
 
   const filterControls = (
     <Group gap="xs" wrap="wrap">
@@ -424,6 +449,14 @@ function EngagementTimeline({ data, platformNames }) {
         data={DATE_RANGES}
         value={dateRange}
         onChange={setDateRange}
+        style={{ width: 130 }}
+        allowDeselect={false}
+      />
+      <Select
+        size="xs"
+        data={SCALE_OPTIONS}
+        value={scaleMode}
+        onChange={(next) => setScaleMode(next || "raw")}
         style={{ width: 130 }}
         allowDeselect={false}
       />
@@ -453,7 +486,7 @@ function EngagementTimeline({ data, platformNames }) {
       {filteredData.length > 0 ? (
         <div className={classes.chartBox}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={filteredData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="gradLikes" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#339AF0" stopOpacity={0.3} />
@@ -470,21 +503,21 @@ function EngagementTimeline({ data, platformNames }) {
               </defs>
               <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
               <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} />
-              <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={yTickFormatter} domain={yDomain} tick={{ fontSize: 11 }} />
               <RechartsTooltip
                 contentStyle={{ borderRadius: 10, border: "1px solid rgba(100,116,139,0.2)" }}
                 labelFormatter={fmtDate}
-                formatter={(v) => fmtK(v)}
+                formatter={tooltipFormatter}
               />
               <Legend />
               {(metric === "all" || metric === "likes") && (
-                <Area type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#gradLikes)" strokeWidth={2} name={t("dashboard.likes", { defaultValue: "Likes" })} />
+                <Area type="monotone" dataKey={keyFor("likes")} stroke="#339AF0" fill="url(#gradLikes)" strokeWidth={2} name={t("dashboard.likes", { defaultValue: "Likes" })} />
               )}
               {(metric === "all" || metric === "comments") && (
-                <Area type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#gradComments)" strokeWidth={2} name={t("dashboard.comments", { defaultValue: "Comments" })} />
+                <Area type="monotone" dataKey={keyFor("comments")} stroke="#51CF66" fill="url(#gradComments)" strokeWidth={2} name={t("dashboard.comments", { defaultValue: "Comments" })} />
               )}
               {(metric === "all" || metric === "shares") && (
-                <Area type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#gradShares)" strokeWidth={2} name={t("dashboard.shares", { defaultValue: "Shares" })} />
+                <Area type="monotone" dataKey={keyFor("shares")} stroke="#FF6B6B" fill="url(#gradShares)" strokeWidth={2} name={t("dashboard.shares", { defaultValue: "Shares" })} />
               )}
             </AreaChart>
           </ResponsiveContainer>
@@ -504,10 +537,11 @@ function EngagementTimeline({ data, platformNames }) {
 function PlatformBreakdown({ data }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+
   return (
     <SectionCard
       title={t("dashboard.engagementByPlatform", { defaultValue: "Engagement by Platform" })}
-      subtitle={t("dashboard.engagementByPlatformDesc", { defaultValue: "How each social platform is performing" })}
+      subtitle={t("dashboard.engagementByPlatformDesc", { defaultValue: "Raw likes, comments & shares by platform" })}
       icon={IconChartBar}
       onViewData={() => navigate("/reports")}
       tourId="dashboard-platforms"
@@ -521,7 +555,7 @@ function PlatformBreakdown({ data }) {
               <YAxis tickFormatter={fmtK} tick={{ fontSize: 11 }} />
               <RechartsTooltip
                 contentStyle={{ borderRadius: 10, border: "1px solid rgba(100,116,139,0.2)" }}
-                formatter={(v) => fmtK(v)}
+                formatter={(value) => fmtK(value)}
               />
               <Legend />
               <Bar dataKey="likes" fill="#339AF0" name={t("dashboard.likes", { defaultValue: "Likes" })} radius={[4, 4, 0, 0]} />
@@ -604,10 +638,10 @@ function TopPostsList({ posts }) {
                         <Text size="sm" fw={600}>{fmtK(p.comments || 0)}</Text>
                       </Group>
                     </Tooltip>
-                    <Tooltip label={t("dashboard.views", { defaultValue: "Views" })}>
+                    <Tooltip label={t("dashboard.shares", { defaultValue: "Shares" })}>
                       <Group gap={4}>
-                        <IconEye size={14} color="#845EF7" />
-                        <Text size="sm" fw={600}>{fmtK(p.views || p.extra?.views || 0)}</Text>
+                        <IconShare3 size={14} color="#845EF7" />
+                        <Text size="sm" fw={600}>{fmtK(p.shares || 0)}</Text>
                       </Group>
                     </Tooltip>
                     {p.url && (
@@ -671,10 +705,10 @@ function CompetitorComparison({ competitors }) {
                       <Text size="sm" fw={600}>{fmtK(c.comments)}</Text>
                     </Group>
                   </Tooltip>
-                  <Tooltip label={t("dashboard.views", { defaultValue: "Views" })}>
+                  <Tooltip label={t("dashboard.shares", { defaultValue: "Shares" })}>
                     <Group gap={4}>
-                      <IconEye size={14} color="#845EF7" />
-                      <Text size="sm" fw={600}>{fmtK(c.views)}</Text>
+                      <IconShare3 size={14} color="#845EF7" />
+                      <Text size="sm" fw={600}>{fmtK(c.shares || 0)}</Text>
                     </Group>
                   </Tooltip>
                 </Group>
@@ -829,14 +863,14 @@ function AISummary({ analytics, userId }) {
         .join("; ");
       const topCompetitors = analytics.competitors
         .slice(0, 3)
-        .map((c) => "@" + c.name + ": " + c.engagement + " engagement, " + c.views + " views")
+        .map((c) => "@" + c.name + ": " + c.engagement + " engagement, " + c.likes + " likes, " + c.comments + " comments, " + c.shares + " shares")
         .join("; ");
       const topKws = analytics.topKeywords
         .slice(0, 5)
         .map((k) => '"' + k.term + '" (KPI: ' + Math.round(k.kpi || 0) + ", trend: " + (k.trendDir || "stable") + ")")
         .join("; ");
 
-      const prompt = "You are a social media analytics assistant for Chibitek. Analyze this data and provide a concise, actionable summary with 3-4 key insights and recommended next steps.\n\nData overview:\n- Total posts analyzed: " + analytics.totalPosts + "\n- Total engagement: " + analytics.totalEngagement + " (" + analytics.totalLikes + " likes, " + analytics.totalComments + " comments, " + analytics.totalShares + " shares)\n- Total views: " + analytics.totalViews + "\n- Average engagement per post: " + analytics.avgEngagement + "\n- Top platforms: " + (topPlatforms || "N/A") + "\n- Top competitors: " + (topCompetitors || "N/A") + "\n- Top keywords: " + (topKws || "N/A") + "\n\nFormat your response with clear headings using **bold** for emphasis. Keep it under 200 words.";
+      const prompt = "You are a social media analytics assistant for Chibitek. Analyze this data and provide a concise, actionable summary with 3-4 key insights and recommended next steps.\n\nData overview:\n- Total posts analyzed: " + analytics.totalPosts + "\n- Total engagement: " + analytics.totalEngagement + " (" + analytics.totalLikes + " likes, " + analytics.totalComments + " comments, " + analytics.totalShares + " shares)\n- Average engagement per post: " + analytics.avgEngagement + "\n- Top platforms: " + (topPlatforms || "N/A") + "\n- Top competitors: " + (topCompetitors || "N/A") + "\n- Top keywords: " + (topKws || "N/A") + "\n\nFormat your response with clear headings using **bold** for emphasis. Keep it under 200 words.";
       const aiSettings = loadAiSettings();
       const modelMeta = getModelMeta(aiSettings?.modelChoice);
 
@@ -909,8 +943,8 @@ function EmptyState({ msg }) {
 function DashboardSkeleton() {
   return (
     <Stack gap="lg">
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 7 }} spacing="md">
+        {Array.from({ length: 7 }).map((_, i) => (
           <Skeleton key={i} height={100} radius="lg" />
         ))}
       </SimpleGrid>

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ActionIcon, Alert, Avatar, Badge, Button, Card, Collapse, Divider,
-  Group, LoadingOverlay, Modal, Paper, SimpleGrid, Stack, Text, Title, Tooltip,
+  ActionIcon, Alert, AspectRatio, Avatar, Badge, Button, Card, Collapse, Divider,
+  Group, LoadingOverlay, Modal, Paper, Select, SimpleGrid, Stack, Text, Title, Tooltip,
 } from "@mantine/core";
 import {
   IconBrandInstagram, IconBrandLinkedin, IconBrandReddit,
   IconBrandTiktok, IconBrandX, IconBrandYoutube,
   IconChevronDown, IconChevronUp,
-  IconExternalLink, IconEye, IconHeart, IconInfoCircle,
+  IconExternalLink, IconHeart,
   IconMessage, IconRepeat, IconTrash,
 } from "@tabler/icons-react";
 import { apiUrl } from "../utils/api";
@@ -30,6 +30,94 @@ function Metric({ icon, value }) {
       {icon}
       <Text size="xs" c="dimmed" lh={1}>{label}</Text>
     </Group>
+  );
+}
+
+
+const DEFAULT_SORT_MODE = "date_desc";
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "metrics_desc", label: "Highest total metrics" },
+  { value: "likes_desc", label: "Most likes" },
+  { value: "comments_desc", label: "Most comments" },
+  { value: "shares_desc", label: "Most shares" },
+];
+
+function parseMetricValue(value) {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return 0;
+  const match = text.match(/^(-?[0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+  if (!match) {
+    const n = Number(text);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const base = Number(match[1]);
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : suffix === "b" ? 1_000_000_000 : 1;
+  return Number.isFinite(base) ? Math.max(0, Math.round(base * multiplier)) : 0;
+}
+
+function getSortableDate(post = {}) {
+  const raw = post.published_at ?? post.publishedAt ?? post.datePublished ?? post.created_at ?? post.createdAt ?? post.created_utc ?? post.created ?? post.timestamp ?? post.extra?.published_at;
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getSortableLikes(post = {}) {
+  return parseMetricValue(post.likes ?? post.extra?.likes ?? post.extra?.like_count ?? post.extra?.likeCount ?? 0);
+}
+
+function getSortableComments(post = {}) {
+  return parseMetricValue(post.comments ?? post.extra?.comments ?? post.extra?.comment_count ?? post.extra?.commentCount ?? 0);
+}
+
+function getSortableShares(post = {}) {
+  return parseMetricValue(post.shares ?? post.extra?.shares ?? post.extra?.share_count ?? post.extra?.shareCount ?? 0);
+}
+
+function getSortableTotalMetrics(post = {}) {
+  return getSortableLikes(post) + getSortableComments(post) + getSortableShares(post);
+}
+
+function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
+  if (!Array.isArray(posts)) return [];
+  const mode = sortMode || DEFAULT_SORT_MODE;
+  const decorated = posts.map((post, index) => ({ post, index }));
+
+  decorated.sort((a, b) => {
+    let diff = 0;
+    if (mode === "date_asc") diff = getSortableDate(a.post) - getSortableDate(b.post);
+    else if (mode === "metrics_desc") diff = getSortableTotalMetrics(b.post) - getSortableTotalMetrics(a.post);
+    else if (mode === "likes_desc") diff = getSortableLikes(b.post) - getSortableLikes(a.post);
+    else if (mode === "comments_desc") diff = getSortableComments(b.post) - getSortableComments(a.post);
+    else if (mode === "shares_desc") diff = getSortableShares(b.post) - getSortableShares(a.post);
+    else diff = getSortableDate(b.post) - getSortableDate(a.post);
+
+    return diff || a.index - b.index;
+  });
+
+  return decorated.map(({ post }) => post);
+}
+
+function SortSelect({ value, onChange }) {
+  return (
+    <Select
+      aria-label="Sort saved posts"
+      size="xs"
+      value={value}
+      onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
+      data={SORT_OPTIONS}
+      allowDeselect={false}
+      checkIconPosition="right"
+      w={190}
+    />
   );
 }
 
@@ -136,7 +224,6 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
 
 function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open video on X", embedFallbackUrl = null }) {
   const items = dedupeMediaForDisplay(media, maxItems);
-
   if (!items.length) {
     const embedUrl = embedFallbackUrl ? instagramEmbedUrl(embedFallbackUrl) : null;
     if (!embedUrl) return null;
@@ -160,7 +247,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
   }
 
   return (
-    <div style={{ maxWidth: items.length === 1 ? 420 : 560 }}>
+    <div style={{ maxWidth: items.length === 1 ? 420 : 560, width: "100%" }}>
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
         {items.map((item, index) => {
           const key = item.media_key || item.url || item.preview_image_url || index;
@@ -232,6 +319,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
           return null;
         })}
       </SimpleGrid>
+
     </div>
   );
 }
@@ -257,7 +345,7 @@ function InstagramMediaPreview({ media, postUrl = null }) {
   if (!imageItems.length) {
     if (!postUrl) return null;
     return (
-      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460 }}>
+      <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460, width: "100%" }}>
         <Stack gap={4}>
           <Text size="xs" c="dimmed">
             Instagram photos/videos are not available from the API for inline preview.
@@ -515,18 +603,166 @@ function XPostCard({ post, onDelete }) {
 
 /* ── YouTube card ────────────────────────────────────────────────────────── */
 
+function getYoutubeThumbnailUrl(thumbnails = null) {
+  if (!thumbnails) return null;
+  if (typeof thumbnails === "string") return thumbnails;
+  return (
+    thumbnails.maxres?.url ||
+    thumbnails.standard?.url ||
+    thumbnails.high?.url ||
+    thumbnails.medium?.url ||
+    thumbnails.default?.url ||
+    null
+  );
+}
+
+function getYoutubeVideoIdFromSavedPost(post = {}, postUrl = null) {
+  const extra = post?.extra || {};
+  const direct =
+    extra.videoId ||
+    extra.youtubeVideoId ||
+    extra.id?.videoId ||
+    post.youtubeVideoId ||
+    post.videoId ||
+    post.platform_post_id;
+
+  if (typeof direct === "string" && /^[a-zA-Z0-9_-]{11}$/.test(direct)) {
+    return direct;
+  }
+
+  const candidates = [
+    postUrl,
+    post.url,
+    extra.url,
+    extra.link,
+    extra.videoUrl,
+    extra.embedUrl,
+    extra.permalink,
+  ].filter(Boolean);
+
+  for (const raw of candidates) {
+    const url = String(raw);
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (match?.[1]) return match[1];
+
+    try {
+      const parsed = new URL(url);
+      const v = parsed.searchParams.get("v");
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+    } catch {
+      // Ignore non-URL values.
+    }
+  }
+
+  return null;
+}
+
+function YoutubeThumbnailPreview({ post, postUrl = null }) {
+  const extra = post?.extra || {};
+  const videoId = getYoutubeVideoIdFromSavedPost(post, postUrl);
+  const thumbUrl = extra.thumbnailUrl || getYoutubeThumbnailUrl(extra.thumbnails);
+
+  if (videoId) {
+    return (
+      <AspectRatio
+        ratio={16 / 9}
+        mt="xs"
+        style={{
+          maxWidth: 520,
+          overflow: "hidden",
+          borderRadius: 12,
+          border: "1px solid #edf2f7",
+          background: "#f8f9fa",
+        }}
+      >
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+          title={extra.title || post.title || "YouTube video"}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+          style={{ border: 0, width: "100%", height: "100%" }}
+        />
+      </AspectRatio>
+    );
+  }
+
+  if (!thumbUrl) return null;
+
+  return (
+    <a
+      href={postUrl || undefined}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "block",
+        position: "relative",
+        maxWidth: 520,
+        textDecoration: "none",
+      }}
+    >
+      <img
+        src={thumbUrl}
+        alt={extra.title || "YouTube video thumbnail"}
+        loading="lazy"
+        style={{
+          width: "100%",
+          maxHeight: 260,
+          objectFit: "cover",
+          borderRadius: 12,
+          border: "1px solid #edf2f7",
+          background: "#f8f9fa",
+          display: "block",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "rgba(255, 0, 0, 0.88)",
+          color: "white",
+          borderRadius: 999,
+          padding: "8px 13px",
+          fontSize: 13,
+          fontWeight: 800,
+          boxShadow: "0 8px 20px rgba(0,0,0,0.22)",
+        }}
+      >
+        ▶
+      </span>
+    </a>
+  );
+}
+
+function getYouTubeSavedDescription(post, title = "") {
+  const extraDescription = post.extra?.description || post.extra?.snippet?.description || "";
+  if (extraDescription) return extraDescription;
+
+  const content = String(post.content || "").trim();
+  if (!content) return "";
+
+  const cleanTitle = String(title || "").trim();
+  if (cleanTitle && content.startsWith(cleanTitle)) {
+    return content.slice(cleanTitle.length).trim();
+  }
+
+  return content;
+}
+
 function YouTubePostCard({ post, onDelete }) {
   const { t } = useTranslation();
   const [showDesc, setShowDesc] = useState(false);
   const title = post.extra?.title || t("savedPosts.untitledVideo");
   const channel = post.extra?.channelTitle || post.extra?.username || post.username || t("savedPosts.unknownChannel");
-  const description = post.extra?.description || "";
+  const description = getYouTubeSavedDescription(post, title);
   const descLong = description.length > 200;
   const tone = post.tone;
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #ff0000" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #ff0000" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -562,6 +798,8 @@ function YouTubePostCard({ post, onDelete }) {
 
         <Text fw={600} size="md" lh={1.3}>{title}</Text>
 
+        <YoutubeThumbnailPreview post={post} postUrl={postUrl} />
+
         {tone && (
           <Badge size="sm" variant="light">{tone}</Badge>
         )}
@@ -585,7 +823,6 @@ function YouTubePostCard({ post, onDelete }) {
         <Divider my={0} />
 
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#606060" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#e0245e" />} value={post.likes} />
           <Metric icon={<IconMessage size={14} color="#606060" />} value={post.comments} />
         </Group>
@@ -606,7 +843,7 @@ function LinkedInPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #0A66C2" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #0A66C2" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -678,7 +915,7 @@ function InstagramPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #E1306C" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #E1306C" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -750,7 +987,7 @@ function TikTokPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #000" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #000" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -800,7 +1037,6 @@ function TikTokPostCard({ post, onDelete }) {
 
         <Divider my={0} />
         <Group gap="lg">
-          <Metric icon={<IconEye size={14} color="#161823" />} value={post.views} />
           <Metric icon={<IconHeart size={14} color="#fe2c55" />} value={post.likes} />
           <Metric icon={<IconRepeat size={14} color="#25f4ee" />} value={post.shares} />
           <Metric icon={<IconMessage size={14} color="#161823" />} value={post.comments} />
@@ -824,7 +1060,7 @@ function RedditPostCard({ post, onDelete }) {
   const postUrl = getPostUrl(post);
 
   return (
-    <Card withBorder radius="md" p="lg" style={{ borderLeft: "3px solid #FF4500" }}>
+    <Card withBorder radius="md" p="md" style={{ borderLeft: "3px solid #FF4500" }}>
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -889,7 +1125,7 @@ function GenericPostCard({ post, onDelete }) {
   const tone = post.tone;
   const postUrl = getPostUrl(post);
   return (
-    <Card withBorder radius="md" p="lg">
+    <Card withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group justify="space-between" wrap="nowrap">
           <Text size="sm" style={{ flex: 1, whiteSpace: "pre-wrap" }}>{post.content}</Text>
@@ -956,6 +1192,11 @@ export default function SavedPosts() {
   const [collapsedSections, setCollapsedSections] = useState({});
   const [deleteAllModal, setDeleteAllModal] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [sortMode, setSortMode] = useState(() => localStorage.getItem("savedPostsSortMode") || DEFAULT_SORT_MODE);
+
+  useEffect(() => {
+    localStorage.setItem("savedPostsSortMode", sortMode);
+  }, [sortMode]);
 
   useEffect(() => {
     const newMap = {};
@@ -1057,9 +1298,10 @@ export default function SavedPosts() {
       <LoadingOverlay visible={loading} />
 
       {/* page header */}
-      <Group justify="space-between" align="center">
+      <Group justify="space-between" align="center" wrap="wrap">
         <Title order={2}>{t("savedPosts.title")}</Title>
-        <Group gap="sm">
+        <Group gap="sm" align="center" wrap="wrap">
+          {posts.length > 0 && <SortSelect value={sortMode} onChange={setSortMode} />}
           {posts.length > 0 && (
             <Button
               color="red"
@@ -1077,12 +1319,6 @@ export default function SavedPosts() {
         </Group>
       </Group>
 
-      <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light" radius="md">
-        {t("savedPosts.metricsMayBeUnavailable", {
-          defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
-        })}
-      </Alert>
-
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
       {!loading && posts.length === 0 && !notice && (
@@ -1092,41 +1328,64 @@ export default function SavedPosts() {
       )}
 
       {sortedKeys.map((platformId) => {
-        const platformPosts = grouped[platformId];
+        const platformPosts = sortPostsForDisplay(grouped[platformId], sortMode);
         const cfg = platformMap[platformId];
         const PlatformIcon = cfg?.icon;
         const PlatformCard = cfg?.Card || GenericPostCard;
         const isOpen = !collapsedSections[platformId];
 
         return (
-          <Stack key={platformId} gap="sm">
-            <Group
-              gap={8}
-              align="center"
-              onClick={() => setCollapsedSections(prev => ({ ...prev, [platformId]: !prev[platformId] }))}
-              style={{ cursor: "pointer", userSelect: "none" }}
-            >
-              {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
-              <Text fw={700} size="sm">
-                {cfg?.label || t("savedPosts.platformFallback", { platformId })} ({platformPosts.length})
-              </Text>
-              {isOpen
-                ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
-                : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
-              }
-            </Group>
-            <Collapse in={isOpen}>
-              <Stack gap="sm">
-                {platformPosts.map((p) => (
-                  <PlatformCard
-                    key={p.id}
-                    post={p}
-                    onDelete={() => setDeleteModal({ open: true, postId: p.id })}
-                  />
-                ))}
-              </Stack>
-            </Collapse>
-          </Stack>
+          <Paper key={platformId} withBorder radius="lg" p="md">
+            <Stack gap="md">
+              <Group
+                justify="space-between"
+                align="center"
+                onClick={() => setCollapsedSections(prev => ({ ...prev, [platformId]: !prev[platformId] }))}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                <Group gap={8} align="center">
+                  {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
+                  <Text fw={700} size="sm">
+                    {cfg?.label || t("savedPosts.platformFallback", { platformId })}
+                  </Text>
+                  <Badge size="sm" variant="light" color="gray">{platformPosts.length}</Badge>
+                </Group>
+                {isOpen
+                  ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
+                  : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
+                }
+              </Group>
+              {(cfg?.label === "X / Twitter" || cfg?.label === "X") && (
+                <Alert variant="light" color="blue" radius="md" py="xs" icon={<IconBrandX size={16} />}>
+                  X videos may only show as thumbnails here. Open the post on X to watch the video.
+                </Alert>
+              )}
+              <Collapse in={isOpen}>
+                <div
+                  style={{
+                    columns: platformPosts.length > 1 ? "420px 2" : "auto",
+                    columnGap: 16,
+                  }}
+                >
+                  {platformPosts.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        breakInside: "avoid",
+                        pageBreakInside: "avoid",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <PlatformCard
+                        post={p}
+                        onDelete={() => setDeleteModal({ open: true, postId: p.id })}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </Collapse>
+            </Stack>
+          </Paper>
         );
       })}
 

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
+  AspectRatio,
   Avatar,
   Badge,
   Button,
@@ -12,6 +13,7 @@ import {
   Group,
   LoadingOverlay,
   ScrollArea,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -33,7 +35,6 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconCopy,
-  IconEye,
   IconHeart,
   IconInfoCircle,
   IconMessage,
@@ -130,6 +131,181 @@ function HiddenCountNote({ likes, comments }) {
     <Text size="xs" c="dimmed">
       Note: {hiddenLabel} count is hidden by the creator.
     </Text>
+  );
+}
+
+const DEFAULT_SORT_MODE = "date_desc";
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "metrics_desc", label: "Highest total metrics" },
+  { value: "likes_desc", label: "Most likes" },
+  { value: "comments_desc", label: "Most comments" },
+  { value: "shares_desc", label: "Most shares" },
+];
+
+function parseMetricValue(value) {
+  if (value == null || value === "" || isHiddenCount(value)) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const text = String(value).trim().replace(/,/g, "");
+  if (!text) return 0;
+  const match = text.match(/^(-?[0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+  if (!match) {
+    const n = Number(text);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const base = Number(match[1]);
+  const suffix = String(match[2] || "").toLowerCase();
+  const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : suffix === "b" ? 1_000_000_000 : 1;
+  return Number.isFinite(base) ? Math.max(0, Math.round(base * multiplier)) : 0;
+}
+
+function firstMetric(...values) {
+  for (const value of values) {
+    if (value == null || value === "" || isHiddenCount(value)) continue;
+    const parsed = parseMetricValue(value);
+    if (parsed !== 0) return parsed;
+    const numericZero = Number(value) === 0 || String(value).trim() === "0";
+    if (numericZero) return 0;
+  }
+  return 0;
+}
+
+function getSortableLikes(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.likes,
+    post.likeCount,
+    post.like_count,
+    post.likesCount,
+    post.reactionCount,
+    post.reactions_count,
+    post.score,
+    post.ups,
+    stats.likes,
+    stats.likeCount,
+    stats.like_count,
+    stats.diggCount,
+    stats.digg_count,
+    statisticsValue(stats, "like"),
+    metrics.like_count,
+    metrics.likes
+  );
+}
+
+function statisticsValue(stats = {}, prefix) {
+  if (!stats || typeof stats !== "object") return undefined;
+  if (prefix === "like") return stats.digg_count ?? stats.diggCount ?? stats.like_count ?? stats.likeCount ?? stats.likes;
+  if (prefix === "comment") return stats.comment_count ?? stats.commentCount ?? stats.comments;
+  if (prefix === "share") return stats.share_count ?? stats.shareCount ?? stats.forward_count ?? stats.share_count_total ?? stats.shares;
+  return undefined;
+}
+
+function getSortableComments(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.comments,
+    post.commentCount,
+    post.comment_count,
+    post.commentsCount,
+    post.num_comments,
+    post.replyCount,
+    post.reply_count,
+    stats.comments,
+    stats.commentCount,
+    stats.comment_count,
+    statisticsValue(stats, "comment"),
+    metrics.reply_count,
+    metrics.comment_count,
+    metrics.comments
+  );
+}
+
+function getSortableShares(post = {}) {
+  const stats = post.stats || post.statsV2 || post.statistics || post.stats_v2 || {};
+  const metrics = post.public_metrics || post.metrics || {};
+  return firstMetric(
+    post.shares,
+    post.shareCount,
+    post.share_count,
+    post.retweetCount,
+    post.retweet_count,
+    post.reposts,
+    stats.shares,
+    stats.shareCount,
+    stats.share_count,
+    stats.forward_count,
+    statisticsValue(stats, "share"),
+    metrics.retweet_count,
+    metrics.share_count,
+    metrics.shares
+  );
+}
+
+function getSortableTotalMetrics(post = {}) {
+  return getSortableLikes(post) + getSortableComments(post) + getSortableShares(post);
+}
+
+function getSortableDate(post = {}) {
+  const raw =
+    post.published_at ??
+    post.publishedAt ??
+    post.datePublished ??
+    post.created_at ??
+    post.createdAt ??
+    post.created_utc ??
+    post.created ??
+    post.createdTime ??
+    post.createTime ??
+    post.create_time ??
+    post.publishTime ??
+    post.timestamp ??
+    post.taken_at ??
+    post.taken_at_timestamp;
+
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number") return raw < 1e12 ? raw * 1000 : raw;
+  const numeric = Number(raw);
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
+  if (!Array.isArray(posts)) return [];
+  const mode = sortMode || DEFAULT_SORT_MODE;
+  const decorated = posts.map((post, index) => ({ post, index }));
+
+  decorated.sort((a, b) => {
+    let diff = 0;
+    if (mode === "date_asc") diff = getSortableDate(a.post) - getSortableDate(b.post);
+    else if (mode === "metrics_desc") diff = getSortableTotalMetrics(b.post) - getSortableTotalMetrics(a.post);
+    else if (mode === "likes_desc") diff = getSortableLikes(b.post) - getSortableLikes(a.post);
+    else if (mode === "comments_desc") diff = getSortableComments(b.post) - getSortableComments(a.post);
+    else if (mode === "shares_desc") diff = getSortableShares(b.post) - getSortableShares(a.post);
+    else diff = getSortableDate(b.post) - getSortableDate(a.post);
+
+    return diff || a.index - b.index;
+  });
+
+  return decorated.map(({ post }) => post);
+}
+
+function SortSelect({ value, onChange, compact = false }) {
+  return (
+    <Select
+      label={compact ? undefined : "Sort posts"}
+      aria-label="Sort posts"
+      size="xs"
+      value={value}
+      onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
+      data={SORT_OPTIONS}
+      checkIconPosition="right"
+      allowDeselect={false}
+      w={compact ? 190 : 210}
+    />
   );
 }
 
@@ -592,15 +768,14 @@ function LinkedinPostCard({ post, onSave }) {
     return el.value;
   };
 
-  const title = decode(post.name) || t("competitorLookup.untitledPost");
+  const title = decode(post.name || post.title || "");
   const headline = decode(post.headline);
-  const content = decode(post.description);
+  const content = decode(post.description || post.text || "");
   const authorName = post.author?.name || post.author;
   const authorFollowers = post.author?.followers;
   const thumb = post.thumbnailUrl;
   const likes = post.likeCount || 0;
   const comments = post.commentCount || 0;
-  const commentsArr = post.comments || [];
   const moreArticles = post.moreArticles || [];
 
   return (
@@ -609,9 +784,11 @@ function LinkedinPostCard({ post, onSave }) {
         {/* Header */}
         <Group justify="space-between" align="start">
           <div style={{ flex: 1 }}>
-            <Text fw={700} size="lg" lineClamp={2}>{title}</Text>
+            {title && (
+              <Text fw={700} size="lg" lineClamp={2}>{title}</Text>
+            )}
             {headline && headline !== title && (
-              <Text size="sm" c="dimmed" mt={4} lineClamp={2}>{headline}</Text>
+              <Text size="sm" c="dimmed" mt={title ? 4 : 0} lineClamp={2}>{headline}</Text>
             )}
           </div>
           <Group gap="xs">
@@ -671,40 +848,6 @@ function LinkedinPostCard({ post, onSave }) {
           </div>
         )}
 
-        {/* Comments */}
-        {commentsArr.length > 0 && (
-          <div>
-            <Group justify="space-between" align="center" my="xs">
-              <Divider label={t("competitorLookup.commentsCount", { count: commentsArr.length })} style={{ flex: 1 }} />
-              {commentsArr.length > 1 && (
-                <SaveAllButton items={commentsArr.slice(0, 6)} onSave={(_type, c) => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} type="comment" />
-              )}
-            </Group>
-            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xs">
-              {commentsArr.slice(0, 6).map((c, i) => (
-                <Card key={i} withBorder radius="sm" p="xs" style={{ minHeight: 0 }}>
-                  <Group gap={6} wrap="nowrap" mb={2}>
-                    <Text size="xs" fw={600} lineClamp={1} style={{ flex: 1 }}>{decode(c.author || c.name) || t("competitorLookup.unknown")}</Text>
-                    {c.datePublished && (
-                      <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>{new Date(c.datePublished).toLocaleDateString()}</Text>
-                    )}
-                  </Group>
-                  <Text size="xs" lineClamp={2} c="dimmed">{decode(c.text || c.description) || "—"}</Text>
-                  {(c.likeCount != null || c.commentCount != null) && (
-                    <Group gap={4} mt={2}>
-                      {c.likeCount != null && <Badge size="xs" variant="light">❤️ {c.likeCount}</Badge>}
-                      {c.commentCount != null && <Badge size="xs" variant="light">💬 {c.commentCount}</Badge>}
-                    </Group>
-                  )}
-                  <Group justify="flex-end" mt={4}>
-                    <SaveButton label={t("competitorLookup.save")} onSave={() => onSave("comment", { text: decode(c.text || c.description) || "", author: decode(c.author || c.name) || t("competitorLookup.unknown"), likeCount: c.likeCount, datePublished: c.datePublished, postTitle: title })} />
-                  </Group>
-                </Card>
-              ))}
-            </SimpleGrid>
-          </div>
-        )}
-
         {/* More Articles */}
         {moreArticles.length > 0 && (
           <div>
@@ -748,14 +891,38 @@ function LinkedinPostCard({ post, onSave }) {
 
 /* ─── X / Twitter Result Components ──────────────────────────────────────── */
 
-function bestVideoVariant(variants = []) {
-  if (!Array.isArray(variants)) return null;
+function bestVideoVariant(mediaOrVariants = []) {
+  const media = Array.isArray(mediaOrVariants) ? {} : (mediaOrVariants || {});
+  const variants = Array.isArray(mediaOrVariants)
+    ? mediaOrVariants
+    : [
+        ...(Array.isArray(media.variants) ? media.variants : []),
+        ...(Array.isArray(media.video_info?.variants) ? media.video_info.variants : []),
+        ...(Array.isArray(media.videoInfo?.variants) ? media.videoInfo.variants : []),
+        ...(Array.isArray(media.video?.variants) ? media.video.variants : []),
+      ];
 
-  const normalized = variants
+  const directCandidates = Array.isArray(mediaOrVariants)
+    ? []
+    : [
+        media.video_url,
+        media.videoUrl,
+        media.playback_url,
+        media.playbackUrl,
+        media.source_url,
+        media.sourceUrl,
+        media.video?.url,
+        media.video?.src,
+      ];
+
+  const normalized = [
+    ...variants,
+    ...directCandidates.filter(Boolean).map((url) => ({ url })),
+  ]
     .filter((v) => v?.url)
     .map((v) => ({
       ...v,
-      _contentType: String(v.content_type || v.contentType || v.mime_type || v.type || "").toLowerCase(),
+      _contentType: String(v.content_type || v.contentType || v.mime_type || v.mimeType || v.type || "").toLowerCase(),
       _url: String(v.url || ""),
     }));
 
@@ -836,7 +1003,6 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
 
 function XMediaPreview({ media, postUrl = null }) {
   const items = dedupeMediaForDisplay(media);
-
   if (!items.length) return null;
 
   return (
@@ -844,9 +1010,12 @@ function XMediaPreview({ media, postUrl = null }) {
       <SimpleGrid cols={items.length === 1 ? 1 : 2} spacing="xs">
         {items.map((item, index) => {
           const key = item.media_key || item.url || item.preview_image_url || index;
-          const isVideo = item.type === "video" || item.type === "animated_gif";
-          const videoUrl = bestVideoVariant(item.variants);
-          const imageUrl = item.url || item.preview_image_url;
+          const isVideo = item.type === "video" || item.type === "animated_gif" || Boolean(item.video_url || item.videoUrl);
+          const videoUrl = bestVideoVariant(item);
+          const rawImageUrl = item.preview_image_url || item.thumbnail_url || item.thumbnailUrl || item.poster || item.url;
+          const imageUrl = isVideo && /\.(mp4|m3u8)(?:\?|$)/i.test(String(rawImageUrl || ""))
+            ? item.preview_image_url || item.thumbnail_url || item.thumbnailUrl || item.poster || null
+            : rawImageUrl;
 
           const mediaStyle = {
             width: "100%",
@@ -912,6 +1081,7 @@ function XMediaPreview({ media, postUrl = null }) {
           return null;
         })}
       </SimpleGrid>
+
     </div>
   );
 }
@@ -1249,7 +1419,7 @@ function XUserListCard({ users, title, onSaveUser }) {
   );
 }
 
-function XResults({ data, onSave }) {
+function XResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
   const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
@@ -1260,6 +1430,10 @@ function XResults({ data, onSave }) {
     const u = (users || []).find(u => u.id === authorId);
     return u?.username || "";
   };
+
+  const userTweets = sortPostsForDisplay(results.userTweets || [], sortMode);
+  const mentionTweets = sortPostsForDisplay(results.userMentions?.tweets || [], sortMode);
+  const searchTweets = sortPostsForDisplay(results.searchTweets?.tweets || [], sortMode);
 
   return (
     <Stack gap="md">
@@ -1289,14 +1463,14 @@ function XResults({ data, onSave }) {
       {results.following && <XUserListCard users={results.following} title={t("competitorLookup.following")} onSaveUser={(u) => onSave("user", u)} />}
 
       {/* User Tweets */}
-      {results.userTweets?.length > 0 && (
+      {userTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.tweetsCount", { count: results.userTweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.userTweets} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.tweetsCount", { count: userTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={userTweets} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.userTweets.map((t, i) => (
+            {userTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1309,14 +1483,14 @@ function XResults({ data, onSave }) {
       )}
 
       {/* User Mentions */}
-      {results.userMentions?.tweets?.length > 0 && (
+      {mentionTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.mentionsCount", { count: results.userMentions.tweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.userMentions.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.mentionsCount", { count: mentionTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={mentionTweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.userMentions.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.userMentions.tweets.map((t, i) => (
+            {mentionTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1341,14 +1515,14 @@ function XResults({ data, onSave }) {
       )}
 
       {/* Search Tweets */}
-      {results.searchTweets?.tweets?.length > 0 && (
+      {searchTweets.length > 0 && (
         <div>
           <Group justify="space-between" align="center" my="xs">
-            <Divider label={t("competitorLookup.searchResultsCount", { count: results.searchTweets.tweets.length })} style={{ flex: 1 }} />
-            <SaveAllButton items={results.searchTweets.tweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
+            <Divider label={t("competitorLookup.searchResultsCount", { count: searchTweets.length })} style={{ flex: 1 }} />
+            <SaveAllButton items={searchTweets.map(t => ({ ...t, _authorUsername: findAuthor(t.author_id, results.searchTweets.users) }))} onSave={onSave} type="tweet" />
           </Group>
           <Stack gap="xs">
-            {results.searchTweets.tweets.map((t, i) => (
+            {searchTweets.map((t, i) => (
               <XTweetCard
                 key={t.id || i}
                 tweet={t}
@@ -1365,17 +1539,18 @@ function XResults({ data, onSave }) {
 
 /* ─── End X Results ──────────────────────────────────────────────────────── */
 
-function LinkedinPostList({ title, posts, onSave }) {
+function LinkedinPostList({ title, posts, onSave, sortMode = DEFAULT_SORT_MODE }) {
   if (!posts?.length) return null;
+  const sortedPosts = sortPostsForDisplay(posts, sortMode);
 
   return (
     <div>
       <Group justify="space-between" align="center" my="xs">
         <Divider label={`${title} (${posts.length})`} style={{ flex: 1 }} />
-        <SaveAllButton items={posts} onSave={onSave} type="post" />
+        <SaveAllButton items={sortedPosts} onSave={onSave} type="post" />
       </Group>
       <Stack gap="sm">
-        {posts.map((post, i) => (
+        {sortedPosts.map((post, i) => (
           <LinkedinPostCard key={post.url || post.id || i} post={post} onSave={onSave} />
         ))}
       </Stack>
@@ -1383,7 +1558,7 @@ function LinkedinPostList({ title, posts, onSave }) {
   );
 }
 
-function LinkedinResults({ data, onSave }) {
+function LinkedinResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
   const { t } = useTranslation();
   if (!data?.results) return null;
   const { results, errors } = data;
@@ -1399,9 +1574,10 @@ function LinkedinResults({ data, onSave }) {
     if (key === "post" || key.startsWith("keyword_post_")) postResults.push(value);
   });
 
-  const profilePosts = Array.isArray(results.profilePosts) ? results.profilePosts : [];
-  const companyPosts = Array.isArray(results.companyPosts) ? results.companyPosts : [];
-  const searchPosts = Array.isArray(results.searchPosts) ? results.searchPosts : [];
+  const profilePosts = sortPostsForDisplay(Array.isArray(results.profilePosts) ? results.profilePosts : [], sortMode);
+  const companyPosts = sortPostsForDisplay(Array.isArray(results.companyPosts) ? results.companyPosts : [], sortMode);
+  const searchPosts = sortPostsForDisplay(Array.isArray(results.searchPosts) ? results.searchPosts : [], sortMode);
+  const sortedPostResults = sortPostsForDisplay(postResults, sortMode);
 
   return (
     <Stack gap="md">
@@ -1425,16 +1601,16 @@ function LinkedinResults({ data, onSave }) {
         <LinkedinProfileCard key={`profile-${i}`} profile={profile} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} />
+      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} sortMode={sortMode} />
 
       {companyResults.map((company, i) => (
         <LinkedinCompanyCard key={`company-${i}`} company={company} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} />
-      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} />
+      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} sortMode={sortMode} />
+      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} sortMode={sortMode} />
 
-      {postResults.map((post, i) => (
+      {sortedPostResults.map((post, i) => (
         <LinkedinPostCard key={`post-${i}`} post={post} onSave={onSave} />
       ))}
     </Stack>
@@ -1533,6 +1709,7 @@ export default function CompetitorLookup() {
     tiktok: "",
     reddit: "",
   });
+  const [sortMode, setSortMode] = useState(cached.sortMode || DEFAULT_SORT_MODE);
 
   // Persist results + inputs to sessionStorage so they survive tab navigation
   useEffect(() => {
@@ -1544,6 +1721,7 @@ export default function CompetitorLookup() {
       xInputs, youtubeInputs, redditInputs,
       quickLookupResult,
       simpleQueries,
+      sortMode,
     });
   }, [
     result, linkedinResult, xResult, youtubeResult,
@@ -1553,6 +1731,7 @@ export default function CompetitorLookup() {
     xInputs, youtubeInputs, redditInputs,
     quickLookupResult,
     simpleQueries,
+    sortMode,
   ]);
 
   // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
@@ -1967,40 +2146,16 @@ async function handleLoadMoreX() {
     setTiktokError(null);
     setTiktokResult(null);
     if (!q) {
-      setTiktokError("Please enter a TikTok @username, video URL, hashtag, or keyword.");
+      setTiktokError("Please enter a TikTok @username, profile/video URL, hashtag, or keyword.");
       return;
     }
 
-    const isVideoUrl = /tiktok\.com\/.+\/video\//i.test(q);
-    const isHandleWithAt = /^@[A-Za-z0-9._]{2,30}$/.test(q);
-    const isProfileUrl = /tiktok\.com\/@[A-Za-z0-9._]+\/?$/i.test(q);
-    const isHashtag = q.trim().startsWith("#");
-    const handle = isProfileUrl
-      ? (q.match(/@([A-Za-z0-9._]+)/)?.[1] || "")
-      : (isHandleWithAt ? cleanHandle(q) : "");
-    const videoAuthor = isVideoUrl ? (q.match(/tiktok\.com\/@([A-Za-z0-9._]+)\//)?.[1] || null) : null;
-
     setTiktokLoading(true);
     try {
-      const payload = isVideoUrl
-        ? videoAuthor
-          ? {
-            options: { profile: true, transcript: true },
-            inputs: { username: videoAuthor, videoUrl: q },
-            limit: scrapePostCount,
-          }
-          : { options: { transcript: true }, inputs: { videoUrl: q }, limit: scrapePostCount }
-        : (isHandleWithAt || isProfileUrl)
-          ? {
-            options: { profile: true, profileVideos: true },
-            inputs: { username: handle, videosUsername: handle },
-            limit: scrapePostCount,
-          }
-          : isHashtag
-            ? { options: { searchHashtag: true }, inputs: { hashtag: q }, limit: scrapePostCount }
-            : { options: { searchKeyword: true }, inputs: { keyword: q }, limit: scrapePostCount };
-
-      const json = await tryPostJson("/api/tiktok/search", payload);
+      const json = await tryPostJson("/api/tiktok/search", {
+        q,
+        limit: 10,
+      });
       setTiktokResult(json);
       if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
@@ -2015,29 +2170,16 @@ async function handleLoadMoreX() {
     setRedditError(null);
     setRedditResult(null);
     if (!q) {
-      setRedditError("Please enter a Reddit @user, r/subreddit, URL, or keyword.");
+      setRedditError("Please enter a Reddit @user, u/user, r/subreddit, URL, or keyword.");
       return;
     }
 
-    const isUserHandle = /^@[A-Za-z0-9_-]{2,}$/.test(q);
-    const postUrl = /reddit\.com\/r\/.+\/comments\//i.test(q);
-    const subMatch = !isUserHandle && (q.match(/^r\/([A-Za-z0-9_]+)/i) || q.match(/reddit\.com\/r\/([A-Za-z0-9_]+)/i));
-
     setRedditLoading(true);
     try {
-      const payload = isUserHandle
-        ? { options: { search: true }, inputs: { searchQuery: `author:${q.slice(1)}` }, limit: scrapePostCount }
-        : postUrl
-          ? { options: { postComments: true }, inputs: { postUrl: q }, limit: scrapePostCount }
-          : subMatch?.[1]
-            ? {
-              options: { subredditDetails: true, subredditPosts: true },
-              inputs: { subreddit: subMatch[1] },
-              limit: scrapePostCount,
-            }
-            : { options: { search: true }, inputs: { searchQuery: q }, limit: scrapePostCount };
-
-      const json = await tryPostJson("/api/reddit/search", payload);
+      const json = await tryPostJson("/api/reddit/search", {
+        q,
+        limit: scrapePostCount,
+      });
       setRedditResult(json);
       if (json?.credits_remaining != null) setCreditsRemaining(json.credits_remaining);
     } catch (e) {
@@ -2227,7 +2369,9 @@ async function handleLoadMoreX() {
           description: data.description || "",
           channelTitle: data.channelTitle || "",
           videoId: data.id || data.videoId || "",
-          views: data.views ?? 0,
+          url: data.url || ((data.id || data.videoId) ? `https://www.youtube.com/watch?v=${data.id || data.videoId}` : null),
+          thumbnails: data.thumbnails || null,
+          thumbnailUrl: data.thumbnailUrl || getYoutubeThumbnailUrl(data.thumbnails),
         }),
       });
       if (!resp.ok) {
@@ -2378,17 +2522,16 @@ async function handleLoadMoreX() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform_id: platformIds.tiktok, // TikTok
-          platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.uid || "unknown"),
-          username: data.author?.uniqueId || data.author?.nickname || data.author?.unique_id || "",
+          platform_user_id: String(data.author?.id || data.author?.uniqueId || data.author?.unique_id || data.author?.uid || "unknown"),
+          username: data.author?.uniqueId || data.author?.unique_id || data.author?.nickname || "",
           author_name: data.author?.nickname || data.author?.uniqueId || "",
           author_handle: data.author?.uniqueId || data.author?.unique_id || "",
-          platform_post_id: String(data.id || data.aweme_id || data.video?.id || Date.now()),
+          platform_post_id: String(data.aweme_id || data.awemeId || data.id_str || data.id || data.video_id || data.video?.id || Date.now()),
           content: data.desc || data.title || "",
           published_at: (() => { if (!data.createTime) return null; const d = new Date(typeof data.createTime === 'number' ? data.createTime * 1000 : data.createTime); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
           likes: Math.max(0, data.stats?.diggCount ?? data.statsV2?.diggCount ?? data.statistics?.digg_count ?? data.statistics?.diggCount ?? data.diggCount ?? data.digg_count ?? 0),
           shares: Math.max(0, data.stats?.shareCount ?? data.statsV2?.shareCount ?? data.statistics?.share_count ?? data.statistics?.shareCount ?? data.shareCount ?? data.share_count ?? 0),
           comments: Math.max(0, data.stats?.commentCount ?? data.statsV2?.commentCount ?? data.statistics?.comment_count ?? data.statistics?.commentCount ?? data.commentCount ?? data.comment_count ?? 0),
-          views: Math.max(0, data.stats?.playCount ?? data.statsV2?.playCount ?? data.statistics?.play_count ?? data.statistics?.playCount ?? data.playCount ?? data.play_count ?? 0),
           user_id: currentUserId,
         }),
       });
@@ -2449,8 +2592,14 @@ async function handleLoadMoreX() {
           platform_user_id: String(data.author || data.author_fullname || "unknown"),
           username: data.author || "",
           platform_post_id: String(data.id || data.name || Date.now()),
-          content: data.title || data.selftext || "",
-          published_at: (() => { if (!data.created_utc) return null; const d = new Date(typeof data.created_utc === 'number' ? data.created_utc * 1000 : data.created_utc); return isNaN(d.getTime()) ? null : d.toISOString(); })(),
+          content: [data.title, data.selftext || data.body || data.description || data.caption].filter(Boolean).join("\n\n"),
+          published_at: (() => {
+            if (!data.created_utc && !data.created_at && !data.created) return null;
+            const raw = data.created_utc ?? data.created_at ?? data.created;
+            const n = Number(raw);
+            const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(raw);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+          })(),
           likes: Math.max(0, data.score ?? data.ups ?? data.upvote_count ?? 0),
           shares: 0,
           comments: Math.max(0, data.num_comments ?? data.comment_count ?? 0),
@@ -2469,7 +2618,7 @@ async function handleLoadMoreX() {
 
   /* ─── Generic save helper (for profiles, comments, transcripts, users, ads) ─── */
 
-  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, views, authorName, authorHandle }) {
+  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, authorName, authorHandle }) {
     if (!currentUserId) throw new Error("Please sign in to save data.");
     const pid = platformIds[platformKey];
     if (!pid) throw new Error(`Unknown platform: ${platformKey}`);
@@ -2487,7 +2636,6 @@ async function handleLoadMoreX() {
         likes: likes ?? 0,
         shares: shares ?? 0,
         comments: comments ?? 0,
-        views: views ?? 0,
         user_id: currentUserId,
         author_name: authorName || username || "",
         author_handle: authorHandle || username || "",
@@ -2621,7 +2769,6 @@ async function handleLoadMoreX() {
             likes: metrics.like_count ?? 0,
             shares: metrics.retweet_count ?? 0,
             comments: metrics.reply_count ?? 0,
-            views: metrics.impression_count ?? 0,
             user_id: currentUserId,
           }),
         });
@@ -2703,6 +2850,8 @@ async function handleLoadMoreX() {
     const [saveStatus, setSaveStatus] = useState(null);
     const [showDesc, setShowDesc] = useState(false);
     const descLong = (data.video?.description || "").length > 200;
+    const videoId = data.videoId || data.video?.id || data.video?.videoId;
+    const postUrl = data.video?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
     const date = data.video?.publishedAt
       ? new Date(data.video.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : null;
@@ -2719,7 +2868,7 @@ async function handleLoadMoreX() {
             platform_id: platformIds.youtube,
             platform_user_id: data.video.channelId,
             username: data.video.channelTitle,
-            platform_post_id: data.videoId,
+            platform_post_id: videoId,
             content: data.video.description,
             published_at: data.video.publishedAt,
             likes: data.video.stats.likes || 0,
@@ -2728,8 +2877,10 @@ async function handleLoadMoreX() {
             title: data.video.title,
             description: data.video.description,
             channelTitle: data.video.channelTitle,
-            videoId: data.videoId,
-            views: data.video.stats.views,
+            videoId,
+            url: postUrl,
+            thumbnails: data.video?.thumbnails || null,
+            thumbnailUrl: data.video?.thumbnailUrl || getYoutubeThumbnailUrl(data.video?.thumbnails),
             user_id: currentUserId,
           }),
         });
@@ -2772,6 +2923,8 @@ async function handleLoadMoreX() {
           {/* title */}
           <Text fw={600} size="md" lh={1.3}>{data.video?.title || "Untitled Video"}</Text>
 
+          <YoutubeThumbnailPreview video={{ ...data.video, videoId }} postUrl={postUrl} />
+
           {/* description */}
           {data.video?.description && (
             <div>
@@ -2794,7 +2947,6 @@ async function handleLoadMoreX() {
           {/* metrics + save */}
           <Group justify="space-between" align="center">
             <Group gap="lg">
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.views || 0).toLocaleString()}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{(data.video?.stats?.likes || 0).toLocaleString()}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#606060" /><Text size="xs" c="dimmed">{(data.video?.stats?.comments || 0).toLocaleString()}</Text></Group>
             </Group>
@@ -2830,6 +2982,135 @@ async function handleLoadMoreX() {
     return `${h}${min}:${sec}`;
   }
 
+  function getYoutubeThumbnailUrl(thumbnails = null) {
+    if (!thumbnails) return null;
+    if (typeof thumbnails === "string") return thumbnails;
+    return (
+      thumbnails.maxres?.url ||
+      thumbnails.standard?.url ||
+      thumbnails.high?.url ||
+      thumbnails.medium?.url ||
+      thumbnails.default?.url ||
+      null
+    );
+  }
+
+  function getYoutubeVideoId(video = {}, postUrl = null) {
+    const direct =
+      video?.videoId ||
+      video?.youtubeVideoId ||
+      video?.id?.videoId ||
+      (typeof video?.id === "string" ? video.id : null);
+
+    if (typeof direct === "string" && /^[a-zA-Z0-9_-]{11}$/.test(direct)) {
+      return direct;
+    }
+
+    const candidates = [
+      postUrl,
+      video?.url,
+      video?.link,
+      video?.videoUrl,
+      video?.embedUrl,
+      video?.permalink,
+    ].filter(Boolean);
+
+    for (const raw of candidates) {
+      const url = String(raw);
+      const match = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (match?.[1]) return match[1];
+
+      try {
+        const parsed = new URL(url);
+        const v = parsed.searchParams.get("v");
+        if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+      } catch {
+        // Ignore non-URL values.
+      }
+    }
+
+    return null;
+  }
+
+  function YoutubeThumbnailPreview({ video, postUrl = null, compact = false }) {
+    const videoId = getYoutubeVideoId(video, postUrl);
+    const thumbUrl = video?.thumbnailUrl || getYoutubeThumbnailUrl(video?.thumbnails);
+    const maxWidth = compact ? 280 : 520;
+
+    if (videoId) {
+      return (
+        <AspectRatio
+          ratio={16 / 9}
+          mt="xs"
+          style={{
+            maxWidth,
+            overflow: "hidden",
+            borderRadius: 12,
+            border: "1px solid #edf2f7",
+            background: "#f8f9fa",
+          }}
+        >
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${videoId}`}
+            title={video?.title || "YouTube video"}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            style={{ border: 0, width: "100%", height: "100%" }}
+          />
+        </AspectRatio>
+      );
+    }
+
+    if (!thumbUrl) return null;
+
+    return (
+      <a
+        href={postUrl || undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "block",
+          position: "relative",
+          maxWidth,
+          textDecoration: "none",
+        }}
+      >
+        <img
+          src={thumbUrl}
+          alt={video?.title || "YouTube video thumbnail"}
+          loading="lazy"
+          style={{
+            width: "100%",
+            maxHeight: compact ? 160 : 260,
+            objectFit: "cover",
+            borderRadius: 12,
+            border: "1px solid #edf2f7",
+            background: "#f8f9fa",
+            display: "block",
+          }}
+        />
+        <span
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "rgba(255, 0, 0, 0.88)",
+            color: "white",
+            borderRadius: 999,
+            padding: compact ? "6px 10px" : "8px 13px",
+            fontSize: compact ? 11 : 13,
+            fontWeight: 800,
+            boxShadow: "0 8px 20px rgba(0,0,0,0.22)",
+          }}
+        >
+          ▶
+        </span>
+      </a>
+    );
+  }
+
   function YTChannelCard({ data }) {
     if (!data) return null;
     return (
@@ -2850,7 +3131,6 @@ async function handleLoadMoreX() {
           <Group gap="lg" justify="center">
             {[
               { label: "Subscribers", value: fmtNum(data.subscribers) },
-              { label: "Total Views", value: fmtNum(data.totalViews) },
               { label: "Videos", value: fmtNum(data.videoCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
@@ -2888,15 +3168,25 @@ async function handleLoadMoreX() {
     const postUrl = video.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : null);
     const likeCount = video.likes;
     const commentCount = video.comments;
+    const description = video.description || video.snippet?.description || "";
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Text fw={600} size={compact ? "sm" : "md"} lineClamp={2}>{video.title}</Text>
           <Text size="xs" c="dimmed">{video.channelTitle} · {new Date(video.publishedAt).toLocaleDateString()}{video.duration ? ` · ${parseDuration(video.duration)}` : ""}</Text>
+          <YoutubeThumbnailPreview video={video} postUrl={postUrl} compact={compact} />
+          {description && (
+            <ExpandableText
+              text={description}
+              size={compact ? "xs" : "sm"}
+              dimmed
+              collapsedLines={compact ? 2 : 3}
+              threshold={compact ? 110 : 180}
+            />
+          )}
           {video.channelTitle && <Text size="xs" c="dimmed">Posted by {video.channelTitle}</Text>}
           <Group gap="xs">
             {[
-              { label: "Views", val: video.views },
               { label: "Likes", val: video.likes },
               { label: "Comments", val: video.comments },
             ].map(({ label, val }) => (
@@ -2904,7 +3194,6 @@ async function handleLoadMoreX() {
             ))}
           </Group>
           <HiddenCountNote likes={likeCount} comments={commentCount} />
-          {!compact && video.description && <ExpandableText text={video.description} size="xs" dimmed collapsedLines={2} threshold={140} />}
           {onSave && (
             <Group justify="flex-end">
               {postUrl && (
@@ -2920,14 +3209,16 @@ async function handleLoadMoreX() {
     );
   }
 
-  function YoutubeResults({ data, onSave, t }) {
+  function YoutubeResults({ data, onSave, t, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
+    const sortedChannelVideos = sortPostsForDisplay(results.channelVideos || [], sortMode);
+    const sortedSearch = sortPostsForDisplay(results.search || [], sortMode);
     const count =
       (results.channelDetails ? 1 : 0) +
-      (results.channelVideos?.length || 0) +
+      sortedChannelVideos.length +
       (results.videoDetails ? 1 : 0) +
-      (results.search?.length || 0);
+      sortedSearch.length;
 
     return (
       <Stack gap="md">
@@ -2951,14 +3242,14 @@ async function handleLoadMoreX() {
           </>
         )}
 
-        {results.channelVideos?.length > 0 && (
+        {sortedChannelVideos.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Channel Videos (${results.channelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={results.channelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+              <Divider label={`Channel Videos (${sortedChannelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={sortedChannelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
-              {results.channelVideos.map((v) => (
+              {sortedChannelVideos.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
               ))}
             </Stack>
@@ -2972,7 +3263,6 @@ async function handleLoadMoreX() {
               video: {
                 ...results.videoDetails,
                 stats: {
-                  views: results.videoDetails.views,
                   likes: results.videoDetails.likes,
                   comments: results.videoDetails.comments,
                 },
@@ -2982,14 +3272,14 @@ async function handleLoadMoreX() {
           </>
         )}
 
-        {results.search?.length > 0 && (
+        {sortedSearch.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={t("competitorLookup.searchResultsCount", { count: results.search.length })} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={results.search.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
+              <Divider label={t("competitorLookup.searchResultsCount", { count: sortedSearch.length })} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={sortedSearch.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
-              {results.search.map((v) => (
+              {sortedSearch.map((v) => (
                 <YTVideoCard key={v.id} video={v} onSave={onSave} compact />
               ))}
             </Stack>
@@ -3357,7 +3647,6 @@ async function handleLoadMoreX() {
     const postUrl = getInstagramPostUrl(post, isVideo);
     const likeCount = getIgMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
     const commentCount = getIgMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
-    const viewCount = getIgMetric(post, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
     const authorHandle = getIgAuthorHandle(post);
     const rawDate = getIgPostDate(post);
     const parsedDate = rawDate
@@ -3368,7 +3657,6 @@ async function handleLoadMoreX() {
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
-    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
 
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "md"} style={{ borderLeft: "3px solid #E1306C" }}>
@@ -3412,7 +3700,6 @@ async function handleLoadMoreX() {
             <Group gap="lg">
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3433,7 +3720,6 @@ async function handleLoadMoreX() {
     const postUrl = getInstagramPostUrl(reel, true);
     const likeCount = getIgMetric(reel, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]);
     const commentCount = getIgMetric(reel, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]);
-    const viewCount = getIgMetric(reel, ["play_count", "playCount", "plays", "ig_play_count", "video_play_count", "videoPlayCount", "view_count", "viewCount", "views", "video_view_count", "videoViewCount"]);
     const authorHandle = getIgAuthorHandle(reel);
     const rawDate = getIgPostDate(reel);
     const parsedDate = rawDate
@@ -3444,7 +3730,6 @@ async function handleLoadMoreX() {
       : null;
     const likeLabel = likeCount == null ? "—" : formatCount(likeCount);
     const commentLabel = commentCount == null ? "—" : formatCount(commentCount);
-    const viewLabel = viewCount == null ? "—" : formatCount(viewCount);
     return (
       <Card withBorder radius="md" p={compact ? "sm" : "xs"} style={{ borderLeft: "3px solid #E1306C" }}>
         <Stack gap="sm">
@@ -3481,7 +3766,6 @@ async function handleLoadMoreX() {
             <Group gap="lg">
               <Group gap={4} wrap="nowrap"><IconHeart size={14} color="#e0245e" /><Text size="xs" c="dimmed">{likeLabel}</Text></Group>
               <Group gap={4} wrap="nowrap"><IconMessage size={14} color="#1d9bf0" /><Text size="xs" c="dimmed">{commentLabel}</Text></Group>
-              <Group gap={4} wrap="nowrap"><IconEye size={14} color="#657786" /><Text size="xs" c="dimmed">{viewLabel}</Text></Group>
             </Group>
             {postUrl && (
               <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
@@ -3544,9 +3828,6 @@ async function handleLoadMoreX() {
       value.username ||
       value.like_count != null ||
       value.comment_count != null ||
-      value.play_count != null ||
-      value.view_count != null ||
-      value.views != null ||
       value.taken_at ||
       value.taken_at_timestamp ||
       value.created_at ||
@@ -3563,9 +3844,6 @@ async function handleLoadMoreX() {
       value.username ||
       value.like_count != null ||
       value.comment_count != null ||
-      value.play_count != null ||
-      value.view_count != null ||
-      value.views != null ||
       value.taken_at ||
       value.taken_at_timestamp ||
       value.created_at ||
@@ -3588,9 +3866,6 @@ async function handleLoadMoreX() {
       media: Array.isArray(shell.media) && shell.media.length ? shell.media : inner.media,
       like_count: shell.like_count ?? inner.like_count,
       comment_count: shell.comment_count ?? inner.comment_count,
-      play_count: shell.play_count ?? inner.play_count,
-      view_count: shell.view_count ?? inner.view_count,
-      views: shell.views ?? inner.views,
       taken_at: shell.taken_at ?? inner.taken_at,
       taken_at_timestamp: shell.taken_at_timestamp ?? inner.taken_at_timestamp,
       created_at: shell.created_at ?? inner.created_at,
@@ -3625,22 +3900,22 @@ async function handleLoadMoreX() {
     return inner;
   }
 
-  function InstagramResults({ data, onSave }) {
+  function InstagramResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
     // Normalize arrays defensively. Some ScrapeCreators Instagram account
     // responses return { posts: [...] }, some return { data: { items: [...] } },
     // and some return a single object. Never call .map on a non-array.
-    const postsArr = toIgArray(results.userPosts).map(unwrapIgResultPost).filter(Boolean);
-    const reelsSearchArr = toIgArray(results.reelsSearch).map(unwrapIgResultPost).filter(Boolean);
-    const userReelsArr = toIgArray(results.userReels).map((r) => {
+    const postsArr = sortPostsForDisplay(toIgArray(results.userPosts).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const reelsSearchArr = sortPostsForDisplay(toIgArray(results.reelsSearch).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const userReelsArr = sortPostsForDisplay(toIgArray(results.userReels).map((r) => {
       if (isLikelyNormalizedIgPost(r)) return r;
       const candidate = r?.media && !Array.isArray(r.media) ? r.media : r;
       return unwrapIgResultPost(candidate);
-    }).filter(Boolean);
-    const highlightItems = toIgArray(results.highlightDetail).map(unwrapIgResultPost).filter(Boolean);
-    const searchPostsArr = toIgArray(results.searchPosts).map(unwrapIgResultPost).filter(Boolean);
+    }).filter(Boolean), sortMode);
+    const highlightItems = sortPostsForDisplay(toIgArray(results.highlightDetail).map(unwrapIgResultPost).filter(Boolean), sortMode);
+    const searchPostsArr = sortPostsForDisplay(toIgArray(results.searchPosts).map(unwrapIgResultPost).filter(Boolean), sortMode);
 
     const count =
       (results.profile ? 1 : 0) +
@@ -3790,17 +4065,96 @@ async function handleLoadMoreX() {
     );
   }
 
+  function looksLikeTikTokVideo(video) {
+    if (!video || typeof video !== "object" || Array.isArray(video)) return false;
+    return Boolean(
+      video.aweme_id ||
+      video.awemeId ||
+      video.id_str ||
+      video.item_id ||
+      video.desc ||
+      video.description ||
+      video.statistics ||
+      video.stats ||
+      video.statsV2 ||
+      video.author ||
+      video.author_info ||
+      video.share_url ||
+      video.create_time ||
+      video.createTime ||
+      video.create_time_utc
+    );
+  }
+
+  function unwrapTikTokVideo(video) {
+    if (!video || typeof video !== "object") return video || null;
+    if (looksLikeTikTokVideo(video)) return video;
+    const wrapped = video.aweme_info || video.awemeInfo || video.aweme_detail || video.awemeDetail || video.aweme || video.item || video.post || video.result || video.data;
+    return wrapped && wrapped !== video ? unwrapTikTokVideo(wrapped) : video;
+  }
+
+  function getFirstUrl(value) {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) return value.find(Boolean) || null;
+    if (Array.isArray(value.url_list)) return value.url_list.find(Boolean) || null;
+    return value.url || value.uri || null;
+  }
+
+  function getTikTokAuthor(video) {
+    const v = unwrapTikTokVideo(video) || {};
+    const candidate = v.author_info || v.author || v.user || v.userInfo?.user || v.user_info || {};
+    const a = typeof candidate === "string" ? { uniqueId: candidate, unique_id: candidate, nickname: candidate } : (candidate || {});
+    const unique = a.uniqueId || a.unique_id || a.username || a.handle || v.author_unique_id || v.authorHandle || v.author_username || v.owner_handle || null;
+    return {
+      ...a,
+      id: a.id || a.uid || a.secUid || a.sec_uid || v.author_user_id || v.author_id || v.authorId || null,
+      uniqueId: unique,
+      unique_id: unique,
+      nickname: a.nickname || a.nick_name || a.name || a.displayName || v.author_name || unique || null,
+      avatarThumb: a.avatarThumb || getFirstUrl(a.avatar_thumb) || a.avatarMedium || getFirstUrl(a.avatar_medium) || getFirstUrl(a.avatar_168x168) || getFirstUrl(a.avatar) || null,
+    };
+  }
+
+  function getTikTokCount(stats, ...keys) {
+    for (const key of keys) {
+      const raw = stats?.[key];
+      if (raw == null || raw === "") continue;
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      const text = String(raw).trim().replace(/,/g, "");
+      const match = text.match(/^([0-9]*\.?[0-9]+)\s*([kKmMbB])?$/);
+      if (match) {
+        const base = Number(match[1]);
+        const suffix = String(match[2] || "").toLowerCase();
+        const multiplier = suffix === "k" ? 1000 : suffix === "m" ? 1000000 : suffix === "b" ? 1000000000 : 1;
+        return Math.round(base * multiplier);
+      }
+      const n = Number(text);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
+  }
+
+  function formatTikTokDate(value) {
+    if (!value) return "";
+    const n = Number(value);
+    const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(value);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : "";
+  }
+
   function TkVideoCard({ video, onSave, compact }) {
     if (!video) return null;
-    const desc = video.desc || video.title || "";
-    const stats = video.stats || video.statsV2 || video.statistics || {};
-    const author = video.author || {};
-    const created = video.createTime ? new Date(video.createTime * 1000).toLocaleDateString() : "";
+    const v = unwrapTikTokVideo(video) || {};
+    const desc = v.desc || v.description || v.video_description || v.title || "";
+    const stats = v.stats || v.statsV2 || v.statistics || v.stats_v2 || {};
+    const author = getTikTokAuthor(v);
+    const created = formatTikTokDate(v.createTime ?? v.create_time ?? v.created_at ?? v.publishTime ?? v.create_time_utc);
     const authorHandle = author.uniqueId || author.unique_id || author.nickname;
-    const videoId = video.aweme_id || video.id;
-    const postUrl = video.share_url || video.url || (videoId ? `https://www.tiktok.com/@${authorHandle || 'user'}/video/${videoId}` : null);
-    const likeCount = stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count;
-    const commentCount = stats.commentCount ?? stats.comment_count;
+    const videoId = v.aweme_id || v.awemeId || v.id_str || v.id || v.video_id || v.item_id;
+    const postUrl = v.share_url || v.url || v.webVideoUrl || v.share_info?.share_url || (videoId ? `https://www.tiktok.com/@${authorHandle || 'user'}/video/${videoId}` : null);
+    const likeCount = getTikTokCount(stats, "diggCount", "digg_count", "likeCount", "like_count") ?? getTikTokCount(v, "diggCount", "digg_count", "likeCount", "like_count");
+    const commentCount = getTikTokCount(stats, "commentCount", "comment_count") ?? getTikTokCount(v, "commentCount", "comment_count");
+    const shareCount = getTikTokCount(stats, "shareCount", "share_count", "forward_count") ?? getTikTokCount(v, "shareCount", "share_count", "forward_count");
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
@@ -3812,10 +4166,9 @@ async function handleLoadMoreX() {
           </Text>
           <Group gap="xs">
             {[
-              { label: "▶", val: stats.playCount ?? stats.play_count },
-              { label: "❤️", val: stats.diggCount ?? stats.digg_count ?? stats.likeCount ?? stats.like_count },
-              { label: "💬", val: stats.commentCount ?? stats.comment_count },
-              { label: "🔗", val: stats.shareCount ?? stats.share_count },
+              { label: "❤️", val: likeCount },
+              { label: "💬", val: commentCount },
+              { label: "🔗", val: shareCount },
             ].filter(x => x.val != null).map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label} {formatCount(val)}</Badge>
             ))}
@@ -3828,7 +4181,7 @@ async function handleLoadMoreX() {
                   View Post
                 </Button>
               )}
-              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", video)} />
+              <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", { ...v, author, stats: { ...stats, diggCount: likeCount ?? 0, commentCount: commentCount ?? 0, shareCount: shareCount ?? 0 }, url: postUrl, share_url: postUrl })} />
             </Group>
           )}
         </Stack>
@@ -3863,24 +4216,26 @@ async function handleLoadMoreX() {
     );
   }
 
-  function TiktokResults({ data, onSave }) {
+  function TiktokResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
     // Profile & stats
     const profileData = results.profile;
     // Profile videos from profile endpoint's itemList OR from profileVideos call
-    const profileVideos = results.profileVideos?.itemList || results.profile?.itemList || [];
+    const profileVideos = sortPostsForDisplay((results.profileVideos?.itemList || results.profile?.itemList || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
     const showProfileVideos = results.profileVideos || (results.profile?.itemList?.length > 0 && !results.profileVideos);
     // Following & Followers
     const followingList = results.following?.followings || results.following?.following_list || [];
     const followersList = results.followers?.followers || [];
     // Transcript
     const transcript = results.transcript?.transcript;
+    // Single video/post result
+    const singleVideo = results.video || results.post || null;
     // Search results
     const searchUsersList = results.searchUsers?.user_list || [];
-    const searchHashtagList = results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || [];
-    const searchKeywordList = results.searchKeyword?.search_item_list || [];
+    const searchHashtagList = sortPostsForDisplay((results.searchHashtag?.challenge_aweme_list || results.searchHashtag?.aweme_list || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
+    const searchKeywordList = sortPostsForDisplay((results.searchKeyword?.search_item_list || []).map(unwrapTikTokVideo).filter(Boolean), sortMode);
 
     const count =
       (profileData ? 1 : 0) +
@@ -3888,6 +4243,7 @@ async function handleLoadMoreX() {
       followingList.length +
       followersList.length +
       (transcript ? 1 : 0) +
+      (singleVideo ? 1 : 0) +
       searchUsersList.length +
       searchHashtagList.length +
       searchKeywordList.length;
@@ -3960,6 +4316,16 @@ async function handleLoadMoreX() {
           </>
         )}
 
+        {singleVideo && (
+          <>
+            <Group justify="space-between" align="center">
+              <Divider label="TikTok Post" labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={[singleVideo]} onSave={onSave} type="post" />
+            </Group>
+            <TkVideoCard video={singleVideo} onSave={onSave} compact />
+          </>
+        )}
+
         {searchUsersList.length > 0 && (
           <>
             <Divider label={t("competitorLookup.searchUsersCount", { count: searchUsersList.length })} labelPosition="center" />
@@ -3983,13 +4349,12 @@ async function handleLoadMoreX() {
           <>
             <Group justify="space-between" align="center">
               <Divider label={t("competitorLookup.keywordSearchCount", { count: searchKeywordList.length })} labelPosition="center" style={{ flex: 1 }} />
-              <SaveAllButton items={searchKeywordList.map(item => item.aweme_info || item)} onSave={onSave} type="post" />
+              <SaveAllButton items={searchKeywordList} onSave={onSave} type="post" />
             </Group>
             <Stack gap="xs">
-              {searchKeywordList.map((item, i) => {
-                const v = item.aweme_info || item;
-                return <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />;
-              })}
+              {searchKeywordList.map((v, i) => (
+                <TkVideoCard key={v.aweme_id || v.id || i} video={v} onSave={onSave} compact />
+              ))}
             </Stack>
           </>
         )}
@@ -4053,18 +4418,193 @@ async function handleLoadMoreX() {
     );
   }
 
+  function RedditUserCard({ profile }) {
+    if (!profile) return null;
+    const username = profile.username || profile.name || profile.display_name || "unknown";
+    const created = profile.created_utc ? new Date(Number(profile.created_utc) * 1000).toLocaleDateString() : "";
+    const profileUrl = profile.url || `https://www.reddit.com/user/${username}/`;
+    const avatar = profile.icon_img || profile.avatar || profile.profile_img;
+
+    return (
+      <Card withBorder radius="md" shadow="sm">
+        <Stack gap="sm">
+          <Group justify="space-between" align="start" wrap="nowrap">
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <Avatar src={avatar} radius="xl" color="orange">
+                <IconBrandReddit size={18} />
+              </Avatar>
+              <div style={{ minWidth: 0 }}>
+                <Title order={4} lineClamp={1}>u/{username}</Title>
+                <Text size="xs" c="dimmed" lineClamp={1}>{profileUrl}</Text>
+              </div>
+            </Group>
+            <Button size="xs" variant="subtle" component="a" href={profileUrl} target="_blank" rel="noopener noreferrer">
+              View Profile
+            </Button>
+          </Group>
+
+          <Group gap="lg" justify="center">
+            {[
+              { label: "Total Karma", raw: profile.total_karma },
+              { label: "Post Karma", raw: profile.link_karma },
+              { label: "Comment Karma", raw: profile.comment_karma },
+              { label: "Awardee Karma", raw: profile.awardee_karma },
+            ].filter(x => x.raw != null).map(({ label, raw }) => (
+              <Stack key={label} align="center" gap={0}>
+                <Text fw={700} size="lg">{fmtNum(raw)}</Text>
+                <Text size="xs" c="dimmed">{label}</Text>
+              </Stack>
+            ))}
+          </Group>
+
+          <Group gap="xs">
+            {created && <Badge variant="light" size="xs">Created {created}</Badge>}
+            {profile.is_gold === true && <Badge variant="outline" size="xs">Reddit Premium</Badge>}
+            {profile.is_mod === true && <Badge variant="outline" size="xs">Moderator</Badge>}
+            {profile.verified === true && <Badge variant="outline" size="xs">Verified</Badge>}
+          </Group>
+        </Stack>
+      </Card>
+    );
+  }
+
+  function redditCleanMediaUrl(value) {
+    const text = String(value || "")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .trim();
+    if (!/^https?:\/\//i.test(text)) return "";
+    if (/^(self|default|nsfw|spoiler|image|video)$/i.test(text)) return "";
+    return text;
+  }
+
+  function redditLooksLikeImage(value) {
+    return /\.(png|jpe?g|gif|webp)(?:[?#].*)?$/i.test(String(value || ""));
+  }
+
+  function redditLooksLikeVideo(value) {
+    return /\.(mp4|m3u8|mov|webm)(?:[?#].*)?$/i.test(String(value || ""));
+  }
+
+  function redditPostDate(post = {}) {
+    const raw = post.created_utc ?? post.createdUtc ?? post.created_at ?? post.createdAt ?? post.created;
+    if (!raw) return "";
+    const numeric = Number(raw);
+    const date = Number.isFinite(numeric)
+      ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+      : new Date(raw);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString() : "";
+  }
+
+  function addRedditMediaItem(items, item = {}) {
+    const url = redditCleanMediaUrl(item.url || item.src || item.source);
+    const thumbnail = redditCleanMediaUrl(item.thumbnail || item.preview || item.poster || item.thumbnail_url || url);
+    if (!url && !thumbnail) return;
+    const type = item.type || (redditLooksLikeVideo(url) ? "video" : "image");
+    const next = { type, url: url || thumbnail, thumbnail: thumbnail || url };
+    const key = `${next.type}:${next.url}`;
+    if (!items.some((existing) => `${existing.type}:${existing.url}` === key)) items.push(next);
+  }
+
+  function getRedditMediaItems(post = {}) {
+    const items = [];
+    const arrays = [post.media, post.media_preview, post.images, post.gallery, post.mediaItems].filter(Array.isArray);
+    arrays.forEach((arr) => arr.forEach((item) => addRedditMediaItem(items, item)));
+
+    const previewImages = post.preview?.images;
+    if (Array.isArray(previewImages)) {
+      previewImages.forEach((image) => {
+        const source = image?.source || {};
+        const resolutions = Array.isArray(image?.resolutions) ? image.resolutions : [];
+        const best = resolutions[resolutions.length - 1] || source;
+        addRedditMediaItem(items, {
+          type: "image",
+          url: source.url || best.url,
+          thumbnail: best.url || source.url,
+        });
+      });
+    }
+
+    const directUrl = redditCleanMediaUrl(post.media_url || post.url_overridden_by_dest || post.external_url || "");
+    if (directUrl && (redditLooksLikeImage(directUrl) || redditLooksLikeVideo(directUrl))) {
+      addRedditMediaItem(items, { type: redditLooksLikeVideo(directUrl) ? "video" : "image", url: directUrl, thumbnail: post.thumbnail });
+    }
+
+    if (post.thumbnail) addRedditMediaItem(items, { type: "image", url: post.thumbnail, thumbnail: post.thumbnail });
+
+    return items.slice(0, 4);
+  }
+
+  function RedditMediaPreview({ post, compact }) {
+    const items = getRedditMediaItems(post);
+    if (!items.length) return null;
+
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: items.length === 1 ? "minmax(120px, 220px)" : "repeat(auto-fit, minmax(110px, 160px))",
+          gap: 8,
+          maxWidth: items.length === 1 ? 240 : 700,
+          marginTop: 6,
+        }}
+      >
+        {items.map((item, index) => {
+          const src = item.thumbnail || item.url;
+          const isVideo = item.type === "video" || redditLooksLikeVideo(item.url);
+          return (
+            <a
+              key={`${item.url || src}-${index}`}
+              href={item.url || src}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                position: "relative",
+                display: "block",
+                borderRadius: 10,
+                overflow: "hidden",
+                border: "1px solid var(--mantine-color-gray-3)",
+                background: "var(--mantine-color-gray-0)",
+                height: compact ? 96 : 130,
+              }}
+            >
+              {isVideo && redditLooksLikeVideo(src) ? (
+                <Group justify="center" align="center" style={{ width: "100%", height: "100%" }}>
+                  <Badge size="sm" variant="light">Video</Badge>
+                </Group>
+              ) : (
+                <img
+                  src={src}
+                  alt="Reddit media preview"
+                  loading="lazy"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              )}
+              {isVideo && (
+                <Badge size="xs" variant="filled" style={{ position: "absolute", left: 6, bottom: 6 }}>
+                  Video
+                </Badge>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    );
+  }
+
   function RedditPostCard({ post, onSave, compact }) {
     if (!post) return null;
     const title = post.title || "";
-    const body = post.selftext || post.body || "";
-    const created = post.created_utc ? new Date(post.created_utc * 1000).toLocaleDateString() : "";
-    const postUrl = post.permalink ? `https://reddit.com${post.permalink}` : post.url;
+    const body = post.selftext || post.body || post.description || post.caption || post.text || "";
+    const created = redditPostDate(post);
+    const postUrl = post.reddit_url || (post.permalink ? `https://reddit.com${post.permalink}` : post.url);
+    const flair = post.link_flair_text || post.flair || post.post_flair;
 
     return (
       <Card withBorder radius="md" shadow="sm" p={compact ? "xs" : "md"}>
-        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+        <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
           <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>{t("competitorLookup.noTitle")}</i>}</Text>
-          {body && <ExpandableText text={body} size="xs" dimmed collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />}
           <Text size="xs" c="dimmed">
             {post.author ? `Posted by u/${post.author}` : ""}
             {post.subreddit ? ` · r/${post.subreddit}` : ""}
@@ -4078,8 +4618,10 @@ async function handleLoadMoreX() {
             ].filter(x => x.val != null && x.val > 0).map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label} {fmtNum(val)}</Badge>
             ))}
-            {post.link_flair_text && <Badge variant="outline" size="xs">{post.link_flair_text}</Badge>}
+            {flair && <Badge variant="outline" size="xs">{flair}</Badge>}
           </Group>
+          <RedditMediaPreview post={post} compact={compact} />
+          {body && <ExpandableText text={body} size="xs" dimmed collapsedLines={compact ? 3 : 5} threshold={compact ? 140 : 260} />}
           {onSave && (
             <Group justify="flex-end">
               {postUrl && (
@@ -4150,20 +4692,26 @@ async function handleLoadMoreX() {
     );
   }
 
-  function RedditResults({ data, onSave }) {
+  function RedditResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
     if (!data) return null;
     const { results = {}, errors = [] } = data;
 
+    const profileData = results.profile || results.userProfile;
     const detailsData = results.subredditDetails;
-    const subredditPostsArr = results.subredditPosts?.posts || [];
-    const subredditSearchArr = results.subredditSearch?.posts || [];
-    const commentsArr = results.postComments?.comments || [];
-    const searchArr = results.search?.posts || [];
-    const adsArr = results.searchAds?.ads || [];
+    const singlePost = results.post || results.postDetails || results.postComments?.post;
+    const userPostsArr = sortPostsForDisplay(results.userPosts?.posts || results.userPosts?.items || [], sortMode);
+    const subredditPostsArr = sortPostsForDisplay(results.subredditPosts?.posts || [], sortMode);
+    const subredditSearchArr = sortPostsForDisplay(results.subredditSearch?.posts || [], sortMode);
+    const commentsArr = sortPostsForDisplay(results.postComments?.comments || [], sortMode);
+    const searchArr = sortPostsForDisplay(results.search?.posts || [], sortMode);
+    const adsArr = sortPostsForDisplay(results.searchAds?.ads || [], sortMode);
     const adDetail = results.getAd?.data || results.getAd;
 
     const count =
+      (profileData ? 1 : 0) +
       (detailsData ? 1 : 0) +
+      (singlePost ? 1 : 0) +
+      userPostsArr.length +
       subredditPostsArr.length +
       subredditSearchArr.length +
       commentsArr.length +
@@ -4186,10 +4734,36 @@ async function handleLoadMoreX() {
           </Alert>
         )}
 
+        {profileData && (
+          <>
+            <Divider label="User Profile" labelPosition="center" />
+            <RedditUserCard profile={profileData} />
+          </>
+        )}
+
         {detailsData && (
           <>
             <Divider label={t("competitorLookup.subredditDetails")} labelPosition="center" />
             <RedditSubredditCard details={detailsData} />
+          </>
+        )}
+
+        {singlePost && (
+          <>
+            <Divider label="Post Metrics" labelPosition="center" />
+            <RedditPostCard post={singlePost} onSave={onSave} compact />
+          </>
+        )}
+
+        {userPostsArr.length > 0 && (
+          <>
+            <Group justify="space-between" align="center">
+              <Divider label={`User Posts (${userPostsArr.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <SaveAllButton items={userPostsArr} onSave={onSave} type="post" />
+            </Group>
+            <Stack gap="xs">
+              {userPostsArr.map((p, i) => <RedditPostCard key={p.id || i} post={p} onSave={onSave} compact />)}
+            </Stack>
           </>
         )}
 
@@ -4258,7 +4832,7 @@ async function handleLoadMoreX() {
     );
   }
 
-  const posts = Array.isArray(result?.posts) ? result.posts : [];
+  const posts = sortPostsForDisplay(Array.isArray(result?.posts) ? result.posts : [], sortMode);
   const SHOW_GLOBAL_LOOKUP = false;
   const SHOW_ADVANCED_LOOKUP = false;
 
@@ -4273,14 +4847,17 @@ async function handleLoadMoreX() {
               {t("competitorLookup.subtitle")}
             </Text>
           </div>
-          {creditsRemaining != null && (
-            <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
-              <Text size="xs" c="dimmed" fw={500}>{t("competitorLookup.creditsRemaining")}</Text>
-              <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
-                {creditsRemaining.toLocaleString()}
-              </Text>
-            </Card>
-          )}
+          <Stack align="flex-end" gap={6}>
+            <SortSelect value={sortMode} onChange={setSortMode} />
+            {creditsRemaining != null && (
+              <Card withBorder radius="md" p="xs" px="md" shadow="xs" style={{ minWidth: 160, textAlign: "center" }}>
+                <Text size="xs" c="dimmed" fw={500}>{t("competitorLookup.creditsRemaining")}</Text>
+                <Text fw={700} size="lg" c={creditsRemaining < 10 ? "red" : creditsRemaining < 50 ? "orange" : "teal"}>
+                  {creditsRemaining.toLocaleString()}
+                </Text>
+              </Card>
+            )}
+          </Stack>
         </Group>
 
         {!Object.values(connectedPlatforms).some(Boolean) && (
@@ -4319,8 +4896,11 @@ async function handleLoadMoreX() {
                     />
                     <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>Search X</Button>
                   </Group>
+                  <Alert variant="light" color="blue" radius="md" icon={<IconInfoCircle size={16} />}>
+                    X videos may only show as thumbnails here. Open the post on X to watch the video.
+                  </Alert>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
-                  {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                  {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                   {getXNextToken(xResult) && (
                     <Group justify="center">
                       <Button variant="light" loading={xLoadingMore} onClick={handleLoadMoreX}>
@@ -4348,7 +4928,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={youtubeLoading} onClick={handleSimpleYoutubeSubmit}>Search YouTube</Button>
                   </Group>
                   {youtubeError && <Alert color="red" title={t("competitorLookup.youtubeError")}>{youtubeError}</Alert>}
-                  {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />}
+                  {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4369,7 +4949,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={linkedinLoading} onClick={handleSimpleLinkedinSubmit}>Search LinkedIn</Button>
                   </Group>
                   {linkedinError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{linkedinError}</Alert>}
-                  {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
+                  {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4390,7 +4970,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={instagramLoading} onClick={handleSimpleInstagramSubmit}>Search Instagram</Button>
                   </Group>
                   {instagramError && <Alert color="red" title={t("competitorLookup.instagramError")}>{instagramError}</Alert>}
-                  {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} />}
+                  {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4411,7 +4991,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={tiktokLoading} onClick={handleSimpleTiktokSubmit}>Search TikTok</Button>
                   </Group>
                   {tiktokError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{tiktokError}</Alert>}
-                  {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />}
+                  {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4419,11 +4999,11 @@ async function handleLoadMoreX() {
             {connectedPlatforms.reddit && (
               <Tabs.Panel value="reddit" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username to find a user's posts, r/subreddit for communities, paste a Reddit URL, or enter keywords.</Text>
+                  <Text size="sm" c="dimmed">Use u/username or @username for a user, r/subreddit for one community, keywords for posts across Reddit, or paste a Reddit post URL to show the post plus comments.</Text>
                   <Group align="end">
                     <TextInput
                       label="Reddit Search"
-                      placeholder="@username, r/startups, reddit URL, or keyword"
+                      placeholder="u/spez, r/startups, Reddit post URL, or keyword"
                       value={simpleQueries.reddit}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, reddit: e.target.value }))}
                       style={{ flex: 1 }}
@@ -4432,7 +5012,7 @@ async function handleLoadMoreX() {
                     <Button leftSection={<IconSearch size={16} />} loading={redditLoading} onClick={handleSimpleRedditSubmit}>Search Reddit</Button>
                   </Group>
                   {redditError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{redditError}</Alert>}
-                  {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} />}
+                  {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} sortMode={sortMode} />}
                 </Stack>
               </Tabs.Panel>
             )}
@@ -4684,7 +5264,7 @@ async function handleLoadMoreX() {
                         </Alert>
                       )}
 
-                      {xResult && <XResults data={xResult} onSave={handleXSave} />}
+                      {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                     </Stack>
                   </Tabs.Panel>
                 )}
@@ -4775,7 +5355,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {youtubeResult && (
-                        <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} />
+                        <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -4856,7 +5436,7 @@ async function handleLoadMoreX() {
                         </Alert>
                       )}
 
-                      {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} />}
+                      {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} sortMode={sortMode} />}
                     </Stack>
                   </Tabs.Panel>
                 )}
@@ -4981,7 +5561,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {instagramResult && (
-                        <InstagramResults data={instagramResult} onSave={handleInstagramSave} />
+                        <InstagramResults data={instagramResult} onSave={handleInstagramSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5113,7 +5693,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {tiktokResult && (
-                        <TiktokResults data={tiktokResult} onSave={handleTiktokSave} />
+                        <TiktokResults data={tiktokResult} onSave={handleTiktokSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5238,7 +5818,7 @@ async function handleLoadMoreX() {
                       )}
 
                       {redditResult && (
-                        <RedditResults data={redditResult} onSave={handleRedditSave} />
+                        <RedditResults data={redditResult} onSave={handleRedditSave} sortMode={sortMode} />
                       )}
                     </Stack>
                   </Tabs.Panel>
@@ -5346,7 +5926,7 @@ async function handleLoadMoreX() {
 
             <Alert variant="light" color="blue" icon={<IconInfoCircle size={16} />}>
               {t("competitorLookup.metricsMayBeUnavailable", {
-                defaultValue: "Some metrics (e.g. views) may appear as 0 because they are private or unavailable from the platform's API.",
+                defaultValue: "Some engagement metrics may appear as 0 when they are private or unavailable from the platform's API.",
               })}
             </Alert>
 

@@ -86,26 +86,49 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
   const isMock = (keys.length === 1 && keys[0] === 'dummy') || process.env.SCRAPE_CREATORS_MOCK === '1';
   if (isMock) {
     // Minimal fake responses tailored to the most-common paths used by tests.
-    if (path.startsWith('/v1/tiktok/profile')) {
+    if (path.startsWith('/v1/tiktok/profile') || path.startsWith('/v3/tiktok/profile/videos')) {
       const handle = params.handle || 'demo';
       const videos = Array.from({ length: 12 }).map((_, i) => ({
         aweme_id: `1000${i}`,
         desc: `Demo video ${i} by ${handle}`,
-        author: { uniqueId: handle, nickname: handle },
+        create_time: Math.floor(Date.now() / 1000) - i * 3600,
+        author: { uniqueId: handle, unique_id: handle, nickname: handle },
+        statistics: { digg_count: i + 10, comment_count: i + 2, share_count: i + 1 },
         url: `https://www.tiktok.com/@${handle}/video/1000${i}`,
       }));
+      if (path.startsWith('/v3/tiktok/profile/videos')) return { aweme_list: videos, has_more: false, max_cursor: null };
       return { uniqueId: handle, nickname: handle, itemList: videos };
+    }
+    if (path === '/v2/tiktok/video') {
+      const url = params.url || 'https://www.tiktok.com/@demo/video/10000';
+      const handle = (url.match(/@([^/]+)/) || [])[1] || 'demo';
+      const id = (url.match(/video\/(\d+)/) || [])[1] || '10000';
+      return {
+        aweme_detail: {
+          aweme_id: id,
+          desc: `Demo video ${id} by ${handle}`,
+          create_time: Math.floor(Date.now() / 1000),
+          author: { unique_id: handle, nickname: handle },
+          statistics: { digg_count: 99, comment_count: 12, share_count: 5 },
+          url,
+        },
+      };
     }
     if (path === '/v1/tiktok/search/keyword' || path === '/v1/tiktok/search/hashtag') {
       const q = params.query || params.hashtag || 'demo';
-      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q } } }));
+      const hits = Array.from({ length: 12 }).map((_, i) => ({ data: { aweme_id: `2000${i}`, desc: `${q} result ${i}`, author: { uniqueId: q }, statistics: { digg_count: i + 3, comment_count: i, share_count: i + 1 } } }));
+      if (path === '/v1/tiktok/search/hashtag') return { challenge_aweme_list: hits.map(h => h.data), cursor: null };
       return { search_item_list: hits, cursor: null };
     }
     if (path === '/v1/reddit/subreddit/details') {
       // Return subreddit metadata including rules expected by the frontend
+      const subreddit = params.subreddit || 'demo';
       return {
-        display_name: params.subreddit || 'demo',
-        description: `Demo subreddit for ${params.subreddit || 'demo'}`,
+        id: `sr_${subreddit}`,
+        display_name: subreddit,
+        name: subreddit,
+        public_description: `Demo subreddit for ${subreddit}`,
+        description: `Demo subreddit for ${subreddit}`,
         subscribers: 12345,
         weekly_active_users: 678,
         weekly_contributions: 12,
@@ -117,13 +140,76 @@ export async function scrapeCreators(path, params = {}, { maxKeyAttempts } = {})
         ],
       };
     }
+    if (path === '/v1/reddit/post/comments') {
+      const url = params.url || 'https://www.reddit.com/r/demo/comments/demo0/demo_post/';
+      const id = (url.match(/comments\/([A-Za-z0-9]+)/) || [])[1] || 'demo0';
+      return {
+        post: {
+          id,
+          name: `t3_${id}`,
+          title: `Demo Reddit post ${id}`,
+          selftext: 'Demo Reddit post body',
+          author: 'demo_user',
+          subreddit: 'demo',
+          score: 123,
+          ups: 123,
+          num_comments: 4,
+          total_awards_received: 1,
+          created_utc: Math.floor(Date.now() / 1000),
+          permalink: `/r/demo/comments/${id}/demo_post/`,
+        },
+        comments: Array.from({ length: 4 }).map((_, i) => ({
+          id: `c_${id}_${i}`,
+          author: `commenter_${i}`,
+          body: `Demo comment ${i}`,
+          score: i + 1,
+          created_utc: Math.floor(Date.now() / 1000) - i * 600,
+        })),
+      };
+    }
     if (path.startsWith('/v1/reddit/subreddit')) {
-      const posts = Array.from({ length: 12 }).map((_, i) => ({ id: `t3_demo${i}`, title: `Demo post ${i}`, selftext: `Demo content ${i}`, permalink: `/r/demo/comments/t3_demo${i}` }));
-      return { posts };
+      const subreddit = params.subreddit || 'demo';
+      const q = params.query ? `${params.query} ` : '';
+      const posts = Array.from({ length: 12 }).map((_, i) => ({
+        id: `demo${i}`,
+        name: `t3_demo${i}`,
+        title: `${q}Demo post ${i}`,
+        selftext: `Demo content ${i}`,
+        author: `demo_author_${i}`,
+        subreddit,
+        score: 100 + i,
+        ups: 100 + i,
+        num_comments: i + 2,
+        total_awards_received: i % 2,
+        created_utc: Math.floor(Date.now() / 1000) - i * 3600,
+        permalink: `/r/${subreddit}/comments/demo${i}/demo_post_${i}/`,
+        url_overridden_by_dest: `https://picsum.photos/seed/reddit-${subreddit}-${i}/640/360`,
+        thumbnail: `https://picsum.photos/seed/reddit-${subreddit}-${i}/320/180`,
+        preview: { images: [{ source: { url: `https://picsum.photos/seed/reddit-${subreddit}-${i}/640/360`, width: 640, height: 360 } }] },
+      }));
+      return { posts, after: null };
     }
     if (path === '/v1/reddit/search') {
-      const posts = Array.from({ length: 8 }).map((_, i) => ({ id: `s_demo${i}`, title: `Search post ${i}`, selftext: `Search content ${i}`, permalink: `/r/search/comments/s_demo${i}` }));
-      return { posts };
+      const q = params.query || 'demo';
+      const author = String(q).match(/author:([^\s]+)/)?.[1] || null;
+      const posts = Array.from({ length: 12 }).map((_, i) => ({
+        id: `s_demo${i}`,
+        name: `t3_s_demo${i}`,
+        title: `${q} search post ${i}`,
+        selftext: `Search content ${i}`,
+        author: author || `search_author_${i}`,
+        subreddit: 'search',
+        score: 50 + i,
+        ups: 50 + i,
+        num_comments: i,
+        total_awards_received: 0,
+        created_utc: Math.floor(Date.now() / 1000) - i * 7200,
+        permalink: `/r/search/comments/s_demo${i}/search_post_${i}/`,
+        url_overridden_by_dest: `https://picsum.photos/seed/reddit-search-${i}/640/360`,
+        thumbnail: `https://picsum.photos/seed/reddit-search-${i}/320/180`,
+        preview: { images: [{ source: { url: `https://picsum.photos/seed/reddit-search-${i}/640/360`, width: 640, height: 360 } }] },
+      }));
+      return { posts, after: null };
     }
     if (path.startsWith('/v1/linkedin/profile')) {
       return { url: params.url || 'https://linkedin.com/in/demo', name: 'Demo Person', headline: 'Demo Headline', activity: Array.from({ length: 10 }).map((_, i) => ({ id: `lnk_post_${i}`, text: `Demo activity ${i}`, url: `https://linkedin.com/posts/demo_${i}` })) };
@@ -342,6 +428,16 @@ const PAGINATION_CONFIG = {
   },
 
   // TikTok
+  '/v3/tiktok/profile/videos': {
+    resultsKey: 'aweme_list',
+    cursorParam: 'max_cursor',
+    getCursor: (resp) => resp.max_cursor,
+    hasMore: (resp) =>
+      resp.has_more === true &&
+      resp.max_cursor != null &&
+      Array.isArray(resp.aweme_list) &&
+      resp.aweme_list.length > 0,
+  },
   '/v1/tiktok/search/keyword': {
     resultsKey: 'search_item_list',
     cursorParam: 'cursor',

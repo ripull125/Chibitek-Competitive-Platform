@@ -534,9 +534,6 @@ function looksLikeInstagramPost(value = {}) {
     value.comment_count != null ||
     value.commentCount != null ||
     value.comments != null ||
-    value.play_count != null ||
-    value.view_count != null ||
-    value.video_view_count != null ||
     value.taken_at ||
     value.taken_at_timestamp ||
     value.image_versions2 ||
@@ -679,26 +676,21 @@ export function normalizeInstagramPost(raw = {}, fallbackAuthor = {}) {
     findNestedNumberByKey(post, [/^comment_count$/, /^commentcount$/, /^comments_count$/, /^comments$/, /^num_comments$/])
   );
 
-  const playCount = pickNumber(
-    post.play_count,
-    post.playCount,
-    post.plays,
-    post.ig_play_count,
-    post.fb_play_count,
-    post.video_play_count,
-    post.videoPlayCount,
-    post.view_count,
-    post.viewCount,
-    post.views,
-    post.video_view_count,
-    post.videoViewCount,
-    post.metrics?.play_count,
-    post.metrics?.playCount,
-    post.metrics?.plays,
-    post.metrics?.view_count,
-    post.metrics?.views,
-    findNestedNumberByKey(post, [/^play_count$/, /^playcount$/, /^ig_play_count$/, /^view_count$/, /^viewcount$/, /^views$/])
-  );
+  const {
+    play_count: _playCount,
+    playCount: _playCountCamel,
+    plays: _plays,
+    ig_play_count: _igPlayCount,
+    fb_play_count: _fbPlayCount,
+    video_play_count: _videoPlayCount,
+    videoPlayCount: _videoPlayCountCamel,
+    view_count: _viewCount,
+    viewCount: _viewCountCamel,
+    views: _views,
+    video_view_count: _videoViewCount,
+    videoViewCount: _videoViewCountCamel,
+    ...postWithoutViewMetrics
+  } = post;
 
   const normalizedUser = {
     ...owner,
@@ -715,7 +707,7 @@ export function normalizeInstagramPost(raw = {}, fallbackAuthor = {}) {
   };
 
   return {
-    ...post,
+    ...postWithoutViewMetrics,
     id,
     pk: post.pk || id,
     code,
@@ -735,10 +727,6 @@ export function normalizeInstagramPost(raw = {}, fallbackAuthor = {}) {
     likes: likeCount,
     comment_count: commentCount,
     comments: commentCount,
-    play_count: playCount,
-    view_count: playCount,
-    views: playCount,
-    video_view_count: pickNumber(post.video_view_count, post.videoViewCount, post.view_count, post.viewCount, post.views, playCount),
     media,
     image_url: media.find((m) => m.type === "photo")?.url || media[0]?.preview_image_url || null,
     video_url: media.find((m) => m.type === "video")?.url || post.video_url || post.videoUrl || null,
@@ -1019,7 +1007,7 @@ export async function lookupInstagramAdvanced(options = {}, inputs = {}, maxResu
     await capture("reelsSearch", () => searchInstagramKeywordPosts(keyword, limit), (value) => {
       // Advanced UI historically renders this checkbox under `reelsSearch`.
       // The posts are normalized the same way as keyword `searchPosts` so the
-      // card can read creator/date/likes/comments/views consistently.
+      // card can read creator/date/likes/comments consistently.
       results.reelsSearch = { reels: value.posts || [] };
     });
   }
