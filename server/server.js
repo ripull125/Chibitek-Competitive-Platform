@@ -1600,11 +1600,31 @@ app.post("/api/posts", async (req, res) => {
       if (insertErr) {
         if (!isDuplicateKeyError(insertErr)) throw insertErr;
 
-        // Concurrent saves can race on insert. Treat that as a duplicate save
-        // instead of updating the existing saved post.
-        return res.status(409).json({
-          error: "already_saved",
-          message: "You have already saved this post.",
+        // If the duplicate row belongs to THIS user, this is a real duplicate save.
+        // If it does not, the database still has an old global unique constraint/index
+        // on platform_post_id or platform_id + platform_post_id that must be removed.
+        const { data: userScopedExisting, error: checkDuplicateErr } = await supabase
+          .from("posts")
+          .select("*")
+          .eq("user_id", user_id)
+          .eq("platform_id", platform_id)
+          .eq("platform_post_id", platformPostId)
+          .maybeSingle();
+
+        if (checkDuplicateErr) throw checkDuplicateErr;
+
+        if (userScopedExisting) {
+          return res.status(409).json({
+            error: "already_saved",
+            message: "You have already saved this post.",
+            post: userScopedExisting,
+          });
+        }
+
+        console.error("[POST /api/posts] Global database uniqueness is still blocking a different user's save:", insertErr);
+        return res.status(500).json({
+          error: "global_unique_constraint_still_exists",
+          message: "The database still has an old global unique constraint/index on saved posts. Run the latest Supabase SQL fix so uniqueness is based on user_id, platform_id, and platform_post_id.",
         });
       } else {
         post = newPost;
