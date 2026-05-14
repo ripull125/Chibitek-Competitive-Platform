@@ -48,6 +48,34 @@ import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
 import { Checkbox, Transition } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { notifications } from "@mantine/notifications";
+
+
+function isDuplicateSaveError(err) {
+  const text = String(err?.message || err || "").toLowerCase();
+  return Boolean(err?.isDuplicate || text.includes("already_saved") || text.includes("already saved") || text.includes("duplicate key"));
+}
+
+function showAlreadySavedNotification(count = 1) {
+  const message = count > 1
+    ? `${count} posts were already saved.`
+    : "You have already saved this post.";
+
+  notifications.show({
+    id: "already-saved-post",
+    title: "Already saved",
+    message,
+    color: "yellow",
+    radius: "md",
+    autoClose: 2000,
+    withCloseButton: false,
+    icon: <IconInfoCircle size={18} />,
+    styles: {
+      root: { boxShadow: "0 12px 32px rgba(15, 23, 42, 0.16)" },
+      title: { fontWeight: 700 },
+    },
+  });
+}
 
 function LabelWithInfo({ label, info }) {
   return (
@@ -320,13 +348,18 @@ function SaveButton({ label, onSave }) {
       variant="light"
       loading={status === "saving"}
       color={status === "saved" ? "green" : status === "error" ? "red" : "blue"}
-      disabled={status === "saved"}
+      disabled={status === "saved" || status === "saving"}
       onClick={async () => {
         setStatus("saving");
         try {
           await onSave();
           setStatus("saved");
         } catch (err) {
+          if (isDuplicateSaveError(err)) {
+            showAlreadySavedNotification();
+            setStatus(null);
+            return;
+          }
           console.error("[SaveButton] Save failed:", err);
           setStatus("error");
         }
@@ -340,7 +373,7 @@ function SaveButton({ label, onSave }) {
 function SaveAllButton({ items, onSave, type = "post" }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
-  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, duplicates: 0 });
 
   if (!items?.length || items.length <= 1) return null;
 
@@ -350,27 +383,39 @@ function SaveAllButton({ items, onSave, type = "post" }) {
       variant="filled"
       loading={status === "saving"}
       color={status === "saved" ? "green" : status === "error" ? "orange" : "blue"}
-      disabled={status === "saved"}
+      disabled={status === "saved" || status === "saving"}
       onClick={async () => {
         setStatus("saving");
-        setProgress({ done: 0, total: items.length, failed: 0 });
+        setProgress({ done: 0, total: items.length, failed: 0, duplicates: 0 });
         let failed = 0;
+        let duplicates = 0;
+        let saved = 0;
+
         for (let i = 0; i < items.length; i++) {
           try {
             await onSave(type, items[i]);
+            saved++;
           } catch (err) {
-            console.error(`[SaveAll] Item ${i} failed:`, err);
-            failed++;
+            if (isDuplicateSaveError(err)) {
+              duplicates++;
+            } else {
+              console.error(`[SaveAll] Item ${i} failed:`, err);
+              failed++;
+            }
           }
-          setProgress(p => ({ ...p, done: i + 1, failed }));
+          setProgress(p => ({ ...p, done: i + 1, failed, duplicates }));
         }
-        setStatus(failed === items.length ? "error" : "saved");
+
+        if (duplicates > 0) showAlreadySavedNotification(duplicates);
+        setStatus(saved > 0 || duplicates > 0 ? "saved" : "error");
       }}
     >
       {status === "saving"
         ? t("competitorLookup.savingProgress", { done: progress.done, total: progress.total })
         : status === "saved"
-          ? t("competitorLookup.savedAll", { failed: progress.failed })
+          ? progress.failed > 0
+            ? t("competitorLookup.savedAll", { failed: progress.failed })
+            : t("competitorLookup.savedAll", { failed: 0 })
           : status === "error"
             ? t("competitorLookup.allFailedRetry")
             : t("competitorLookup.saveAllCount", { count: items.length })}

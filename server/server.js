@@ -1571,27 +1571,18 @@ app.post("/api/posts", async (req, res) => {
     const { data: existingPost, error: existingPostErr } = await supabase
       .from("posts")
       .select("*")
+      .eq("user_id", user_id)
       .eq("platform_id", platform_id)
       .eq("platform_post_id", platformPostId)
       .maybeSingle();
     if (existingPostErr) throw existingPostErr;
 
     if (existingPost) {
-      const { data: updated, error: updateErr } = await supabase
-        .from("posts")
-        .update({
-          content,
-          published_at,
-          url: url || existingPost.url || null,
-          competitor_id: competitor.id,
-          // Keep ownership stable when set, but backfill when empty.
-          user_id: existingPost.user_id || user_id,
-        })
-        .eq("id", existingPost.id)
-        .select()
-        .single();
-      if (updateErr) throw updateErr;
-      post = updated;
+      return res.status(409).json({
+        error: "already_saved",
+        message: "You have already saved this post.",
+        post: existingPost,
+      });
     } else {
       const { data: newPost, error: insertErr } = await supabase
         .from("posts")
@@ -1609,30 +1600,12 @@ app.post("/api/posts", async (req, res) => {
       if (insertErr) {
         if (!isDuplicateKeyError(insertErr)) throw insertErr;
 
-        // Concurrent saves can race on insert; resolve by loading the existing row.
-        const { data: racedPost, error: racedPostErr } = await supabase
-          .from('posts')
-          .select('*')
-          .eq('platform_id', platform_id)
-          .eq('platform_post_id', platformPostId)
-          .maybeSingle();
-        if (racedPostErr) throw racedPostErr;
-        if (!racedPost) throw insertErr;
-
-        const { data: synced, error: syncedErr } = await supabase
-          .from('posts')
-          .update({
-            content,
-            published_at,
-            url: url || racedPost.url || null,
-            competitor_id: competitor.id,
-            user_id: racedPost.user_id || user_id,
-          })
-          .eq('id', racedPost.id)
-          .select()
-          .single();
-        if (syncedErr) throw syncedErr;
-        post = synced;
+        // Concurrent saves can race on insert. Treat that as a duplicate save
+        // instead of updating the existing saved post.
+        return res.status(409).json({
+          error: "already_saved",
+          message: "You have already saved this post.",
+        });
       } else {
         post = newPost;
       }
