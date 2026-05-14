@@ -48,33 +48,11 @@ import { supabase } from "../supabaseClient";
 import { getConnectedPlatforms } from "../utils/connectedPlatforms";
 import { Checkbox, Transition } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { notifications } from "@mantine/notifications";
 
 
 function isDuplicateSaveError(err) {
   const text = String(err?.message || err || "").toLowerCase();
   return Boolean(err?.isDuplicate || text.includes("already_saved") || text.includes("already saved") || text.includes("duplicate key"));
-}
-
-function showAlreadySavedNotification(count = 1) {
-  const message = count > 1
-    ? `${count} posts were already saved.`
-    : "You have already saved this post.";
-
-  notifications.show({
-    id: "already-saved-post",
-    title: "Already saved",
-    message,
-    color: "yellow",
-    radius: "md",
-    autoClose: 2000,
-    withCloseButton: false,
-    icon: <IconInfoCircle size={18} />,
-    styles: {
-      root: { boxShadow: "0 12px 32px rgba(15, 23, 42, 0.16)" },
-      title: { fontWeight: 700 },
-    },
-  });
 }
 
 function LabelWithInfo({ label, info }) {
@@ -341,14 +319,25 @@ function SortSelect({ value, onChange, compact = false }) {
 
 function SaveButton({ label, onSave }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'already' | 'error'
+
+  const isFinalState = status === "saved" || status === "already";
+
   return (
     <Button
       size="xs"
-      variant="light"
+      variant={status === "already" ? "default" : "light"}
       loading={status === "saving"}
       color={status === "saved" ? "green" : status === "error" ? "red" : "blue"}
-      disabled={status === "saved" || status === "saving"}
+      disabled={isFinalState || status === "saving"}
+      styles={status === "already" ? {
+        root: {
+          backgroundColor: "var(--mantine-color-gray-1)",
+          color: "var(--mantine-color-gray-7)",
+          borderColor: "var(--mantine-color-gray-3)",
+          cursor: "not-allowed",
+        },
+      } : undefined}
       onClick={async () => {
         setStatus("saving");
         try {
@@ -356,8 +345,7 @@ function SaveButton({ label, onSave }) {
           setStatus("saved");
         } catch (err) {
           if (isDuplicateSaveError(err)) {
-            showAlreadySavedNotification();
-            setStatus(null);
+            setStatus("already");
             return;
           }
           console.error("[SaveButton] Save failed:", err);
@@ -365,28 +353,44 @@ function SaveButton({ label, onSave }) {
         }
       }}
     >
-      {status === "saved" ? t("competitorLookup.saved") : status === "error" ? t("competitorLookup.retry") : label || t("competitorLookup.save")}
+      {status === "saved"
+        ? t("competitorLookup.saved")
+        : status === "already"
+          ? "Saved already"
+          : status === "error"
+            ? t("competitorLookup.retry")
+            : label || t("competitorLookup.save")}
     </Button>
   );
 }
 
 function SaveAllButton({ items, onSave, type = "post" }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
-  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, duplicates: 0 });
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'partial' | 'already' | 'error'
+  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, duplicates: 0, saved: 0 });
 
   if (!items?.length || items.length <= 1) return null;
+
+  const isFinalState = status === "saved" || status === "already" || status === "partial";
 
   return (
     <Button
       size="xs"
-      variant="filled"
+      variant={status === "already" ? "default" : "filled"}
       loading={status === "saving"}
-      color={status === "saved" ? "green" : status === "error" ? "orange" : "blue"}
-      disabled={status === "saved" || status === "saving"}
+      color={status === "saved" ? "green" : status === "partial" ? "teal" : status === "error" ? "orange" : "blue"}
+      disabled={isFinalState || status === "saving"}
+      styles={status === "already" ? {
+        root: {
+          backgroundColor: "var(--mantine-color-gray-1)",
+          color: "var(--mantine-color-gray-7)",
+          borderColor: "var(--mantine-color-gray-3)",
+          cursor: "not-allowed",
+        },
+      } : undefined}
       onClick={async () => {
         setStatus("saving");
-        setProgress({ done: 0, total: items.length, failed: 0, duplicates: 0 });
+        setProgress({ done: 0, total: items.length, failed: 0, duplicates: 0, saved: 0 });
         let failed = 0;
         let duplicates = 0;
         let saved = 0;
@@ -403,22 +407,26 @@ function SaveAllButton({ items, onSave, type = "post" }) {
               failed++;
             }
           }
-          setProgress(p => ({ ...p, done: i + 1, failed, duplicates }));
+          setProgress(p => ({ ...p, done: i + 1, failed, duplicates, saved }));
         }
 
-        if (duplicates > 0) showAlreadySavedNotification(duplicates);
-        setStatus(saved > 0 || duplicates > 0 ? "saved" : "error");
+        if (saved > 0 && duplicates > 0) setStatus("partial");
+        else if (saved > 0) setStatus("saved");
+        else if (duplicates > 0) setStatus("already");
+        else setStatus("error");
       }}
     >
       {status === "saving"
         ? t("competitorLookup.savingProgress", { done: progress.done, total: progress.total })
         : status === "saved"
-          ? progress.failed > 0
-            ? t("competitorLookup.savedAll", { failed: progress.failed })
-            : t("competitorLookup.savedAll", { failed: 0 })
-          : status === "error"
-            ? t("competitorLookup.allFailedRetry")
-            : t("competitorLookup.saveAllCount", { count: items.length })}
+          ? t("competitorLookup.savedAll", { failed: progress.failed })
+          : status === "partial"
+            ? `${progress.saved} saved, ${progress.duplicates} already saved`
+            : status === "already"
+              ? "All saved already"
+              : status === "error"
+                ? t("competitorLookup.allFailedRetry")
+                : t("competitorLookup.saveAllCount", { count: items.length })}
     </Button>
   );
 }
