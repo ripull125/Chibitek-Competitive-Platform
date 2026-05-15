@@ -4,6 +4,18 @@ import instagramRoutes from "./routes/instagramRoutes.js";
 import tiktokRoutes from "./routes/tiktokRoutes.js";
 import redditRoutes from "./routes/redditRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
+import {
+  fetchPostsByUserId,
+  fetchUserMentions,
+  fetchFollowers,
+  fetchFollowing,
+  getUserIdByUsername,
+  lookupXInput,
+} from "./xApi.js";
+import { lookupLinkedInInput } from "./linkedinApi.js";
+import { lookupInstagramInput } from "./instagramApi.js";
+import { lookupTikTokInput } from "./tiktokApi.js";
+import { lookupRedditInput } from "./redditApi.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
 import cors from 'cors';
@@ -3995,9 +4007,163 @@ function trimToLimit(data, limit) {
   return data;
 }
 
+function cleanWatchlistTarget(value) {
+  return String(value || '').trim();
+}
+
+function extractLinkedInPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.profilePosts) ? r.profilePosts : []),
+    ...(Array.isArray(r.companyPosts) ? r.companyPosts : []),
+    ...(Array.isArray(r.searchPosts) ? r.searchPosts : []),
+    ...(r.post ? [r.post] : []),
+  ];
+}
+
+function extractInstagramPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.userPosts?.posts) ? r.userPosts.posts : []),
+    ...(Array.isArray(r.searchPosts) ? r.searchPosts : []),
+    ...(r.singlePost ? [r.singlePost] : []),
+  ];
+}
+
+function extractTikTokVideosFromLookup(result = {}) {
+  const r = result.results || result;
+  const fromProfile = Array.isArray(r.profileVideos?.itemList) ? r.profileVideos.itemList : [];
+  const fromKeyword = Array.isArray(r.searchKeyword?.itemList)
+    ? r.searchKeyword.itemList
+    : Array.isArray(r.searchKeyword?.search_item_list)
+      ? r.searchKeyword.search_item_list
+      : [];
+  const fromHashtag = Array.isArray(r.searchHashtag?.itemList)
+    ? r.searchHashtag.itemList
+    : Array.isArray(r.searchHashtag?.challenge_aweme_list)
+      ? r.searchHashtag.challenge_aweme_list
+      : Array.isArray(r.searchHashtag?.search_item_list)
+        ? r.searchHashtag.search_item_list
+        : [];
+  return [
+    ...fromProfile,
+    ...fromKeyword,
+    ...fromHashtag,
+    ...(r.video ? [r.video] : []),
+    ...(r.post && r.post !== r.video ? [r.post] : []),
+  ];
+}
+
+function extractRedditPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.userPosts?.posts) ? r.userPosts.posts : []),
+    ...(Array.isArray(r.subredditPosts?.posts) ? r.subredditPosts.posts : []),
+    ...(Array.isArray(r.subredditSearch?.posts) ? r.subredditSearch.posts : []),
+    ...(Array.isArray(r.search?.posts) ? r.search.posts : []),
+    ...(r.post ? [r.post] : []),
+  ];
+}
+
+function normalizeXLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  const searchTweets = r.searchTweets || {};
+  const tweets = [
+    ...(Array.isArray(r.userTweets) ? r.userTweets : []),
+    ...(Array.isArray(searchTweets?.tweets) ? searchTweets.tweets : []),
+    ...(Array.isArray(searchTweets?.data) ? searchTweets.data : []),
+    ...(r.tweetLookup ? [r.tweetLookup] : []),
+  ];
+  const users = [
+    ...(r.userLookup ? [r.userLookup] : []),
+    ...(Array.isArray(searchTweets?.users) ? searchTweets.users : []),
+    ...(Array.isArray(searchTweets?.includes?.users) ? searchTweets.includes.users : []),
+  ];
+  return {
+    tweets,
+    users,
+    mode: result.mode,
+    input: result.input,
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? searchTweets?.credits_remaining ?? null,
+  };
+}
+
+function normalizeLinkedInLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.mode,
+    profile: r.profile || null,
+    company: r.company || null,
+    posts: extractLinkedInPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeInstagramLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.mode,
+    profile: r.profile || null,
+    posts: extractInstagramPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeTikTokLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.inputType || result.mode,
+    profile: r.profile || null,
+    itemList: extractTikTokVideosFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeRedditLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.inputType || result.mode,
+    profile: r.profile || r.userProfile || null,
+    subredditDetails: r.subredditDetails || null,
+    posts: extractRedditPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+async function lookupYouTubeInputForWatchlist(target, limit) {
+  const query = cleanWatchlistTarget(target);
+  if (!query) throw new Error('Please enter a YouTube channel, video URL, video ID, or search term.');
+
+  const videoId = extractYouTubeVideoId(query);
+  if (videoId) {
+    const video = await fetchVideoDetails(videoId);
+    return { mode: 'video', videos: [video], video, errors: [] };
+  }
+
+  const looksLikeChannel = /^@/.test(query) || /youtube\.com\/(channel|c|user|@)/i.test(query) || /^UC[a-zA-Z0-9_-]{22}$/.test(query);
+  if (looksLikeChannel) {
+    const channelId = await resolveChannelId(query);
+    const [channel, videos] = await Promise.all([
+      fetchChannelDetails(channelId),
+      fetchChannelVideos(channelId, limit),
+    ]);
+    return { mode: 'channel', channel, videos, errors: [] };
+  }
+
+  const videos = await searchYouTube(query, limit);
+  return { mode: 'keyword', videos, errors: [] };
+}
+
 /**
- * Core dispatcher — given a watchlist item, call the right API and return raw data.
- * Post-processes results to trim to the configured max_results.
+ * Core dispatcher — Auto Scraper uses one simple search box. For every platform,
+ * route that target through the same platform lookup helpers used by the normal
+ * social search pages, then normalize the result into the shapes the watchlist
+ * renderers expect.
  */
 async function executeWatchlistItem(item) {
   const raw = await _executeWatchlistScrape(item);
@@ -4007,37 +4173,59 @@ async function executeWatchlistItem(item) {
 
 async function _executeWatchlistScrape(item) {
   const { platform, scrape_type, target, config = {} } = item;
+  const limit = Math.min(100, Math.max(1, Number(config.max_results) || 10));
+  const query = cleanWatchlistTarget(target);
 
+  if (!query) throw new Error('Auto Scraper target is required.');
+
+  // New/default Auto Scraper behavior: every card is a smart search card.
+  // This fixes LinkedIn, Instagram, Reddit, X, YouTube, and TikTok using one flow.
+  if (!scrape_type || scrape_type === 'search') {
+    switch (platform) {
+      case 'x':
+        return normalizeXLookupForWatchlist(await lookupXInput(query, limit));
+      case 'youtube':
+        return lookupYouTubeInputForWatchlist(query, limit);
+      case 'reddit':
+        return normalizeRedditLookupForWatchlist(await lookupRedditInput(query, limit));
+      case 'linkedin':
+        return normalizeLinkedInLookupForWatchlist(await lookupLinkedInInput(query, limit));
+      case 'instagram':
+        return normalizeInstagramLookupForWatchlist(await lookupInstagramInput(query, limit));
+      case 'tiktok':
+        return normalizeTikTokLookupForWatchlist(await lookupTikTokInput(query, limit));
+      default:
+        throw new Error(`Unknown platform: ${platform}`);
+    }
+  }
+
+  // Backward-compatible support for older watchlist rows that were created
+  // before the single-search Auto Scraper UI.
   switch (platform) {
-    /* ── X / Twitter ─────────────────────────────────────── */
     case 'x': {
       const username = target.replace(/^@/, '').trim();
       const user = await getUserIdByUsername(username);
       switch (scrape_type) {
-        case 'user_posts':
-          {
-            const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
-            return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
-          }
+        case 'user_posts': {
+          const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
+          return Array.isArray(postsResult) ? { tweets: postsResult, users: [user] } : { ...postsResult, users: postsResult?.users || [user] };
+        }
         case 'user_mentions':
           return fetchUserMentions(user.id, config.max_results || 10);
         case 'followers':
           return fetchFollowers(user.id, config.max_results || 20);
         case 'following':
           return fetchFollowing(user.id, config.max_results || 20);
-        case 'search':
-          return searchRecentTweets(target, config.max_results || 10);
         default:
           throw new Error(`Unknown X scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── YouTube ─────────────────────────────────────────── */
     case 'youtube': {
       switch (scrape_type) {
         case 'channel_videos': {
           const channelId = await resolveChannelId(target);
-          return fetchChannelVideos(channelId, config.max_results || 10);
+          return { videos: await fetchChannelVideos(channelId, config.max_results || 10) };
         }
         case 'channel_details': {
           const channelId = await resolveChannelId(target);
@@ -4048,47 +4236,38 @@ async function _executeWatchlistScrape(item) {
           if (!vid) throw new Error('Invalid YouTube video URL or ID');
           return fetchVideoDetails(vid);
         }
-        case 'search':
-          return searchYouTube(target, config.max_results || 10);
         default:
           throw new Error(`Unknown YouTube scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── Reddit ──────────────────────────────────────────── */
     case 'reddit': {
-      const limit = config.max_results || 25;
+      const oldLimit = config.max_results || 25;
       switch (scrape_type) {
         case 'subreddit_posts': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, limit);
+          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, oldLimit);
         }
         case 'subreddit_details': {
           const sub = target.replace(/^r\//, '').trim();
           return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub, trim: true });
         }
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── LinkedIn ────────────────────────────────────────── */
     case 'linkedin': {
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/linkedin/profile', { url: target });
         case 'company':
-          return scrapeCreators('/v1/linkedin/company', { url: target });
         case 'post':
-          return scrapeCreators('/v1/linkedin/post', { url: target });
+          return normalizeLinkedInLookupForWatchlist(await lookupLinkedInInput(target, limit));
         default:
           throw new Error(`Unknown LinkedIn scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── Instagram ───────────────────────────────────────── */
     case 'instagram': {
       const handle = target.replace(/^@/, '').trim();
       switch (scrape_type) {
@@ -4103,17 +4282,14 @@ async function _executeWatchlistScrape(item) {
       }
     }
 
-    /* ── TikTok ──────────────────────────────────────────── */
     case 'tiktok': {
       const handle = target.replace(/^@/, '').trim();
-      const limit = config.max_results || 20;
+      const oldLimit = config.max_results || 20;
       switch (scrape_type) {
         case 'profile':
           return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'profile_videos':
-          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, limit);
+          return normalizeTikTokLookupForWatchlist(await lookupTikTokInput(`@${handle}`, oldLimit));
         default:
           throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
       }

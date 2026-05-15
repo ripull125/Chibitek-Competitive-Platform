@@ -707,12 +707,381 @@ function isSafeUrl(url) {
   }
 }
 
+
+function cleanUrl(value) {
+  if (!value) return null;
+  const url = String(value).trim()
+    .replace(/&amp;/g, "&")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\\//g, "/");
+  return isSafeUrl(url) ? url : null;
+}
+
+function urlLooksLikeVideo(url) {
+  if (!url) return false;
+  const lowered = String(url).toLowerCase();
+  return (
+    /\.(mp4|webm|mov|m4v|m3u8)(\?|#|$)/i.test(lowered) ||
+    lowered.includes("/video/") ||
+    lowered.includes("video_") ||
+    lowered.includes("mime=video") ||
+    lowered.includes("type=video") ||
+    lowered.includes("format=mp4")
+  );
+}
+
+function mediaObjectLooksLikeVideo(value) {
+  if (!value || typeof value !== "object") return false;
+  const type = String(value.type || value.media_type || value.mime_type || value.mimeType || value.kind || "").toLowerCase();
+  return type.includes("video") || Boolean(value.duration || value.duration_ms || value.videoDuration);
+}
+
+
+/* ── Image helpers: use larger thumbnails and render them big enough to see ── */
+function normalizeImageUrl(value) {
+  if (!value) return null;
+  if (typeof value === "object") {
+    return normalizeImageUrl(
+      value.url || value.src || value.source?.url || value.display_url || value.thumbnail_url || value.image_url
+    );
+  }
+  let url = cleanUrl(value);
+  if (!url || ["self", "default", "nsfw", "spoiler", "image"].includes(url.toLowerCase())) return null;
+
+  // Do not accidentally use a playable video URL as an image poster.
+  if (urlLooksLikeVideo(url)) return null;
+
+  // X/Twitter profile images often come back as tiny *_normal files.
+  url = url.replace(/_normal(\.(jpg|jpeg|png|webp))/i, "_400x400$1");
+
+  return url;
+}
+
+function pickFirstImage(...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "string") {
+      const url = normalizeImageUrl(candidate);
+      if (url) return url;
+      continue;
+    }
+    if (Array.isArray(candidate)) {
+      const sorted = [...candidate].sort((a, b) => {
+        const aw = Number(a?.width || a?.w || 0) * Number(a?.height || a?.h || 0);
+        const bw = Number(b?.width || b?.w || 0) * Number(b?.height || b?.h || 0);
+        return bw - aw;
+      });
+      const found = pickFirstImage(...sorted);
+      if (found) return found;
+      continue;
+    }
+    if (typeof candidate === "object") {
+      const found = pickFirstImage(
+        candidate.source,
+        candidate.display_url,
+        candidate.image_url,
+        candidate.thumbnail_url,
+        candidate.thumbnailUrl,
+        candidate.url,
+        candidate.src,
+        candidate.uri,
+        candidate.media_url_https,
+        candidate.mediaUrl,
+        candidate.full,
+        candidate.large,
+        candidate.high,
+        candidate.medium,
+        candidate.default,
+        candidate.resolutions,
+        candidate.images
+      );
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function getBestYouTubeThumbnail(thumbnails) {
+  if (!thumbnails) return null;
+  return pickFirstImage(
+    thumbnails.maxres,
+    thumbnails.standard,
+    thumbnails.high,
+    thumbnails.medium,
+    thumbnails.default,
+    thumbnails
+  );
+}
+
+function getYouTubeVideoThumbnail(video = {}, videoId = null) {
+  return (
+    getBestYouTubeThumbnail(video.thumbnails || video.snippet?.thumbnails) ||
+    pickFirstImage(
+      video.thumbnail,
+      video.thumbnailUrl,
+      video.thumbnail_url,
+      video.image,
+      video.imageUrl,
+      video.image_url
+    ) ||
+    (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null)
+  );
+}
+
+function getRedditPostImage(post = {}) {
+  const previewImage = post.preview?.images?.[0];
+  const mediaMetadataImage = post.media_metadata
+    ? Object.values(post.media_metadata).find((item) => item?.s || item?.p)
+    : null;
+  const directImage = /\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(String(post.url || "")) ? post.url : null;
+  return pickFirstImage(
+    previewImage?.source,
+    previewImage?.resolutions,
+    mediaMetadataImage?.s,
+    mediaMetadataImage?.p,
+    post.url_overridden_by_dest,
+    directImage,
+    post.thumbnail
+  );
+}
+
+function getLinkedInPostImage(post = {}) {
+  return pickFirstImage(
+    post.image,
+    post.imageUrl,
+    post.image_url,
+    post.thumbnailUrl,
+    post.thumbnail_url,
+    post.thumbnail,
+    post.coverImage,
+    post.cover_image,
+    post.media,
+    post.images,
+    post.attachments,
+    post.sharedContent?.image,
+    post.article?.image
+  );
+}
+
+function getInstagramPostImage(post = {}) {
+  return pickFirstImage(
+    post.display_url,
+    post.displayUrl,
+    post.image_url,
+    post.imageUrl,
+    post.thumbnail_url,
+    post.thumbnailUrl,
+    post.cover,
+    post.cover_url,
+    post.video_url_thumbnail,
+    post.edge_sidecar_to_children?.edges?.[0]?.node?.display_url,
+    post.images
+  );
+}
+
+function getTikTokCover(video = {}) {
+  return pickFirstImage(
+    video.originCover,
+    video.cover,
+    video.dynamicCover,
+    video.video?.originCover,
+    video.video?.cover,
+    video.video?.dynamicCover,
+    video.imagePost?.images
+  );
+}
+
+function normalizeVideoUrl(value, { allowAnySafeUrl = false } = {}) {
+  if (!value) return null;
+  if (Array.isArray(value)) return pickFirstVideo(...value);
+  if (typeof value === "object") {
+    const allowObjectUrl = allowAnySafeUrl || mediaObjectLooksLikeVideo(value);
+    return pickFirstVideoCandidate(allowObjectUrl,
+      value.url,
+      value.src,
+      value.playUrl,
+      value.playURL,
+      value.playAddr,
+      value.play_addr,
+      value.downloadAddr,
+      value.download_url,
+      value.videoUrl,
+      value.video_url,
+      value.fallback_url,
+      value.secure_url,
+      value.source?.url,
+      value.variants,
+      value.url_list,
+      value.urls
+    );
+  }
+  const url = cleanUrl(value);
+  if (!url) return null;
+  return (allowAnySafeUrl || urlLooksLikeVideo(url)) ? url : null;
+}
+
+function pickFirstVideoCandidate(allowAnySafeUrl, ...candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "string") {
+      const url = normalizeVideoUrl(candidate, { allowAnySafeUrl });
+      if (url) return url;
+      continue;
+    }
+    if (Array.isArray(candidate)) {
+      const found = pickFirstVideoCandidate(allowAnySafeUrl, ...candidate);
+      if (found) return found;
+      continue;
+    }
+    if (typeof candidate === "object") {
+      const found = normalizeVideoUrl(candidate, { allowAnySafeUrl: allowAnySafeUrl || mediaObjectLooksLikeVideo(candidate) });
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function pickFirstVideo(...candidates) {
+  return pickFirstVideoCandidate(false, ...candidates);
+}
+
+function pickFirstExplicitVideo(...candidates) {
+  return pickFirstVideoCandidate(true, ...candidates);
+}
+
+function pickVideoFromTypedCollection(collection) {
+  const items = Array.isArray(collection) ? collection : collection ? [collection] : [];
+  for (const item of items) {
+    if (!mediaObjectLooksLikeVideo(item)) continue;
+    const found = pickFirstExplicitVideo(item.videoUrl, item.video_url, item.url, item.src, item.mediaUrl, item.media_url, item);
+    if (found) return found;
+  }
+  return null;
+}
+
+function getRedditVideoUrl(post = {}) {
+  return pickFirstVideo(
+    post.secure_media?.reddit_video?.fallback_url,
+    post.media?.reddit_video?.fallback_url,
+    post.preview?.reddit_video_preview?.fallback_url,
+    post.video_url,
+    post.videoUrl,
+    post.media_url,
+    post.url
+  );
+}
+
+function getLinkedInVideoUrl(post = {}) {
+  // LinkedIn often uses generic media/mediaUrl fields for photos. Only treat
+  // explicit video fields or typed video attachments as playable videos.
+  return (
+    pickFirstExplicitVideo(
+      post.videoUrl,
+      post.video_url,
+      post.video?.url,
+      post.video?.src,
+      post.video,
+      post.sharedContent?.video?.url,
+      post.sharedContent?.video?.src,
+      post.sharedContent?.video
+    ) ||
+    pickVideoFromTypedCollection(post.media) ||
+    pickVideoFromTypedCollection(post.attachments)
+  );
+}
+
+function getInstagramVideoUrl(post = {}) {
+  return pickFirstExplicitVideo(
+    post.video_url,
+    post.videoUrl,
+    post.video_versions,
+    post.videoVersions,
+    post.video?.url,
+    post.video
+  );
+}
+
+function getTikTokVideoUrl(video = {}) {
+  return pickFirstExplicitVideo(
+    video.playAddr,
+    video.playUrl,
+    video.downloadAddr,
+    video.video?.playAddr,
+    video.video?.play_url,
+    video.video?.downloadAddr,
+    video.video?.play_addr?.url_list,
+    video.video?.download_addr?.url_list,
+    video.video?.bitrateInfo?.[0]?.PlayAddr?.UrlList,
+    video.video?.bitrateInfo?.[0]?.playAddr?.urlList
+  );
+}
+
+const MEDIA_PREVIEW_WIDTH = 360;
+const MEDIA_PREVIEW_HEIGHT = 203;
+
+function MediaPreview({ src, alt = "", radius = 12, videoSrc = null, youtubeId = null, title = "Video preview" }) {
+  const imageUrl = normalizeImageUrl(src);
+  const safeVideoUrl = normalizeVideoUrl(videoSrc, { allowAnySafeUrl: true });
+  const hasPlayable = Boolean(youtubeId || safeVideoUrl);
+  if (!imageUrl && !hasPlayable) return null;
+
+  const frameStyle = {
+    width: "min(100%, 360px)",
+    aspectRatio: "16 / 9",
+    maxHeight: MEDIA_PREVIEW_HEIGHT,
+    borderRadius: radius,
+    overflow: "hidden",
+    flexShrink: 0,
+    background: "var(--mantine-color-gray-1)",
+    border: "1px solid var(--mantine-color-gray-3)",
+  };
+
+  const mediaStyle = {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    display: "block",
+    background: "var(--mantine-color-gray-0)",
+  };
+
+  return (
+    <div style={frameStyle}>
+      {youtubeId ? (
+        <iframe
+          title={title || alt || "YouTube video"}
+          src={`https://www.youtube.com/embed/${youtubeId}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          style={{ width: "100%", height: "100%", border: 0, display: "block", background: "#000" }}
+        />
+      ) : safeVideoUrl ? (
+        <video
+          controls
+          playsInline
+          preload="metadata"
+          poster={imageUrl || undefined}
+          src={safeVideoUrl}
+          style={{ ...mediaStyle, background: "#000" }}
+        />
+      ) : (
+        <img
+          src={imageUrl}
+          alt={alt}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          style={mediaStyle}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ── Make a card clickable to open source ───────────────────────────── */
 function cardLinkProps(url) {
   if (!url || !isSafeUrl(url)) return {};
   return {
     onClick: (e) => {
-      if (e.target.closest('button, a, [role="button"]')) return;
+      if (e.target.closest('button, a, [role="button"], video, iframe')) return;
       window.open(url, '_blank', 'noopener');
     },
     style: { cursor: 'pointer' },
@@ -1021,12 +1390,12 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
 
   return (
     <Stack gap="xs">
-      {tweets.map((t, i) => {
-        const m = t.public_metrics || {};
-        const author = findAuthor(t.author_id);
-        const tweetUrl = t.id ? `https://x.com/i/web/status/${t.id}` : null;
+      {tweets.map((tweet, i) => {
+        const m = tweet.public_metrics || {};
+        const author = findAuthor(tweet.author_id);
+        const tweetUrl = tweet.id ? `https://x.com/i/web/status/${tweet.id}` : null;
         return (
-          <Card key={t.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(tweetUrl)}>
+          <Card key={tweet.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(tweetUrl)}>
             <Stack gap={4}>
               {author && (
                 <Group gap={6}>
@@ -1036,7 +1405,7 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
                   <Text size="xs" fw={600}>@{author.username}</Text>
                 </Group>
               )}
-              <ExpandableText text={t.text} size="sm" initialLines={3} />
+              <ExpandableText text={tweet.text} size="sm" initialLines={3} />
               <Group gap={6} wrap="wrap">
                 <Badge variant="light" size="xs">❤️ {fmtNum(m.like_count)}</Badge>
                 <Badge variant="light" size="xs">🔁 {fmtNum(m.retweet_count)}</Badge>
@@ -1045,13 +1414,13 @@ function XRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT
               </Group>
               <Group justify="space-between" align="center">
                 <Group gap="xs">
-                  {t.created_at && <Text size="xs" c="dimmed">{fmtDate(t.created_at)}</Text>}
-                  {t.lang && t.lang !== "und" && <Badge size="xs" variant="light" color="gray">{t.lang}</Badge>}
-                  <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${t.id}`} target="_blank" rel="noopener">
+                  {tweet.created_at && <Text size="xs" c="dimmed">{fmtDate(tweet.created_at)}</Text>}
+                  {tweet.lang && tweet.lang !== "und" && <Badge size="xs" variant="light" color="gray">{tweet.lang}</Badge>}
+                  <Text size="xs" c="blue" component="a" href={`https://x.com/i/web/status/${tweet.id}`} target="_blank" rel="noopener">
                     {t("watchlist.viewArrow")}
                   </Text>
                 </Group>
-                <SaveBtn platform="x" postId={t.id} authorId={t.author_id} content={t.text} publishedAt={t.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} savedPostIds={savedPostIds} onSaved={onSaved} />
+                <SaveBtn platform="x" postId={tweet.id} authorId={tweet.author_id} content={tweet.text} publishedAt={tweet.created_at} likes={m.like_count} shares={m.retweet_count} comments={m.reply_count} extra={{ author_name: author?.name, author_handle: author?.username, username: author?.username }} savedPostIds={savedPostIds} onSaved={onSaved} />
               </Group>
             </Stack>
           </Card>
@@ -1073,8 +1442,8 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = D
       <Card withBorder radius="md" p="md">
         <Stack gap="sm">
           <Group gap="sm">
-            {ch.thumbnails?.medium?.url && (
-              <img src={ch.thumbnails.medium.url} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover" }} />
+            {getBestYouTubeThumbnail(ch.thumbnails) && (
+              <img src={getBestYouTubeThumbnail(ch.thumbnails)} alt="" style={{ width: 76, height: 76, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             )}
             <div>
               <Text fw={700} size="xl">{ch.title}</Text>
@@ -1102,26 +1471,31 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = D
   if (scrapeType === "video_details") {
     const v = data;
     const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.url);
+    const videoUrl = vidId ? `https://www.youtube.com/watch?v=${vidId}` : v.url;
+    const thumb = getYouTubeVideoThumbnail(v, vidId);
     return (
-      <Card withBorder radius="md" p="md">
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-          <Stack gap={6}>
-            <YouTubeEmbed videoId={vidId} title={v.title} />
-            {v.duration && <Badge size="sm" color="dark" w="fit-content">{parseDuration(v.duration)}</Badge>}
-          </Stack>
-          <Stack gap="sm">
-            <Text fw={700} size="xl" lineClamp={3}>{v.title}</Text>
-            <Text size="sm" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
-            <Group gap={6}>
-              {v.likes != null && <Badge variant="light" size="sm">❤️ {fmtNum(v.likes)}</Badge>}
-              {v.comments != null && <Badge variant="light" size="sm">💬 {fmtNum(v.comments)}</Badge>}
+      <Card withBorder radius="sm" p="xs" {...cardLinkProps(videoUrl)}>
+        <Group gap="sm" wrap="nowrap" align="start">
+          <MediaPreview src={thumb} youtubeId={vidId} title={v.title || "YouTube video"} alt={v.title || "YouTube video preview"} />
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={700} size="sm" lineClamp={2}>{v.title}</Text>
+            <Text size="xs" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
+            <Group gap={6} wrap="wrap">
+              {v.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(v.likes)}</Badge>}
+              {v.comments != null && <Badge variant="light" size="xs">💬 {fmtNum(v.comments)}</Badge>}
+              {v.duration && <Badge size="xs" color="dark">{parseDuration(v.duration)}</Badge>}
+              {videoUrl && isSafeUrl(videoUrl) && (
+                <Text size="xs" c="blue" component="a" href={videoUrl} target="_blank" rel="noopener">
+                  {t("watchlist.viewArrow")}
+                </Text>
+              )}
             </Group>
-            {v.description && <ExpandableText text={v.description} size="sm" dimmed initialLines={6} />}
+            {v.description && <ExpandableText text={v.description} size="xs" dimmed initialLines={2} />}
             <Group justify="flex-end">
-              <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId }} savedPostIds={savedPostIds} onSaved={onSaved} />
+              <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, thumbnail: thumb, url: videoUrl }} savedPostIds={savedPostIds} onSaved={onSaved} />
             </Group>
           </Stack>
-        </SimpleGrid>
+        </Group>
       </Card>
     );
   }
@@ -1151,29 +1525,34 @@ function YouTubeRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = D
   if (!videos.length) return <Text size="sm" c="dimmed">{t("watchlist.noVideosReturned")}</Text>;
 
   return (
-    <Stack gap="md">
+    <Stack gap="xs">
       {videos.map((v, i) => {
         const vidId = getYouTubeVideoId(v.id) || getYouTubeVideoId(v.url);
+        const videoUrl = vidId ? `https://www.youtube.com/watch?v=${vidId}` : v.url;
+        const thumb = getYouTubeVideoThumbnail(v, vidId);
         return (
-          <Card key={vidId || v.id || i} withBorder radius="md" p="md">
-            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-              <Stack gap={6}>
-                <YouTubeEmbed videoId={vidId} title={v.title} />
-                {v.duration && <Badge size="sm" color="dark" w="fit-content">{parseDuration(v.duration)}</Badge>}
-              </Stack>
-              <Stack gap="sm" style={{ minWidth: 0 }}>
-                <Text size="xl" fw={700} lineClamp={3}>{v.title}</Text>
-                <Text size="sm" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
-                <Group gap={6}>
-                  {v.likes != null && <Badge variant="light" size="sm">❤️ {fmtNum(v.likes)}</Badge>}
-                  {v.comments != null && <Badge variant="light" size="sm">💬 {fmtNum(v.comments)}</Badge>}
+          <Card key={vidId || v.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(videoUrl)}>
+            <Group gap="sm" wrap="nowrap" align="start">
+              <MediaPreview src={thumb} youtubeId={vidId} title={v.title || "YouTube video"} alt={v.title || "YouTube video preview"} />
+              <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                <Text size="sm" fw={700} lineClamp={2}>{v.title}</Text>
+                <Text size="xs" c="dimmed">{v.channelTitle} · {fmtDate(v.publishedAt)}</Text>
+                <Group gap={6} wrap="wrap">
+                  {v.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(v.likes)}</Badge>}
+                  {v.comments != null && <Badge variant="light" size="xs">💬 {fmtNum(v.comments)}</Badge>}
+                  {v.duration && <Badge size="xs" color="dark">{parseDuration(v.duration)}</Badge>}
+                  {videoUrl && isSafeUrl(videoUrl) && (
+                    <Text size="xs" c="blue" component="a" href={videoUrl} target="_blank" rel="noopener">
+                      {t("watchlist.viewArrow")}
+                    </Text>
+                  )}
                 </Group>
-                {v.description && <ExpandableText text={v.description} size="sm" dimmed initialLines={5} />}
+                {v.description && <ExpandableText text={v.description} size="xs" dimmed initialLines={2} />}
                 <Group justify="flex-end">
-                  <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId }} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <SaveBtn platform="youtube" postId={vidId} authorId={v.channelId || v.channelTitle} content={v.title} publishedAt={v.publishedAt} likes={v.likes} comments={v.comments} extra={{ title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, thumbnail: thumb, url: videoUrl }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
               </Stack>
-            </SimpleGrid>
+            </Group>
           </Card>
         );
       })}
@@ -1193,8 +1572,8 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
       <Card withBorder radius="md" p="md">
         <Stack gap="sm">
           <Group gap="sm">
-            {(sub.icon_img || sub.community_icon) && (
-              <img src={(sub.icon_img || sub.community_icon).split("?")[0]} alt="" style={{ width: 48, height: 48, borderRadius: "50%" }} />
+            {normalizeImageUrl(sub.icon_img || sub.community_icon) && (
+              <img src={normalizeImageUrl(sub.icon_img || sub.community_icon)} alt="" style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             )}
             <div>
               <Text fw={700} size="lg">r/{sub.display_name || sub.name}</Text>
@@ -1231,14 +1610,13 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
   return (
     <Stack gap="xs">
       {normalizedPosts.map((post, i) => {
-        const thumb = post.thumbnail && !["self", "default", "nsfw", "spoiler", "image", ""].includes(post.thumbnail) ? post.thumbnail : null;
+        const thumb = getRedditPostImage(post);
+        const redditVideoUrl = getRedditVideoUrl(post);
         const postUrl = post.permalink ? `https://reddit.com${post.permalink}` : (post.subreddit && post.id ? `https://reddit.com/r/${post.subreddit}/comments/${post.id}` : null);
         return (
           <Card key={post.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(postUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
-              {thumb && (
-                <img src={thumb} alt="" style={{ width: 64, height: 64, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-              )}
+              <MediaPreview src={thumb} videoSrc={redditVideoUrl} alt={post.title || "Reddit post preview"} title={post.title || "Reddit video"} />
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={600} lineClamp={2}>{post.title || <i>{t("watchlist.noTitle")}</i>}</Text>
                 {post.selftext && <ExpandableText text={post.selftext} size="xs" dimmed initialLines={2} />}
@@ -1276,122 +1654,157 @@ function RedditRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
 function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DEFAULT_SORT_MODE }) {
   const { t } = useTranslation();
   const d = data?.data || data;
+  const profile = d?.profile || (scrapeType === "profile" ? d : null);
+  const company = d?.company || (scrapeType === "company" ? d : null);
+  const rawPosts = [
+    ...(Array.isArray(d?.posts) ? d.posts : []),
+    ...(Array.isArray(d?.profilePosts) ? d.profilePosts : []),
+    ...(Array.isArray(d?.companyPosts) ? d.companyPosts : []),
+    ...(Array.isArray(d?.searchPosts) ? d.searchPosts : []),
+    ...(d?.post ? [d.post] : []),
+  ];
+  const posts = sortPostsForDisplay(rawPosts, sortMode);
 
-  if (scrapeType === "profile") {
-    return (
-      <Card withBorder radius="md" p="md">
-        <Stack gap="sm">
-          <Group gap="sm">
-            {d.image && <img src={d.image} alt="" style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover" }} />}
-            <div style={{ flex: 1 }}>
-              <Text fw={700} size="lg">{d.name}</Text>
-              {d.headline && <Text size="sm" c="dimmed">{d.headline}</Text>}
-              {d.location && <Text size="xs" c="dimmed">{d.location}</Text>}
-            </div>
-          </Group>
-          <Group gap="xl" justify="center">
-            {d.followers != null && (
-              <Stack align="center" gap={0}>
-                <Text fw={700} size="md">{fmtNum(d.followers)}</Text>
-                <Text size="xs" c="dimmed">{t("watchlist.followers")}</Text>
-              </Stack>
-            )}
-            {d.connections != null && (
-              <Stack align="center" gap={0}>
-                <Text fw={700} size="md">{fmtNum(d.connections)}</Text>
-                <Text size="xs" c="dimmed">{t("watchlist.connections")}</Text>
-              </Stack>
-            )}
-          </Group>
-          {d.about && <ExpandableText text={d.about} size="xs" dimmed initialLines={4} />}
-
-          {/* Experience */}
-          {d.experience?.length > 0 && (
-            <>
-              <Divider label={t("watchlist.experience")} labelPosition="center" />
-              {d.experience.slice(0, 3).map((exp, i) => (
-                <Group key={i} gap="sm" wrap="nowrap">
-                  {exp.logo && <img src={exp.logo} alt="" style={{ width: 28, height: 28, borderRadius: 4, objectFit: "cover" }} />}
-                  <div>
-                    <Text size="sm" fw={600}>{exp.title}</Text>
-                    <Text size="xs" c="dimmed">{exp.company} · {exp.duration || exp.dates}</Text>
-                  </div>
-                </Group>
-              ))}
-            </>
-          )}
-
-          {/* Recent activity */}
-          {(d.activity?.length > 0 || d.recentPosts?.length > 0) && (
-            <>
-              <Divider label={t("watchlist.recentActivity")} labelPosition="center" />
-              {(d.activity || d.recentPosts || []).slice(0, 3).map((post, i) => (
-                <Card key={i} withBorder radius="sm" p="xs">
-                  <ExpandableText text={post.text || post.title || post.content} size="xs" initialLines={2} />
-                  {(post.likes != null || post.comments != null) && (
-                    <Group gap={6} mt={4}>
-                      {post.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.likes)}</Badge>}
-                      {post.comments != null && <Badge variant="light" size="xs">💬 {fmtNum(post.comments)}</Badge>}
-                    </Group>
-                  )}
-                </Card>
-              ))}
-            </>
-          )}
-        </Stack>
-      </Card>
-    );
-  }
-
-  if (scrapeType === "company") {
-    return (
-      <Card withBorder radius="md" p="md">
-        <Stack gap="sm">
-          <Group gap="sm">
-            {d.logo && <img src={d.logo} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "contain" }} />}
-            <div>
-              <Text fw={700} size="lg">{d.name}</Text>
-              {d.industry && <Text size="xs" c="dimmed">{d.industry}</Text>}
-            </div>
-          </Group>
-          <Group gap="xl" justify="center">
-            {d.followers != null && (
-              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.followers)}</Text><Text size="xs" c="dimmed">{t("watchlist.followers")}</Text></Stack>
-            )}
-            {(d.employees != null || d.employeeCount != null) && (
-              <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(d.employees || d.employeeCount)}</Text><Text size="xs" c="dimmed">{t("watchlist.employees")}</Text></Stack>
-            )}
-          </Group>
-          {d.description && <ExpandableText text={d.description} size="xs" dimmed initialLines={4} />}
-          {d.website && isSafeUrl(d.website) && <Text size="xs" c="blue" component="a" href={d.website} target="_blank" rel="noopener">{d.website}</Text>}
-        </Stack>
-      </Card>
-    );
-  }
-
-  // Post
-  return (
+  const renderProfile = (p) => p ? (
     <Card withBorder radius="md" p="md">
       <Stack gap="sm">
-        {d.author && (
-          <Group gap="sm">
-            {d.authorImage && <img src={d.authorImage} alt="" style={{ width: 32, height: 32, borderRadius: "50%" }} />}
-            <div>
-              <Text size="sm" fw={600}>{d.author}</Text>
-              {d.authorHeadline && <Text size="xs" c="dimmed">{d.authorHeadline}</Text>}
-            </div>
-          </Group>
-        )}
-        <ExpandableText text={d.text || d.content || d.title} size="sm" initialLines={6} />
-        <Group gap={6}>
-          {d.likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(d.likes)}</Badge>}
-          {d.comments != null && <Badge variant="light" size="xs">💬 {fmtNum(d.comments)}</Badge>}
-          {d.shares != null && <Badge variant="light" size="xs">🔗 {fmtNum(d.shares)}</Badge>}
+        <Group gap="sm" align="start">
+          {normalizeImageUrl(p.image || p.profileImage || p.picture) && (
+            <img src={normalizeImageUrl(p.image || p.profileImage || p.picture)} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={700} size="lg" lineClamp={2}>{p.name || p.fullName || "LinkedIn profile"}</Text>
+            {p.headline && <Text size="sm" c="dimmed" lineClamp={2}>{p.headline}</Text>}
+            {p.location && <Text size="xs" c="dimmed">{p.location}</Text>}
+            {(p.url || p.linkedInUrl || p.linkedinUrl) && isSafeUrl(p.url || p.linkedInUrl || p.linkedinUrl) && (
+              <Text size="xs" c="blue" component="a" href={p.url || p.linkedInUrl || p.linkedinUrl} target="_blank" rel="noopener" lineClamp={1}>
+                View on LinkedIn
+              </Text>
+            )}
+          </div>
         </Group>
-        {d.postedAt && <Text size="xs" c="dimmed">{fmtDate(d.postedAt)}</Text>}
+        <Group gap="xl" justify="center">
+          {p.followers != null && (
+            <Stack align="center" gap={0}>
+              <Text fw={700} size="md">{fmtNum(p.followers)}</Text>
+              <Text size="xs" c="dimmed">{t("watchlist.followers")}</Text>
+            </Stack>
+          )}
+          {p.connections != null && (
+            <Stack align="center" gap={0}>
+              <Text fw={700} size="md">{fmtNum(p.connections)}</Text>
+              <Text size="xs" c="dimmed">{t("watchlist.connections")}</Text>
+            </Stack>
+          )}
+        </Group>
+        {(p.about || p.description) && <ExpandableText text={p.about || p.description} size="xs" dimmed initialLines={4} />}
       </Stack>
     </Card>
-  );
+  ) : null;
+
+  const renderCompany = (c) => c ? (
+    <Card withBorder radius="md" p="md">
+      <Stack gap="sm">
+        <Group gap="sm" align="start">
+          {normalizeImageUrl(c.logo || c.image) && <MediaPreview src={c.logo || c.image} alt={c.name || "LinkedIn company"} radius={8} />}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={700} size="lg" lineClamp={2}>{c.name || "LinkedIn company"}</Text>
+            {c.industry && <Text size="xs" c="dimmed">{c.industry}</Text>}
+            {(c.url || c.linkedInUrl || c.linkedinUrl) && isSafeUrl(c.url || c.linkedInUrl || c.linkedinUrl) && (
+              <Text size="xs" c="blue" component="a" href={c.url || c.linkedInUrl || c.linkedinUrl} target="_blank" rel="noopener" lineClamp={1}>
+                View on LinkedIn
+              </Text>
+            )}
+          </div>
+        </Group>
+        <Group gap="xl" justify="center">
+          {c.followers != null && (
+            <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(c.followers)}</Text><Text size="xs" c="dimmed">{t("watchlist.followers")}</Text></Stack>
+          )}
+          {(c.employees != null || c.employeeCount != null) && (
+            <Stack align="center" gap={0}><Text fw={700} size="md">{fmtNum(c.employees || c.employeeCount)}</Text><Text size="xs" c="dimmed">{t("watchlist.employees")}</Text></Stack>
+          )}
+        </Group>
+        {c.description && <ExpandableText text={c.description} size="xs" dimmed initialLines={4} />}
+        {c.website && isSafeUrl(c.website) && <Text size="xs" c="blue" component="a" href={c.website} target="_blank" rel="noopener">{c.website}</Text>}
+      </Stack>
+    </Card>
+  ) : null;
+
+  const renderPost = (post, i) => {
+    const author = post.author || {};
+    const authorName = typeof author === "string" ? author : author.name || post.authorName || post.author || profile?.name || company?.name || "LinkedIn";
+    const authorUrl = typeof author === "object" ? author.url : post.authorUrl;
+    const url = post.url || post.link || post.linkedinUrl || post.shareUrl || null;
+    const image = getLinkedInPostImage(post);
+    const videoUrl = getLinkedInVideoUrl(post);
+    const id = post.id || post.urn || post.activityId || url || `${authorName}-${i}`;
+    const content = post.text || post.description || post.body || post.content || post.title || post.headline || "LinkedIn post";
+    const likes = post.likeCount ?? post.reactionCount ?? post.numLikes ?? post.likes;
+    const comments = post.commentCount ?? post.numComments ?? post.commentsCount ?? (Array.isArray(post.comments) ? post.comments.length : post.comments);
+    const shares = post.shareCount ?? post.numShares ?? post.reposts ?? post.shares;
+    const publishedAt = post.datePublished || post.publishedAt || post.created_at || post.date || post.postedAt;
+
+    return (
+      <Card key={id || i} withBorder radius="sm" p="xs" {...cardLinkProps(url)}>
+        <Group gap="sm" wrap="nowrap" align="start">
+          <MediaPreview src={image} videoSrc={videoUrl} alt={content || "LinkedIn post preview"} title="LinkedIn video" />
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Group gap={6} wrap="nowrap">
+              <Text size="xs" fw={600} lineClamp={1}>{authorName}</Text>
+              {authorUrl && isSafeUrl(authorUrl) && (
+                <Text size="xs" c="blue" component="a" href={authorUrl} target="_blank" rel="noopener">Profile</Text>
+              )}
+            </Group>
+            <ExpandableText text={content} size="sm" initialLines={4} />
+            <Group gap={6} wrap="wrap">
+              {likes != null && <Badge variant="light" size="xs">❤️ {fmtNum(likes)}</Badge>}
+              {comments != null && <Badge variant="light" size="xs">💬 {fmtNum(comments)}</Badge>}
+              {shares != null && <Badge variant="light" size="xs">🔗 {fmtNum(shares)}</Badge>}
+            </Group>
+            <Group justify="space-between" align="center">
+              <Group gap="xs">
+                {publishedAt && <Text size="xs" c="dimmed">{fmtDate(publishedAt)}</Text>}
+                {url && isSafeUrl(url) && (
+                  <Text size="xs" c="blue" component="a" href={url} target="_blank" rel="noopener">
+                    {t("watchlist.viewArrow")}
+                  </Text>
+                )}
+              </Group>
+              <SaveBtn
+                platform="linkedin"
+                postId={id}
+                authorId={authorUrl || authorName}
+                content={content}
+                publishedAt={publishedAt}
+                likes={likes}
+                comments={comments}
+                shares={shares}
+                extra={{ title: post.title || post.headline, url, author_name: authorName, author_url: authorUrl }}
+                savedPostIds={savedPostIds}
+                onSaved={onSaved}
+              />
+            </Group>
+          </Stack>
+        </Group>
+      </Card>
+    );
+  };
+
+  if (profile || company || posts.length) {
+    return (
+      <Stack gap="xs">
+        {renderProfile(profile)}
+        {renderCompany(company)}
+        {posts.length > 0 ? posts.map(renderPost) : (
+          !profile && !company && <Text size="sm" c="dimmed">No LinkedIn posts returned.</Text>
+        )}
+      </Stack>
+    );
+  }
+
+  // Last-resort single post fallback for older persisted results.
+  return renderPost(d || {}, 0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1406,8 +1819,8 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
       <Card withBorder radius="md" p="md">
         <Stack gap="sm">
           <Group gap="sm">
-            {(p.profile_pic_url || p.profilePicUrl) && (
-              <img src={p.profile_pic_url || p.profilePicUrl} alt="" style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover" }} />
+            {normalizeImageUrl(p.profile_pic_url || p.profilePicUrl) && (
+              <img src={normalizeImageUrl(p.profile_pic_url || p.profilePicUrl)} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             )}
             <div>
               <Text fw={700} size="lg">{p.full_name || p.fullName || p.username}</Text>
@@ -1444,30 +1857,15 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
   return (
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
       {postItems.map((post, i) => {
-        const thumb = post.display_url || post.thumbnail_url || post.image_url || post.thumbnailUrl || post.cover;
+        const thumb = getInstagramPostImage(post);
         const isVideo = post.is_video || post.media_type === "VIDEO";
+        const videoUrl = getInstagramVideoUrl(post);
         const igPostUrl = (post.shortcode || post.code) ? `https://instagram.com/p/${post.shortcode || post.code}` : null;
         return (
           <Card key={post.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(igPostUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
-              {thumb && (
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <img
-                    src={thumb}
-                    alt=""
-                    style={{
-                      width: isReels ? 70 : 80,
-                      height: isReels ? 94 : 80,
-                      borderRadius: 4,
-                      objectFit: "cover",
-                    }}
-                  />
-                  {isVideo && (
-                    <Badge size="xs" style={{ position: "absolute", top: 2, left: 2, background: "rgba(0,0,0,.7)", color: "#fff", fontSize: 9 }}>
-                      ▶
-                    </Badge>
-                  )}
-                </div>
+              {(thumb || videoUrl) && (
+                <MediaPreview src={thumb} videoSrc={videoUrl} alt={post.caption || "Instagram post preview"} title="Instagram video" />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 {(post.caption || post.text) && <ExpandableText text={post.caption || post.text} size="xs" initialLines={3} />}
@@ -1501,8 +1899,8 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
       <Card withBorder radius="md" p="md">
         <Stack gap="sm">
           <Group gap="sm">
-            {(p.avatarLarger || p.avatarMedium || p.avatar) && (
-              <img src={p.avatarLarger || p.avatarMedium || p.avatar} alt="" style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover" }} />
+            {normalizeImageUrl(p.avatarLarger || p.avatarMedium || p.avatar) && (
+              <img src={normalizeImageUrl(p.avatarLarger || p.avatarMedium || p.avatar)} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
             )}
             <div>
               <Text fw={700} size="lg">{p.nickname || p.uniqueId || p.username}</Text>
@@ -1538,15 +1936,14 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
       {videos.map((v, i) => {
         const vid = v.data || v;
-        const cover = vid.cover || vid.originCover || vid.dynamicCover;
+        const cover = getTikTokCover(vid);
+        const playableVideoUrl = getTikTokVideoUrl(vid);
         const ttAuthor = typeof vid.author === 'string' ? vid.author : vid.author?.uniqueId || vid.author?.nickname;
         const videoUrl = vid.id ? `https://tiktok.com/@${ttAuthor || 'user'}/video/${vid.id}` : (vid.share_url || vid.url || null);
         return (
           <Card key={vid.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(videoUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
-              {cover && (
-                <img src={cover} alt="" style={{ width: 64, height: 86, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-              )}
+              <MediaPreview src={cover} videoSrc={playableVideoUrl} alt={vid.desc || vid.description || "TikTok video preview"} title="TikTok video" />
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <ExpandableText text={vid.desc || vid.description || vid.title} size="xs" initialLines={3} />
                 {vid.author && <Text size="xs" c="dimmed">@{typeof vid.author === "string" ? vid.author : vid.author.uniqueId || vid.author.nickname}</Text>}
@@ -1601,6 +1998,29 @@ function GenericRenderer({ data, sortMode = DEFAULT_SORT_MODE }) {
           item.desc?.slice(0, 100) || item.caption?.slice(0, 100) ||
           t("watchlist.itemNumber", { count: idx + 1 });
         const description = item.description || item.selftext || item.body || item.text || item.content || item.about || "";
+        const image = pickFirstImage(
+          item.image,
+          item.imageUrl,
+          item.image_url,
+          item.thumbnail,
+          item.thumbnailUrl,
+          item.thumbnail_url,
+          item.display_url,
+          item.cover,
+          item.images,
+          item.preview?.images?.[0]?.source,
+          item.preview?.images?.[0]?.resolutions
+        );
+        const videoUrl = pickFirstVideo(
+          item.video,
+          item.videoUrl,
+          item.video_url,
+          item.mediaUrl,
+          item.media_url,
+          item.playAddr,
+          item.downloadAddr,
+          item.preview?.reddit_video_preview?.fallback_url
+        );
         const stats = [];
         if (item.likes != null || item.like_count != null) stats.push(`❤️ ${fmtNum(item.likes ?? item.like_count)}`);
         if (item.comments != null || item.comment_count != null || item.num_comments != null) stats.push(`💬 ${fmtNum(item.comments ?? item.comment_count ?? item.num_comments)}`);
@@ -1609,15 +2029,20 @@ function GenericRenderer({ data, sortMode = DEFAULT_SORT_MODE }) {
 
         return (
           <Card key={idx} withBorder radius="sm" p="xs">
-            <Text size="sm" fw={600} lineClamp={2}>{title}</Text>
-            {description && title !== description.slice(0, title.length) && (
-              <ExpandableText text={description} size="xs" dimmed initialLines={2} />
-            )}
-            {stats.length > 0 && (
-              <Group gap={6} mt={4}>
-                {stats.map((s, i) => <Badge key={i} variant="light" size="xs">{s}</Badge>)}
-              </Group>
-            )}
+            <Group gap="sm" wrap="nowrap" align="start">
+              <MediaPreview src={image} videoSrc={videoUrl} alt={title} title={title} />
+              <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                <Text size="sm" fw={600} lineClamp={2}>{title}</Text>
+                {description && title !== description.slice(0, title.length) && (
+                  <ExpandableText text={description} size="xs" dimmed initialLines={2} />
+                )}
+                {stats.length > 0 && (
+                  <Group gap={6} mt={4}>
+                    {stats.map((s, i) => <Badge key={i} variant="light" size="xs">{s}</Badge>)}
+                  </Group>
+                )}
+              </Stack>
+            </Group>
           </Card>
         );
       })}
