@@ -115,15 +115,34 @@ function SortSelect({ value, onChange, compact = true }) {
 }
 
 /* ── Helpers ───────────────────────────────────────────────────────── */
+async function getAuthSession() {
+  const { data } = await supabase.auth.getSession();
+  return data?.session || null;
+}
+
 async function getUserId() {
-  const { data } = await supabase.auth.getUser();
-  return data?.user?.id;
+  const session = await getAuthSession();
+  const authUserId = session?.user?.id || null;
+  if (!session?.access_token) return authUserId;
+
+  try {
+    const res = await fetch(apiUrl("/api/auth/access"), {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const payload = await res.json().catch(() => ({}));
+    return payload?.user_id || authUserId;
+  } catch {
+    return authUserId;
+  }
 }
 
 async function apiFetch(path, opts = {}) {
+  const session = await getAuthSession();
   const userId = await getUserId();
   const url = apiUrl(path);
   const headers = { "Content-Type": "application/json", "x-user-id": userId, ...opts.headers };
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
   const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -219,7 +238,7 @@ export default function Watchlist() {
   /* ── load saved post ids ─────────── */
   const loadSavedIds = async () => {
     try {
-      const { ids } = await apiFetch("/api/posts/saved-ids");
+      const { ids } = await apiFetch("/api/saved-items/saved-ids");
       setSavedPostIds(new Set(ids || []));
     } catch (err) {
       console.error("failed to load saved ids:", err);
@@ -706,16 +725,16 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
   const alreadySaved = savedPostIds?.has(String(postId));
   const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
   // Derive effective status: if already saved in DB, always show saved
-  const effective = alreadySaved ? "saved" : status;
+  const effective = alreadySaved ? "already_saved" : status;
   if (!postId) return null;
   const handleSave = async (e) => {
     e.stopPropagation();
     e.preventDefault();
-    if (effective === "saving" || effective === "saved") return;
+    if (effective === "saving" || effective === "saved" || effective === "already_saved") return;
     setStatus("saving");
     try {
       const uid = await getUserId();
-      await apiFetch("/api/posts", {
+      const result = await apiFetch("/api/saved-items", {
         method: "POST",
         body: JSON.stringify({
           platform_name: PLATFORM_NAMES[platform] || platform,
@@ -732,7 +751,7 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
           ...(extra || {}),
         }),
       });
-      setStatus("saved");
+      setStatus(result?.already_saved ? "already_saved" : "saved");
       if (onSaved) onSaved(String(postId));
     } catch (err) {
       console.error("Save post failed:", err);
@@ -742,13 +761,13 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
   return (
     <Button
       size="compact-xs"
-      variant="light"
+      variant={effective === "already_saved" ? "default" : "light"}
       loading={effective === "saving"}
       color={effective === "saved" ? "green" : effective === "error" ? "red" : "blue"}
-      disabled={effective === "saved"}
+      disabled={effective === "saved" || effective === "already_saved"}
       onClick={handleSave}
     >
-      {effective === "saved" ? t("watchlist.saved") : effective === "error" ? t("watchlist.retry") : t("watchlist.save")}
+      {effective === "saved" ? t("watchlist.saved") : effective === "already_saved" ? "Saved already" : effective === "error" ? t("watchlist.retry") : t("watchlist.save")}
     </Button>
   );
 }

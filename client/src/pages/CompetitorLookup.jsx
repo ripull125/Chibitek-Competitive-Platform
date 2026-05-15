@@ -49,12 +49,6 @@ import { getConnectedPlatforms } from "../utils/connectedPlatforms";
 import { Checkbox, Transition } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
-
-function isDuplicateSaveError(err) {
-  const text = String(err?.message || err || "").toLowerCase();
-  return Boolean(err?.isDuplicate || text.includes("already_saved") || text.includes("already saved") || text.includes("duplicate key"));
-}
-
 function LabelWithInfo({ label, info }) {
   return (
     <Group gap={6} wrap="nowrap">
@@ -317,37 +311,28 @@ function SortSelect({ value, onChange, compact = false }) {
 
 /* ─── LinkedIn Results Display ───────────────────────────────────────────── */
 
+function isAlreadySavedResult(result) {
+  return result?.already_saved === true || result?.code === "already_saved";
+}
+
 function SaveButton({ label, onSave }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'already' | 'error'
-
-  const isFinalState = status === "saved" || status === "already";
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'already_saved' | 'error'
+  const isDone = status === "saved" || status === "already_saved";
 
   return (
     <Button
       size="xs"
-      variant={status === "already" ? "default" : "light"}
+      variant={status === "already_saved" ? "default" : "light"}
       loading={status === "saving"}
       color={status === "saved" ? "green" : status === "error" ? "red" : "blue"}
-      disabled={isFinalState || status === "saving"}
-      styles={status === "already" ? {
-        root: {
-          backgroundColor: "var(--mantine-color-gray-1)",
-          color: "var(--mantine-color-gray-7)",
-          borderColor: "var(--mantine-color-gray-3)",
-          cursor: "not-allowed",
-        },
-      } : undefined}
+      disabled={isDone}
       onClick={async () => {
         setStatus("saving");
         try {
-          await onSave();
-          setStatus("saved");
+          const result = await onSave();
+          setStatus(isAlreadySavedResult(result) ? "already_saved" : "saved");
         } catch (err) {
-          if (isDuplicateSaveError(err)) {
-            setStatus("already");
-            return;
-          }
           console.error("[SaveButton] Save failed:", err);
           setStatus("error");
         }
@@ -355,7 +340,7 @@ function SaveButton({ label, onSave }) {
     >
       {status === "saved"
         ? t("competitorLookup.saved")
-        : status === "already"
+        : status === "already_saved"
           ? "Saved already"
           : status === "error"
             ? t("competitorLookup.retry")
@@ -364,69 +349,57 @@ function SaveButton({ label, onSave }) {
   );
 }
 
-function SaveAllButton({ items, onSave, type = "post" }) {
+function SaveAllButton({ items, onSave, saveFn, type = "post", label }) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'partial' | 'already' | 'error'
-  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0, duplicates: 0, saved: 0 });
+  const [status, setStatus] = useState(null); // null | 'saving' | 'saved' | 'already_saved' | 'mixed' | 'error'
+  const [progress, setProgress] = useState({ done: 0, total: 0, saved: 0, already: 0, failed: 0 });
 
   if (!items?.length || items.length <= 1) return null;
 
-  const isFinalState = status === "saved" || status === "already" || status === "partial";
+  const isDone = ["saved", "already_saved", "mixed"].includes(status);
 
   return (
     <Button
       size="xs"
-      variant={status === "already" ? "default" : "filled"}
+      variant={status === "already_saved" ? "default" : "filled"}
       loading={status === "saving"}
-      color={status === "saved" ? "green" : status === "partial" ? "teal" : status === "error" ? "orange" : "blue"}
-      disabled={isFinalState || status === "saving"}
-      styles={status === "already" ? {
-        root: {
-          backgroundColor: "var(--mantine-color-gray-1)",
-          color: "var(--mantine-color-gray-7)",
-          borderColor: "var(--mantine-color-gray-3)",
-          cursor: "not-allowed",
-        },
-      } : undefined}
+      color={status === "saved" || status === "mixed" ? "green" : status === "error" ? "orange" : "blue"}
+      disabled={isDone}
       onClick={async () => {
         setStatus("saving");
-        setProgress({ done: 0, total: items.length, failed: 0, duplicates: 0, saved: 0 });
-        let failed = 0;
-        let duplicates = 0;
+        setProgress({ done: 0, total: items.length, saved: 0, already: 0, failed: 0 });
         let saved = 0;
-
+        let already = 0;
+        let failed = 0;
         for (let i = 0; i < items.length; i++) {
           try {
-            await onSave(type, items[i]);
-            saved++;
+            const result = saveFn ? await saveFn(items[i]) : await onSave(type, items[i]);
+            if (isAlreadySavedResult(result)) already++;
+            else saved++;
           } catch (err) {
-            if (isDuplicateSaveError(err)) {
-              duplicates++;
-            } else {
-              console.error(`[SaveAll] Item ${i} failed:`, err);
-              failed++;
-            }
+            console.error(`[SaveAll] Item ${i} failed:`, err);
+            failed++;
           }
-          setProgress(p => ({ ...p, done: i + 1, failed, duplicates, saved }));
+          setProgress({ done: i + 1, total: items.length, saved, already, failed });
         }
 
-        if (saved > 0 && duplicates > 0) setStatus("partial");
-        else if (saved > 0) setStatus("saved");
-        else if (duplicates > 0) setStatus("already");
-        else setStatus("error");
+        if (failed === items.length) setStatus("error");
+        else if (already === items.length) setStatus("already_saved");
+        else if (saved > 0 && already > 0) setStatus("mixed");
+        else setStatus("saved");
       }}
     >
       {status === "saving"
         ? t("competitorLookup.savingProgress", { done: progress.done, total: progress.total })
-        : status === "saved"
-          ? t("competitorLookup.savedAll", { failed: progress.failed })
-          : status === "partial"
-            ? `${progress.saved} saved, ${progress.duplicates} already saved`
-            : status === "already"
-              ? "All saved already"
+        : status === "already_saved"
+          ? "All saved already"
+          : status === "mixed"
+            ? `${progress.saved} saved, ${progress.already} already saved`
+            : status === "saved"
+              ? t("competitorLookup.savedAll", { failed: progress.failed })
               : status === "error"
                 ? t("competitorLookup.allFailedRetry")
-                : t("competitorLookup.saveAllCount", { count: items.length })}
+                : label || t("competitorLookup.saveAllCount", { count: items.length })}
     </Button>
   );
 }
@@ -1803,9 +1776,28 @@ export default function CompetitorLookup() {
     let mounted = true;
     const loadUser = async () => {
       if (!supabase) return;
-      const { data, error: userError } = await supabase.auth.getUser();
-      if (userError) return;
-      if (mounted) setCurrentUserId(data?.user?.id || null);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      const authUserId = session?.user?.id || null;
+
+      // The database foreign key points at public.users.id, not necessarily
+      // Supabase Auth's user.id. Ask the backend for the mapped public user id.
+      if (session?.access_token) {
+        try {
+          const response = await fetch(apiUrl("/api/auth/access"), {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (mounted) setCurrentUserId(payload?.user_id || authUserId);
+          return;
+        } catch {
+          // Fall back below.
+        }
+      }
+
+      if (mounted) setCurrentUserId(authUserId);
     };
     loadUser();
     return () => {
@@ -1940,6 +1932,11 @@ export default function CompetitorLookup() {
       try {
         const headers = { "Content-Type": "application/json" };
         if (currentUserId) headers["x-user-id"] = currentUserId;
+        if (supabase?.auth?.getSession) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData?.session?.access_token;
+          if (token) headers.Authorization = `Bearer ${token}`;
+        }
         const resp = await fetch(url, {
           method: "POST",
           headers,
@@ -2339,7 +2336,7 @@ async function handleLoadMoreX() {
             : `https://x.com/i/web/status/${data.id}`
           : null);
 
-      const resp = await fetch(apiUrl("/api/posts"), {
+      const resp = await fetch(apiUrl("/api/saved-items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2405,7 +2402,7 @@ async function handleLoadMoreX() {
     }
     // Save video as a post via /api/posts
     if (type === "video" && data) {
-      const resp = await fetch(apiUrl("/api/posts"), {
+      const resp = await fetch(apiUrl("/api/saved-items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2497,7 +2494,7 @@ async function handleLoadMoreX() {
       const shortCode = data.code || data.shortcode;
       const postUrl = getInstagramPostUrl(data, data.media_type === 2 || data.is_video === true);
       const commentCount = data.comment_count ?? data.comments ?? data.commentCount ?? data.commentsCount;
-      const resp = await fetch(apiUrl("/api/posts"), {
+      const resp = await fetch(apiUrl("/api/saved-items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2572,7 +2569,7 @@ async function handleLoadMoreX() {
       return;
     }
     if (type === "post" && data) {
-      const resp = await fetch(apiUrl("/api/posts"), {
+      const resp = await fetch(apiUrl("/api/saved-items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2639,7 +2636,7 @@ async function handleLoadMoreX() {
       return;
     }
     if (type === "post" && data) {
-      const resp = await fetch(apiUrl("/api/posts"), {
+      const resp = await fetch(apiUrl("/api/saved-items"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2673,27 +2670,47 @@ async function handleLoadMoreX() {
 
   /* ─── Generic save helper (for profiles, comments, transcripts, users, ads) ─── */
 
-  async function handleGenericSave(platformKey, { platformUserId, username, postId, content, publishedAt, likes, shares, comments, authorName, authorHandle }) {
+  async function handleGenericSave(platformKey, payload = {}) {
     if (!currentUserId) throw new Error("Please sign in to save data.");
+    const {
+      platformUserId,
+      platform_user_id,
+      username,
+      postId,
+      platform_post_id,
+      content,
+      publishedAt,
+      published_at,
+      likes,
+      shares,
+      comments,
+      authorName,
+      author_name,
+      authorHandle,
+      author_handle,
+    } = payload;
     const pid = platformIds[platformKey];
     if (!pid) throw new Error(`Unknown platform: ${platformKey}`);
-    const resp = await fetch(apiUrl("/api/posts"), {
+    const normalizedPlatformUserId = String(platformUserId || platform_user_id || "unknown");
+    const normalizedPostId = String(postId || platform_post_id || Date.now());
+    const normalizedUsername = String(username || normalizedPlatformUserId || "unknown");
+    const resp = await fetch(apiUrl("/api/saved-items"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         platform_name: platformKey,
         platform_id: pid,
-        platform_user_id: String(platformUserId || "unknown"),
-        username: String(username || platformUserId || "unknown"),
-        platform_post_id: String(postId || Date.now()),
+        platform_user_id: normalizedPlatformUserId,
+        username: normalizedUsername,
+        platform_post_id: normalizedPostId,
         content: String(content || ""),
-        published_at: publishedAt || null,
+        published_at: publishedAt || published_at || null,
         likes: likes ?? 0,
         shares: shares ?? 0,
         comments: comments ?? 0,
         user_id: currentUserId,
-        author_name: authorName || username || "",
-        author_handle: authorHandle || username || "",
+        author_name: authorName || author_name || normalizedUsername || "",
+        author_handle: authorHandle || author_handle || normalizedUsername || "",
       }),
     });
     if (!resp.ok) {
@@ -2811,7 +2828,7 @@ async function handleLoadMoreX() {
         }
         setSaving(true);
         setSaveStatus(null);
-        const resp = await fetch(apiUrl("/api/posts"), {
+        const resp = await fetch(apiUrl("/api/saved-items"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2915,7 +2932,7 @@ async function handleLoadMoreX() {
       try {
         setSaving(true);
         setSaveStatus(null);
-        const resp = await fetch(apiUrl("/api/posts"), {
+        const resp = await fetch(apiUrl("/api/saved-items"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
