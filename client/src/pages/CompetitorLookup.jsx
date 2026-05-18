@@ -4940,6 +4940,7 @@ async function handleLoadMoreX() {
 
         {Object.values(connectedPlatforms).some(Boolean) && (
           <Tabs
+            data-tour="competitor-lookup-search"
             defaultValue={Object.keys(connectedPlatforms).find((k) => connectedPlatforms[k]) || "x"}
             keepMounted={false}
           >
@@ -5920,7 +5921,7 @@ async function handleLoadMoreX() {
         )}
 
         {result && (
-          <Stack gap="lg">
+          <Stack gap="lg" data-tour="competitor-results">
             <Card withBorder radius="md">
               <Stack gap="xs">
                 <Title order={4}>{t("competitorLookup.summary")}</Title>

@@ -1,66 +1,54 @@
-
-:root {
+:root,
+:root[data-mantine-color-scheme="light"] {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
+
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f9fc;
+  --surface-1: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #eef2f7;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border-color: rgba(15, 23, 42, 0.12);
+  --nav-bg: #ffffff;
+  --nav-text: #111827;
+  --nav-hover: #f3f6fb;
+  --nav-active: #e8f1ff;
+  --shadow: rgba(15, 23, 42, 0.10);
+  --accent-primary: #1c7ed6;
+  --accent-soft: rgba(28, 126, 214, 0.10);
+  --chat-user-bg: #e7f5ff;
+  --chat-user-border: rgba(28, 126, 214, 0.25);
+  --chat-assistant-bg: #ffffff;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+:root[data-mantine-color-scheme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #0f172a;
+  --bg-secondary: #111c31;
+  --surface-1: #172033;
+  --surface-2: #111827;
+  --surface-3: #1f2a44;
+  --text-primary: #e5e7eb;
+  --text-secondary: #a8b3c5;
+  --border-color: rgba(148, 163, 184, 0.22);
+  --nav-bg: #111827;
+  --nav-text: #e5e7eb;
+  --nav-hover: #1f2a44;
+  --nav-active: #12324a;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --accent-primary: #74c0fc;
+  --accent-soft: rgba(116, 192, 252, 0.14);
+  --chat-user-bg: #12324a;
+  --chat-user-border: rgba(116, 192, 252, 0.35);
+  --chat-assistant-bg: #172033;
 }
 
 html,
@@ -68,29 +56,57 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  min-width: 320px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
-/* Main layout: sidebar + content */
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: inherit;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
 .app-layout {
   display: flex;
   min-height: 100vh;
   width: 100%;
+  background: var(--bg-primary);
 }
 
-/* Right-side content area */
 .app-main {
   flex: 1;
   min-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: var(--bg-primary);
-  transition: background-color 0.3s ease;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
-/* Base chrome follows theme */
-html, body, #root { background: var(--mantine-color-body); color: var(--mantine-color-text); }
-.app-main, .app-sidebar { background: var(--mantine-color-body); }
 
+.app-sidebar {
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-color);
+}
 
-:root {
-  color-scheme: light;
+.mantine-Paper-root,
+.mantine-Card-root,
+.mantine-Modal-content,
+.mantine-Popover-dropdown,
+.mantine-Menu-dropdown {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }

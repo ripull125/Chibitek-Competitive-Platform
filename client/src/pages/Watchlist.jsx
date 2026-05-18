@@ -368,7 +368,7 @@ export default function Watchlist() {
 
   /* ═══ render ═══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "24px 32px", width: "100%", maxWidth: "min(100%, 1500px)", margin: "0 auto" }}>
+    <div data-tour="autoscraper-root" style={{ padding: "24px 32px", width: "100%", maxWidth: "min(100%, 1500px)", margin: "0 auto" }}>
       <Group justify="space-between" mb="md">
         <div>
           <Title order={2}>

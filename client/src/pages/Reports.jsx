@@ -1128,7 +1128,7 @@ export default function Reports() {
       )}
 
       <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md" mb="lg">
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-ai">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
               <Title order={2} size="h4">Ask AI</Title>
@@ -1153,7 +1153,7 @@ export default function Reports() {
           </Stack>
         </Card>
 
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-layout">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
               <Title order={2} size="h4">Quick Layout</Title>
@@ -1173,7 +1173,7 @@ export default function Reports() {
           </Stack>
         </Card>
 
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-tools">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
               <Title order={2} size="h4">Data Tools</Title>
@@ -1207,7 +1207,7 @@ export default function Reports() {
         </Card>
       </SimpleGrid>
 
-      <Card withBorder shadow="sm" radius="xl" p="lg">
+      <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-preview">
         <Group justify="space-between" mb="md" align="flex-start">
           <div>
             <Title order={2} size="h3">Live Report Preview</Title>
@@ -1220,7 +1220,7 @@ export default function Reports() {
         </Group>
 
         <ScrollArea h={1120} offsetScrollbars type="auto">
-          <Stack align="center" gap="lg" style={{ minWidth: REPORT_PAGE_WIDTH + 40, background: "#f8f9fa", padding: 20, borderRadius: 18 }}>
+          <Stack align="center" gap="lg" style={{ minWidth: REPORT_PAGE_WIDTH + 40, background: "var(--surface-2)", padding: 20, borderRadius: 18 }}>
             {reportPages.map(renderReportPage)}
           </Stack>
         </ScrollArea>

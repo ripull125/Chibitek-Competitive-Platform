@@ -11,25 +11,31 @@ import {
   Paper,
   ScrollArea,
   Select,
+  Stack,
   Text,
   Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
 import {
-  IconDeviceFloppy,
+  IconChartDots,
+  IconCopy,
+  IconChevronLeft,
+  IconChevronRight,
+  IconEdit,
+  IconFileText,
   IconFolderOpen,
-  IconPlayerStop,
-  IconTrash,
   IconMicrophone,
   IconMicrophoneOff,
+  IconPlayerStop,
   IconPlus,
   IconRefresh,
   IconSend,
-  IconFileText,
-} from '@tabler/icons-react';
-import { apiUrl } from '../utils/api';
-import { supabase } from '../supabaseClient';
+  IconSparkles,
+  IconTrash,
+} from "@tabler/icons-react";
+import { apiUrl } from "../utils/api";
+import { supabase } from "../supabaseClient";
 import { useTranslation } from "react-i18next";
 import {
   AI_MODEL_OPTIONS,
@@ -40,46 +46,20 @@ import {
 } from "../utils/aiModelSettings";
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
-const CHAT_SESSION_FLAG = "chibitek-chat-session-loaded";
 const SUMMARY_PROMPT = [
   "Summarize the most recent posts provided in system context.",
   "Rules: use only the provided posts, do not invent details.",
-  "Output: 1) one-sentence summary, 2) 3-5 top themes, 3) up to 3 notable posts with URLs if present, 4) gaps/uncertainties."
+  "Output: 1) one-sentence summary, 2) 3-5 top themes, 3) up to 3 notable posts with URLs if present, 4) gaps/uncertainties.",
 ].join(" ");
-
-const resolveBackendUrl = () => {
-  const envUrl = import.meta.env.e_BACKEND_URL;
-  if (envUrl) return envUrl.replace(/\/$/, "");
-  if (typeof window !== "undefined" && window.location?.origin) {
-    const { hostname, port, protocol } = window.location;
-    if (hostname === "localhost" && port === "5173") {
-      return `${protocol}//${hostname}:8080`;
-    }
-    return window.location.origin;
-  }
-  return "";
-};
-
-const backendUrl = resolveBackendUrl();
 
 const SpeechRecognition =
   typeof window !== "undefined"
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
-
-
 const loadPersistedChat = () => {
   if (typeof window === "undefined") return null;
   try {
-    // On a fresh session (new tab / fresh login), start with a clean chat
-    const alreadyLoaded = window.sessionStorage?.getItem(CHAT_SESSION_FLAG);
-    if (!alreadyLoaded) {
-      // Clear any stale localStorage chat state from a previous session
-      window.localStorage?.removeItem(CHAT_STORAGE_KEY);
-      window.sessionStorage?.setItem(CHAT_SESSION_FLAG, "1");
-      return null;
-    }
     const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch (err) {
@@ -106,12 +86,101 @@ const fileToAttachment = (file) =>
     else reader.readAsDataURL(file);
   });
 
+const CHAT_QUICK_PROMPTS = [
+  {
+    label: "Summarize saved posts",
+    prompt: "Summarize my most recent saved posts in 4 simple bullets, then tell me the best next step.",
+    icon: IconFileText,
+  },
+  {
+    label: "Find winning themes",
+    prompt: "Look at the recent post context and identify the themes that seem to drive the most engagement.",
+    icon: IconChartDots,
+  },
+  {
+    label: "Draft recommendations",
+    prompt: "Give me 3 concise recommendations I could use in a competitive report.",
+    icon: IconSparkles,
+  },
+];
+
+function MessageContent({ content }) {
+  const lines = String(content || "").split(/\n/);
+  const groups = [];
+  let buffer = [];
+
+  const flush = () => {
+    if (buffer.length) {
+      groups.push({ type: "paragraph", lines: buffer });
+      buffer = [];
+    }
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flush();
+      return;
+    }
+    if (/^([-*•]|\d+[.)])\s+/.test(trimmed)) {
+      flush();
+      groups.push({ type: "bullet", text: trimmed.replace(/^([-*•]|\d+[.)])\s+/, "") });
+    } else {
+      buffer.push(trimmed);
+    }
+  });
+  flush();
+
+  if (!groups.length) return null;
+
+  return (
+    <Stack gap={6}>
+      {groups.map((group, index) => {
+        if (group.type === "bullet") {
+          return (
+            <Group key={index} gap={8} align="flex-start" wrap="nowrap">
+              <Box
+                mt={7}
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--accent-primary)",
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="sm" lh={1.55} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                {group.text}
+              </Text>
+            </Group>
+          );
+        }
+        return (
+          <Text key={index} size="sm" lh={1.55} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+            {group.lines.join("\n")}
+          </Text>
+        );
+      })}
+    </Stack>
+  );
+}
+
 const buildConversationTitle = (entries, t) => {
   const firstUserMessage = entries.find((entry) => entry.role === "user" && entry.content);
   if (!firstUserMessage) return t("chat.newChat");
-  const trimmed = firstUserMessage.content.trim();
+  const trimmed = firstUserMessage.content.trim().replace(/\s+/g, " ");
   if (!trimmed) return t("chat.newChat");
-  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
+  return trimmed.length > 52 ? `${trimmed.slice(0, 49)}...` : trimmed;
+};
+
+const formatChatDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  if (isToday) return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 
 export default function ChatInput() {
@@ -129,38 +198,203 @@ export default function ChatInput() {
   );
 
   const [message, setMessage] = useState(persisted?.message ?? "");
-  const [conversation, setConversation] = useState(
-    persisted?.conversation ?? defaultConversation
-  );
+  const [conversation, setConversation] = useState(persisted?.conversation ?? defaultConversation);
   const [attachments, setAttachments] = useState(persisted?.attachments ?? []);
   const [isListening, setIsListening] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
-  const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [savedConversations, setSavedConversations] = useState([]);
   const [saveNotice, setSaveNotice] = useState("");
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
-  const [saveTitle, setSaveTitle] = useState('');
-  const [currentConversationId, setCurrentConversationId] = useState(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState("idle");
+  const [currentConversationId, setCurrentConversationId] = useState(persisted?.currentConversationId ?? null);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [chatSearch, setChatSearch] = useState("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(Boolean(persisted?.isSidebarCollapsed));
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [currentConversationTitle, setCurrentConversationTitle] = useState(persisted?.currentConversationTitle ?? null);
   const [lastUsedProvider, setLastUsedProvider] = useState(null);
   const [lastUsedModel, setLastUsedModel] = useState(null);
   const initialAiSettings = useMemo(() => loadAiSettings(), []);
   const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
+
   const fileInputRef = useRef(null);
+  const chatViewportRef = useRef(null);
   const recognitionRef = useRef(null);
   const requestAbortRef = useRef(null);
+  const autoSaveTimerRef = useRef(null);
+  const pendingCreateRef = useRef(null);
+  const lastSavedJsonRef = useRef("");
+  const conversationRef = useRef(conversation);
+  const currentConversationIdRef = useRef(currentConversationId);
+  const currentConversationTitleRef = useRef(currentConversationTitle);
+  const currentUserIdRef = useRef(currentUserId);
   const hasHydratedRef = useRef(false);
 
+  const hasUserMessages = useMemo(() => conversation.some((entry) => entry.role === "user"), [conversation]);
+  const activeTitle = useMemo(() => currentConversationTitle || buildConversationTitle(conversation, t), [conversation, currentConversationTitle, t]);
+
   const getActiveUserId = async () => {
-    if (currentUserId) return currentUserId;
+    if (currentUserIdRef.current) return currentUserIdRef.current;
     if (!supabase) return null;
     const { data } = await supabase.auth.getUser();
     const uid = data?.user?.id || null;
-    if (uid) setCurrentUserId(uid);
+    if (uid) {
+      currentUserIdRef.current = uid;
+      setCurrentUserId(uid);
+    }
     return uid;
   };
+
+  const loadSavedConversations = async (options = {}) => {
+    const activeUserId = options.userId || (await getActiveUserId());
+    if (!activeUserId) return;
+    setIsLoadingList(true);
+    try {
+      const response = await fetch(apiUrl(`/api/chat/conversations?user_id=${encodeURIComponent(activeUserId)}`), {
+        headers: { "x-user-id": activeUserId },
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+        throw new Error(`Failed to load conversations${reason}`);
+      }
+      const data = await response.json();
+      setSavedConversations(data.conversations || []);
+    } catch (error) {
+      if (!options.silent) setSaveNotice(error.message || t("chat.failedToLoad"));
+    } finally {
+      setIsLoadingList(false);
+    }
+  };
+
+  const updateSidebarConversation = (conversationId, title) => {
+    const safeTitle = title || t("chat.untitledChat");
+    setSavedConversations((prev) => {
+      const existing = prev.find((item) => item.id === conversationId);
+      const updated = {
+        ...(existing || {}),
+        id: conversationId,
+        title: safeTitle,
+        created_at: existing?.created_at || new Date().toISOString(),
+      };
+      const without = prev.filter((item) => item.id !== conversationId);
+      return [updated, ...without];
+    });
+  };
+
+  const autoSaveConversation = async (snapshot) => {
+    const hasMessagesToSave = snapshot.some((entry) => entry.role === "user");
+    if (!hasMessagesToSave) return;
+
+    const activeUserId = await getActiveUserId();
+    const snapshotJson = JSON.stringify(snapshot);
+    if (snapshotJson === lastSavedJsonRef.current && currentConversationIdRef.current) {
+      setAutoSaveStatus("saved");
+      return;
+    }
+
+    if (!activeUserId) {
+      setAutoSaveStatus("local");
+      return;
+    }
+
+    const title = currentConversationIdRef.current && currentConversationTitleRef.current
+      ? currentConversationTitleRef.current
+      : buildConversationTitle(snapshot, t);
+    setAutoSaveStatus("saving");
+
+    try {
+      if (pendingCreateRef.current) {
+        await pendingCreateRef.current.catch(() => null);
+      }
+
+      let conversationId = currentConversationIdRef.current;
+      if (conversationId) {
+        const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": activeUserId,
+          },
+          body: JSON.stringify({
+            title,
+            conversation: snapshot,
+            user_id: activeUserId,
+          }),
+        });
+        if (!response.ok) {
+          const errorBody = await response.json().catch(() => ({}));
+          const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+          throw new Error(`Autosave failed${reason}`);
+        }
+        updateSidebarConversation(conversationId, title);
+      } else {
+        const createPromise = fetch(apiUrl("/api/chat/conversations"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": activeUserId,
+          },
+          body: JSON.stringify({
+            title,
+            conversation: snapshot,
+            user_id: activeUserId,
+          }),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const errorBody = await response.json().catch(() => ({}));
+              const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+              throw new Error(`Autosave failed${reason}`);
+            }
+            return response.json();
+          })
+          .then((data) => data?.conversation);
+
+        pendingCreateRef.current = createPromise;
+        const created = await createPromise;
+        pendingCreateRef.current = null;
+        if (!created?.id) throw new Error("Autosave failed: missing conversation id");
+        conversationId = created.id;
+        const createdTitle = created.title || title;
+        currentConversationIdRef.current = conversationId;
+        currentConversationTitleRef.current = createdTitle;
+        setCurrentConversationId(conversationId);
+        setCurrentConversationTitle(createdTitle);
+        updateSidebarConversation(conversationId, createdTitle);
+      }
+
+      lastSavedJsonRef.current = snapshotJson;
+      setAutoSaveStatus("saved");
+
+      const latestJson = JSON.stringify(conversationRef.current);
+      if (latestJson !== snapshotJson) {
+        await autoSaveConversation(conversationRef.current);
+      }
+    } catch (error) {
+      pendingCreateRef.current = null;
+      setAutoSaveStatus("error");
+      setSaveNotice(error.message || "Autosave failed.");
+    }
+  };
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
+
+  useEffect(() => {
+    currentConversationTitleRef.current = currentConversationTitle;
+  }, [currentConversationTitle]);
+
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
 
   useEffect(() => {
     let mounted = true;
@@ -168,12 +402,15 @@ export default function ChatInput() {
       if (!supabase) return;
       const { data, error } = await supabase.auth.getUser();
       if (error) return;
-      if (mounted) setCurrentUserId(data?.user?.id || null);
+      const uid = data?.user?.id || null;
+      if (mounted) {
+        currentUserIdRef.current = uid;
+        setCurrentUserId(uid);
+        if (uid) loadSavedConversations({ userId: uid, silent: true });
+      }
     };
     loadUser();
-    window.dispatchEvent(
-      new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } })
-    );
+    window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } }));
     return () => {
       mounted = false;
     };
@@ -200,11 +437,9 @@ export default function ChatInput() {
 
   useEffect(() => {
     setConversation((prev) => {
-      const hasUserMessages = prev.some((entry) => entry.role === "user");
-      if (hasUserMessages) return prev;
-      if (!prev.length) {
-        return [{ role: "assistant", content: t("chat.defaultGreeting") }];
-      }
+      const hasMessages = prev.some((entry) => entry.role === "user");
+      if (hasMessages) return prev;
+      if (!prev.length) return [{ role: "assistant", content: t("chat.defaultGreeting") }];
       if (prev.length === 1 && prev[0].role === "assistant") {
         if (prev[0].content === t("chat.defaultGreeting")) return prev;
         return [{ ...prev[0], content: t("chat.defaultGreeting") }];
@@ -214,14 +449,41 @@ export default function ChatInput() {
   }, [i18n.resolvedLanguage, t]);
 
   useEffect(() => {
+    const viewport = chatViewportRef.current;
+    if (!viewport) return undefined;
+    const timer = window.setTimeout(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [conversation, isSending, attachments.length]);
+
+  useEffect(() => {
     if (!hasHydratedRef.current || typeof window === "undefined") return;
     try {
-      const toStore = JSON.stringify({ message, conversation, attachments });
+      const toStore = JSON.stringify({
+        message,
+        conversation,
+        attachments,
+        currentConversationId,
+        currentConversationTitle,
+        isSidebarCollapsed,
+      });
       window.localStorage.setItem(CHAT_STORAGE_KEY, toStore);
     } catch (err) {
       console.warn("Failed to persist chat", err);
     }
-  }, [message, conversation, attachments]);
+  }, [message, conversation, attachments, currentConversationId, currentConversationTitle, isSidebarCollapsed]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current || !hasUserMessages) return undefined;
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveConversation(conversationRef.current);
+    }, 900);
+    return () => {
+      if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [conversation, currentUserId, hasUserMessages]);
 
   useEffect(() => {
     if (!SpeechRecognition) return undefined;
@@ -248,10 +510,11 @@ export default function ChatInput() {
     if (isSending) return;
     if (!message.trim() && attachments.length === 0) return;
 
+    const outgoingAttachments = attachments;
     const userMessage = {
       role: "user",
       content: message.trim() || "See attached files for context.",
-      attachments,
+      attachments: outgoingAttachments,
     };
 
     const updatedConversation = [...conversation, userMessage];
@@ -259,6 +522,7 @@ export default function ChatInput() {
     setMessage("");
     setAttachments([]);
     setIsSending(true);
+    setSaveNotice("");
 
     try {
       const activeUserId = await getActiveUserId();
@@ -266,16 +530,16 @@ export default function ChatInput() {
       const controller = new AbortController();
       requestAbortRef.current = controller;
       const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
-      const response = await fetch(apiUrl('/api/chat'), {
-        method: 'POST',
+      const response = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
+          "Content-Type": "application/json",
+          ...(activeUserId ? { "x-user-id": activeUserId } : {}),
         },
         signal: controller.signal,
         body: JSON.stringify({
           messages: payloadMessages,
-          attachments,
+          attachments: outgoingAttachments,
           user_id: activeUserId || undefined,
           llmProvider: modelMeta?.provider,
           chatModel: aiModelChoice,
@@ -291,10 +555,7 @@ export default function ChatInput() {
       const data = await response.json();
       setLastUsedProvider(data.provider || null);
       setLastUsedModel(data.model || null);
-      setConversation((prev) => [
-        ...prev,
-        { role: "assistant", content: data.reply || "No response." },
-      ]);
+      setConversation((prev) => [...prev, { role: "assistant", content: data.reply || "No response." }]);
     } catch (error) {
       if (error?.name === "AbortError") return;
       setConversation((prev) => [
@@ -314,17 +575,21 @@ export default function ChatInput() {
 
   const handleSummarizeRecentPosts = async () => {
     if (isSending) return;
+    const visiblePrompt = { role: "user", content: "Summarize my most recent saved posts." };
+    setConversation((prev) => [...prev, visiblePrompt]);
     setIsSending(true);
+    setSaveNotice("");
+
     try {
       const activeUserId = await getActiveUserId();
       const modelMeta = getModelMeta(aiModelChoice);
       const controller = new AbortController();
       requestAbortRef.current = controller;
-      const response = await fetch(apiUrl('/api/chat'), {
-        method: 'POST',
+      const response = await fetch(apiUrl("/api/chat"), {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
+          "Content-Type": "application/json",
+          ...(activeUserId ? { "x-user-id": activeUserId } : {}),
         },
         signal: controller.signal,
         body: JSON.stringify({
@@ -344,10 +609,7 @@ export default function ChatInput() {
       const data = await response.json();
       setLastUsedProvider(data.provider || null);
       setLastUsedModel(data.model || null);
-      setConversation((prev) => [
-        ...prev,
-        { role: "assistant", content: data.reply || "No response." },
-      ]);
+      setConversation((prev) => [...prev, { role: "assistant", content: data.reply || "No response." }]);
     } catch (error) {
       if (error?.name === "AbortError") return;
       setConversation((prev) => [
@@ -372,15 +634,30 @@ export default function ChatInput() {
     setIsSending(false);
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       if (isSending) return;
       handleSend();
     }
   };
 
   const handleFileButtonClick = () => fileInputRef.current?.click();
+
+  const handleQuickPrompt = (prompt) => {
+    if (isSending) return;
+    setMessage(prompt);
+  };
+
+  const handleCopyMessage = async (content) => {
+    if (!navigator?.clipboard || !content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setSaveNotice("Copied message.");
+    } catch {
+      setSaveNotice("Could not copy this message.");
+    }
+  };
 
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files || []);
@@ -389,6 +666,7 @@ export default function ChatInput() {
       const processed = await Promise.all(files.map((file) => fileToAttachment(file)));
       setAttachments((prev) => [...prev, ...processed]);
     } catch {
+      setSaveNotice("Could not attach that file.");
     } finally {
       event.target.value = "";
     }
@@ -403,104 +681,31 @@ export default function ChatInput() {
     }
   };
 
-  const attachmentBadges = useMemo(
-    () =>
-      attachments.map((file) => (
-        <Badge key={`${file.name}-${file.size}`} color="gray" variant="light">
-          {file.name}
-        </Badge>
-      )),
-    [attachments]
-  );
-
-  const handleSaveConversation = async (titleOverride) => {
-    if (!conversation.length) return;
-    if (!currentUserId) {
-      setSaveNotice(t("chat.signInToSave"));
-      return;
-    }
-    setIsSaving(true);
-    setSaveNotice("");
-    try {
-      const activeUserId = await getActiveUserId();
-      const response = await fetch(apiUrl('/api/chat/conversations'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(activeUserId ? { 'x-user-id': activeUserId } : {}),
-        },
-        body: JSON.stringify({
-          title: titleOverride || buildConversationTitle(conversation, t, t),
-          conversation,
-          user_id: activeUserId || currentUserId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
-        throw new Error(`Failed to save${reason}`);
-      }
-
-      setSaveNotice(t("chat.conversationSaved"));
-    } catch (error) {
-      setSaveNotice(error.message || t("chat.failedToSave"));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleOpenSaveModal = () => {
-    setSaveTitle(buildConversationTitle(conversation, t));
-    setSaveModalOpen(true);
-  };
-
-  const handleConfirmSave = async () => {
-    await handleSaveConversation(saveTitle.trim() || buildConversationTitle(conversation, t));
-    setSaveModalOpen(false);
-  };
-
   const handleNewConversation = () => {
     setMessage("");
     setAttachments([]);
     setConversation(defaultConversation);
     setCurrentConversationId(null);
-  };
-
-  const handleOpenLoadModal = async () => {
-    if (!currentUserId) {
-      setSaveNotice(t("chat.signInToLoad"));
-      return;
-    }
-    setLoadModalOpen(true);
-    setIsLoadingList(true);
-    try {
-      const response = await fetch(apiUrl(`/api/chat/conversations?user_id=${encodeURIComponent(currentUserId)}`));
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
-        throw new Error(`Failed to load conversations${reason}`);
-      }
-      const data = await response.json();
-      setSavedConversations(data.conversations || []);
-    } catch (error) {
-      setSavedConversations([]);
-      setSaveNotice(error.message || t("chat.failedToLoad"));
-    } finally {
-      setIsLoadingList(false);
-    }
+    setCurrentConversationTitle(null);
+    currentConversationIdRef.current = null;
+    currentConversationTitleRef.current = null;
+    lastSavedJsonRef.current = "";
+    setAutoSaveStatus("idle");
+    setSaveNotice("");
   };
 
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
-    if (!currentUserId) {
+    const activeUserId = await getActiveUserId();
+    if (!activeUserId) {
       setSaveNotice(t("chat.signInToLoad"));
       return;
     }
     setIsLoadingList(true);
     try {
       const response = await fetch(
-        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`)
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(activeUserId)}`),
+        { headers: { "x-user-id": activeUserId } }
       );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -511,10 +716,16 @@ export default function ChatInput() {
       const loadedConversation = data?.conversation?.conversation || data?.conversation;
       if (Array.isArray(loadedConversation)) {
         setConversation(loadedConversation);
+        conversationRef.current = loadedConversation;
         setMessage("");
         setAttachments([]);
+        const loadedTitle = data?.conversation?.title || buildConversationTitle(loadedConversation, t);
         setCurrentConversationId(conversationId);
-        setLoadModalOpen(false);
+        setCurrentConversationTitle(loadedTitle);
+        currentConversationIdRef.current = conversationId;
+        currentConversationTitleRef.current = loadedTitle;
+        lastSavedJsonRef.current = JSON.stringify(loadedConversation);
+        setAutoSaveStatus("saved");
         setSaveNotice("");
       } else {
         throw new Error(t("chat.failedToLoad"));
@@ -526,9 +737,11 @@ export default function ChatInput() {
     }
   };
 
-  const handleDeleteConversation = async (conversationId) => {
+  const handleDeleteConversation = async () => {
+    const conversationId = deleteTarget?.id;
     if (!conversationId) return;
-    if (!currentUserId) {
+    const activeUserId = await getActiveUserId();
+    if (!activeUserId) {
       setSaveNotice(t("chat.signInToDelete"));
       return;
     }
@@ -538,33 +751,35 @@ export default function ChatInput() {
     const previousMessage = message;
     const previousAttachments = attachments;
     const previousCurrentId = currentConversationId;
+    const previousCurrentTitle = currentConversationTitle;
 
-    setSavedConversations((prev) => prev.filter((c) => c.id !== conversationId));
-    if (currentConversationId === conversationId) {
-      handleNewConversation();
-    }
+    setDeleteTarget(null);
+    setSavedConversations((prev) => prev.filter((item) => item.id !== conversationId));
+    if (currentConversationId === conversationId) handleNewConversation();
 
     setIsLoadingList(true);
     try {
       let response = await fetch(
-        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(currentUserId)}`),
+        apiUrl(`/api/chat/conversations/${conversationId}?user_id=${encodeURIComponent(activeUserId)}`),
         {
-          method: 'DELETE',
+          method: "DELETE",
+          headers: { "x-user-id": activeUserId },
         }
       );
 
       if (response.status === 404 || response.status === 405) {
         response = await fetch(
-          apiUrl(`/api/chat/conversations/${conversationId}/delete?user_id=${encodeURIComponent(currentUserId)}`),
+          apiUrl(`/api/chat/conversations/${conversationId}/delete?user_id=${encodeURIComponent(activeUserId)}`),
           {
-            method: 'POST',
+            method: "POST",
+            headers: { "x-user-id": activeUserId },
           }
         );
       }
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : '';
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
         throw new Error(`Failed to delete conversation${reason}`);
       }
       setSaveNotice(t("chat.conversationDeleted"));
@@ -576,6 +791,9 @@ export default function ChatInput() {
         setMessage(previousMessage);
         setAttachments(previousAttachments);
         setCurrentConversationId(previousCurrentId);
+        setCurrentConversationTitle(previousCurrentTitle);
+        currentConversationIdRef.current = previousCurrentId;
+        currentConversationTitleRef.current = previousCurrentTitle;
       }
     } finally {
       setIsLoadingList(false);
@@ -583,111 +801,375 @@ export default function ChatInput() {
   };
 
 
+  const openRenameConversation = (item) => {
+    if (!item?.id) return;
+    setRenameTarget(item);
+    setRenameValue(item.title || t("chat.untitledChat"));
+  };
+
+  const handleRenameConversation = async () => {
+    const conversationId = renameTarget?.id;
+    const nextTitle = renameValue.trim();
+    if (!conversationId || !nextTitle) return;
+    const activeUserId = await getActiveUserId();
+    if (!activeUserId) {
+      setSaveNotice("Sign in to rename chats.");
+      return;
+    }
+
+    const previousList = savedConversations;
+    const previousTitle = currentConversationTitle;
+    setSavedConversations((prev) =>
+      prev.map((item) => (item.id === conversationId ? { ...item, title: nextTitle } : item))
+    );
+    if (currentConversationId === conversationId) {
+      setCurrentConversationTitle(nextTitle);
+      currentConversationTitleRef.current = nextTitle;
+    }
+    setRenameTarget(null);
+
+    try {
+      const response = await fetch(apiUrl(`/api/chat/conversations/${conversationId}`), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": activeUserId,
+        },
+        body: JSON.stringify({ title: nextTitle, user_id: activeUserId }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+        throw new Error(`Failed to rename chat${reason}`);
+      }
+      setSaveNotice("Chat renamed.");
+    } catch (error) {
+      setSaveNotice(error.message || "Failed to rename chat.");
+      setSavedConversations(previousList);
+      if (currentConversationId === conversationId) {
+        setCurrentConversationTitle(previousTitle);
+        currentConversationTitleRef.current = previousTitle;
+      }
+    }
+  };
+
+  const attachmentBadges = useMemo(
+    () =>
+      attachments.map((file) => (
+        <Badge key={`${file.name}-${file.size}`} color="gray" variant="light">
+          {file.name}
+        </Badge>
+      )),
+    [attachments]
+  );
+
+  const filteredConversations = useMemo(() => {
+    const query = chatSearch.trim().toLowerCase();
+    if (!query) return savedConversations;
+    return savedConversations.filter((item) => String(item.title || "").toLowerCase().includes(query));
+  }, [savedConversations, chatSearch]);
+
+  const autoSaveLabel = useMemo(() => {
+    if (!hasUserMessages) return "New chat";
+    if (autoSaveStatus === "saving") return "Saving...";
+    if (autoSaveStatus === "saved") return "Saved";
+    if (autoSaveStatus === "local") return "Saved locally";
+    if (autoSaveStatus === "error") return "Autosave issue";
+    return "Autosave on";
+  }, [autoSaveStatus, hasUserMessages]);
+
   return (
     <Box
       style={{
         minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "var(--bg-primary)",
-        padding: "24px",
+        background: "var(--bg-primary)",
+        color: "var(--text-primary)",
+        padding: 10,
       }}
     >
       <Box
+        data-tour="chat-root"
         style={{
           width: "100%",
-          maxWidth: "clamp(720px, 80vw, 980px)",
+          maxWidth: "min(1180px, calc(100vw - 20px))",
+          height: "calc(100dvh - 20px)",
           marginInline: "auto",
+          display: "grid",
+          gridTemplateColumns: isSidebarCollapsed ? "58px minmax(0, 1fr)" : "clamp(238px, 23vw, 292px) minmax(0, 1fr)",
+          gap: 10,
         }}
       >
-        <Box style={{ textAlign: "center", marginBottom: 28 }}>
-          <Title style={{ fontSize: 32, fontWeight: 400, margin: 0 }}>
-            ChibitekAI
-          </Title>
-          <Text c="dimmed" mt={6}>
-            {t("chat.description", "Chat with the model, attach files for context, or speak your prompt.")}
-          </Text>
-
-          {saveNotice ? (
-            <Text size="sm" c="dimmed" mt={6}>
-              {saveNotice}
-            </Text>
-          ) : null}
-
-          <Group justify="center" mt="md">
-            <Menu shadow="md" width={240}>
-              <Menu.Target>
-                <Button variant="light">{t("chat.options")}</Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconDeviceFloppy size={16} />}
-                  onClick={handleOpenSaveModal}
-                  disabled={isSaving}
-                >
-                  {isSaving ? t("chat.saving") : t("chat.saveConversation")}
-                </Menu.Item>
-                <Menu.Item leftSection={<IconFolderOpen size={16} />} onClick={handleOpenLoadModal}>
-                  {t("chat.loadSavedChat")}
-                </Menu.Item>
-                <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleNewConversation}>
-                  {t("chat.startNewChat")}
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          </Group>
-
-          <Group justify="center" mt="sm" gap="sm" wrap="wrap">
-            <Select
-              value={aiModelChoice}
-              onChange={(value) => value && setAiModelChoice(value)}
-              data={AI_MODEL_OPTIONS}
-              searchable
-              w={360}
-              size="xs"
-              placeholder="Choose AI model"
-              disabled={isSending}
-              styles={{
-                input: {
-                  opacity: isSending ? 0.6 : 1,
-                },
-              }}
-            />
-          </Group>
-
-          {(lastUsedProvider || lastUsedModel) ? (
-            <Text size="xs" c="dimmed" mt={6}>
-              Last response used: {lastUsedProvider || "unknown"} / {lastUsedModel || "unknown"}
-            </Text>
-          ) : null}
-        </Box>
-
-        <div data-tour="chat-root">
-          <Paper shadow="sm" radius="lg" p="md" withBorder>
-            <ScrollArea style={{ height: "56vh" }} pr="md">
-              <Box style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {conversation.map((entry, index) => (
+        <Paper
+          withBorder
+          radius="lg"
+          p={isSidebarCollapsed ? 6 : "xs"}
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            background: "var(--surface-1)",
+            borderColor: "var(--border-color)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {isSidebarCollapsed ? (
+            <Stack align="center" gap={8} style={{ height: "100%" }}>
+              <ActionIcon variant="subtle" color="gray" radius="xl" onClick={() => setIsSidebarCollapsed(false)} title="Open sidebar">
+                <IconChevronRight size={18} />
+              </ActionIcon>
+              <ActionIcon variant="filled" color="blue" radius="xl" onClick={handleNewConversation} title="New chat">
+                <IconPlus size={18} />
+              </ActionIcon>
+              <ActionIcon variant="light" color="blue" radius="xl" onClick={() => setIsSidebarCollapsed(false)} title="Saved chats">
+                <IconFolderOpen size={18} />
+              </ActionIcon>
+            </Stack>
+          ) : (
+            <>
+              <Group justify="space-between" align="center" mb={8} wrap="nowrap">
+                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
                   <Box
-                    key={index}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 10,
+                      display: "grid",
+                      placeItems: "center",
+                      background: "var(--accent-soft)",
+                      color: "var(--accent-primary)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconSparkles size={16} />
+                  </Box>
+                  <Box style={{ minWidth: 0 }}>
+                    <Text fw={800} size="sm" truncate>
+                      ChibitekAI
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {autoSaveLabel}
+                    </Text>
+                  </Box>
+                </Group>
+                <Group gap={4} wrap="nowrap">
+                  <ActionIcon variant="subtle" color="gray" radius="xl" onClick={() => setIsSidebarCollapsed(true)} title="Collapse sidebar">
+                    <IconChevronLeft size={17} />
+                  </ActionIcon>
+                  <ActionIcon variant="filled" color="blue" radius="xl" onClick={handleNewConversation} title="New chat">
+                    <IconPlus size={17} />
+                  </ActionIcon>
+                </Group>
+              </Group>
+
+              <TextInput
+                placeholder="Search chats"
+                value={chatSearch}
+                onChange={(event) => setChatSearch(event.currentTarget.value)}
+                size="xs"
+                mb={8}
+                styles={{ input: { background: "var(--surface-2)", color: "var(--text-primary)", minHeight: 30 } }}
+              />
+
+              <Group justify="space-between" mb={5} px={4}>
+                <Text size="xs" fw={800} c="dimmed" tt="uppercase" style={{ letterSpacing: 1 }}>
+                  Chats
+                </Text>
+                {isLoadingList ? <Loader size="xs" /> : null}
+              </Group>
+
+              <ScrollArea style={{ flex: 1 }} type="auto">
+                <Stack gap={5} pr={5} data-tour="chat-history">
+                  {filteredConversations.length ? (
+                    filteredConversations.map((item) => {
+                      const isActive = item.id === currentConversationId;
+                      return (
+                        <Paper
+                          key={item.id}
+                          withBorder
+                          radius="md"
+                          px="xs"
+                          py={7}
+                          onClick={() => handleLoadConversation(item.id)}
+                          style={{
+                            cursor: "pointer",
+                            background: isActive ? "var(--accent-soft)" : "var(--surface-1)",
+                            borderColor: isActive ? "var(--accent-primary)" : "var(--border-color)",
+                            transition: "background 120ms ease, border-color 120ms ease",
+                          }}
+                        >
+                          <Group justify="space-between" gap={6} wrap="nowrap" align="center">
+                            <Box style={{ minWidth: 0, flex: 1 }}>
+                              <Text size="sm" fw={isActive ? 800 : 600} truncate>
+                                {item.title || t("chat.untitledChat")}
+                              </Text>
+                              <Text size="xs" c="dimmed">
+                                {formatChatDate(item.created_at)}
+                              </Text>
+                            </Box>
+                            <Menu shadow="md" width={160} position="bottom-end" withinPortal>
+                              <Menu.Target>
+                                <ActionIcon
+                                  size="sm"
+                                  variant="subtle"
+                                  color="gray"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                  }}
+                                  title="Chat options"
+                                  style={{ flexShrink: 0 }}
+                                >
+                                  <span style={{ fontSize: 19, lineHeight: 1 }}>⋯</span>
+                                </ActionIcon>
+                              </Menu.Target>
+                              <Menu.Dropdown onClick={(event) => event.stopPropagation()}>
+                                <Menu.Item leftSection={<IconFolderOpen size={14} />} onClick={() => handleLoadConversation(item.id)}>
+                                  Open
+                                </Menu.Item>
+                                <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => openRenameConversation(item)}>
+                                  Rename
+                                </Menu.Item>
+                                <Menu.Item
+                                  color="red"
+                                  leftSection={<IconTrash size={14} />}
+                                  onClick={() => setDeleteTarget(item)}
+                                >
+                                  Delete
+                                </Menu.Item>
+                              </Menu.Dropdown>
+                            </Menu>
+                          </Group>
+                        </Paper>
+                      );
+                    })
+                  ) : (
+                    <Paper withBorder radius="md" p="sm" style={{ borderColor: "var(--border-color)", background: "var(--surface-2)" }}>
+                      <Text size="sm" c="dimmed" ta="center">
+                        {chatSearch ? "No matching chats." : "Your chats will save here automatically."}
+                      </Text>
+                    </Paper>
+                  )}
+                </Stack>
+              </ScrollArea>
+            </>
+          )}
+        </Paper>
+
+        <Paper
+          shadow="sm"
+          radius="lg"
+          p={0}
+          withBorder
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            background: "var(--surface-1)",
+            borderColor: "var(--border-color)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Box
+            px="sm"
+            py={8}
+            style={{
+              borderBottom: "1px solid var(--border-color)",
+              background: "var(--surface-1)",
+            }}
+          >
+            <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
+              <Box style={{ minWidth: 0, flex: 1 }}>
+                <Title order={1} style={{ fontSize: 17, margin: 0, lineHeight: 1.2 }} truncate="end">
+                  {hasUserMessages ? activeTitle : "New chat"}
+                </Title>
+                <Group gap={6} mt={4} wrap="wrap">
+                  <Badge size="xs" variant="light" color={autoSaveStatus === "error" ? "red" : "blue"}>
+                    {autoSaveLabel}
+                  </Badge>
+                  {saveNotice ? (
+                    <Badge size="xs" variant="light" color={saveNotice.toLowerCase().includes("fail") ? "red" : "gray"}>
+                      {saveNotice}
+                    </Badge>
+                  ) : null}
+                  {(lastUsedProvider || lastUsedModel) ? (
+                    <Badge size="xs" variant="light" color="gray">
+                      {lastUsedProvider || "model"} / {lastUsedModel || "unknown"}
+                    </Badge>
+                  ) : null}
+                </Group>
+              </Box>
+
+              <Group gap="xs" wrap="nowrap">
+                <Select
+                  value={aiModelChoice}
+                  onChange={(value) => value && setAiModelChoice(value)}
+                  data={AI_MODEL_OPTIONS}
+                  searchable
+                  w={220}
+                  size="xs"
+                  placeholder="Choose AI model"
+                  disabled={isSending}
+                />
+                <Button size="xs" variant="light" leftSection={<IconRefresh size={14} />} onClick={handleNewConversation}>
+                  New
+                </Button>
+              </Group>
+            </Group>
+          </Box>
+
+          <ScrollArea viewportRef={chatViewportRef} style={{ flex: 1 }} p="sm" type="auto" data-tour="chat-messages">
+            <Box
+              style={{
+                width: "100%",
+                maxWidth: 760,
+                marginInline: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                paddingRight: 10,
+              }}
+            >
+              {conversation.map((entry, index) => {
+                const isUser = entry.role === "user";
+                return (
+                  <Box
+                    key={`${entry.role}-${index}`}
                     style={{
                       display: "flex",
-                      justifyContent: entry.role === "user" ? "flex-end" : "flex-start",
+                      justifyContent: isUser ? "flex-end" : "flex-start",
                     }}
                   >
                     <Paper
                       shadow="xs"
-                      p="sm"
-                      withBorder
+                      p={8}
+                      withBorder={!isUser}
+                      radius="lg"
                       style={{
-                        maxWidth: "76%",
-                        backgroundColor: entry.role === "user" ? "#e7f5ff" : "white",
+                        width: isUser ? "fit-content" : "min(700px, 100%)",
+                        maxWidth: isUser ? "72%" : "100%",
+                        background: isUser ? "var(--chat-user-bg)" : "var(--chat-assistant-bg)",
+                        borderColor: isUser ? "var(--chat-user-border)" : "var(--border-color)",
                       }}
                     >
-                      <Text size="xs" c="dimmed" mb={4}>
-                        {entry.role === "user" ? t("chat.you") : t("chat.chibitekAI")}
-                      </Text>
-                      <Text style={{ whiteSpace: "pre-wrap" }}>{entry.content}</Text>
+                      <Group justify="space-between" align="center" mb={6} gap="xs" wrap="nowrap">
+                        <Group gap={6} wrap="nowrap">
+                          <Badge size="xs" variant="light" color={isUser ? "blue" : "gray"}>
+                            {isUser ? t("chat.you") : t("chat.chibitekAI")}
+                          </Badge>
+                          {entry.attachments?.length ? (
+                            <Badge size="xs" variant="light" color="gray">
+                              {entry.attachments.length} file{entry.attachments.length === 1 ? "" : "s"}
+                            </Badge>
+                          ) : null}
+                        </Group>
+                        {!isUser ? (
+                          <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => handleCopyMessage(entry.content)} title="Copy message">
+                            <IconCopy size={14} />
+                          </ActionIcon>
+                        ) : null}
+                      </Group>
+
+                      <MessageContent content={entry.content} />
+
                       {entry.attachments?.length ? (
                         <Group gap="xs" mt={8} wrap="wrap">
                           {entry.attachments.map((file) => (
@@ -699,85 +1181,119 @@ export default function ChatInput() {
                       ) : null}
                     </Paper>
                   </Box>
-                ))}
+                );
+              })}
 
-                {isSending ? (
+              {!hasUserMessages ? (
+                <Paper withBorder radius="lg" p="sm" style={{ background: "var(--surface-2)", borderColor: "var(--border-color)" }}>
+                  <Text fw={800} mb={8}>
+                    What do you want to work on?
+                  </Text>
+                  <Group gap="xs" wrap="wrap" data-tour="chat-quick-actions">
+                    {CHAT_QUICK_PROMPTS.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Button
+                          key={item.label}
+                          size="xs"
+                          variant="light"
+                          radius="xl"
+                          leftSection={<Icon size={14} />}
+                          onClick={() => handleQuickPrompt(item.prompt)}
+                          disabled={isSending}
+                        >
+                          {item.label}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      radius="xl"
+                      leftSection={<IconFileText size={14} />}
+                      onClick={handleSummarizeRecentPosts}
+                      disabled={isSending}
+                    >
+                      Recent post summary
+                    </Button>
+                  </Group>
+                </Paper>
+              ) : null}
+
+              {isSending ? (
+                <Paper
+                  withBorder
+                  radius="lg"
+                  p="sm"
+                  style={{ alignSelf: "flex-start", background: "var(--chat-assistant-bg)", borderColor: "var(--border-color)" }}
+                >
                   <Group gap="xs">
                     <Loader size="sm" />
-                    <Text c="dimmed">{t("chat.thinking")}</Text>
+                    <Text c="dimmed" size="sm">
+                      {t("chat.thinking")}
+                    </Text>
                   </Group>
-                ) : null}
-              </Box>
-            </ScrollArea>
+                </Paper>
+              ) : null}
+            </Box>
+          </ScrollArea>
 
-            {attachments.length > 0 ? (
-              <Group gap="xs" mt="md" wrap="wrap">
-                {attachmentBadges}
-              </Group>
-            ) : null}
-
-            <Group justify="flex-end" mt="md">
-              <Button
-                variant="light"
-                leftSection={<IconFileText size={16} />}
-                onClick={handleSummarizeRecentPosts}
-                disabled={isSending}
-              >
-                {t("chat.summarizeRecentPosts")}
-              </Button>
+          {attachments.length > 0 ? (
+            <Group gap="xs" px="md" pt="sm" wrap="wrap">
+              {attachmentBadges}
             </Group>
+          ) : null}
 
+          <Box
+            p="sm"
+            style={{
+              borderTop: "1px solid var(--border-color)",
+              background: "var(--surface-2)",
+            }}
+            data-tour="chat-composer"
+          >
             <Box
-              mt="md"
               px={12}
               py={8}
               style={{
+                width: "100%",
+                maxWidth: 760,
+                marginInline: "auto",
                 display: "flex",
                 alignItems: "flex-end",
-                gap: 12,
-                backgroundColor: "white",
-                borderRadius: 24,
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
-                border: "1px solid #e9ecef",
+                gap: 8,
+                background: "var(--surface-1)",
+                borderRadius: 18,
+                boxShadow: "0 1px 6px var(--shadow)",
+                border: "1px solid var(--border-color)",
               }}
             >
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="lg"
-                onClick={handleFileButtonClick}
-                style={{ flexShrink: 0 }}
-              >
+              <ActionIcon variant="subtle" color="gray" size="lg" onClick={handleFileButtonClick} style={{ flexShrink: 0 }} title="Attach files">
                 <IconPlus size={20} />
               </ActionIcon>
 
-              <input
-                type="file"
-                multiple
-                ref={fileInputRef}
-                style={{ display: "none" }}
-                onChange={handleFileChange}
-              />
+              <input type="file" multiple ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
 
               <Textarea
                 placeholder={t("chat.askAnything")}
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(event) => setMessage(event.target.value)}
                 onKeyDown={handleKeyPress}
                 variant="unstyled"
-                size="md"
+                size="sm"
                 disabled={isSending}
                 autosize
                 minRows={1}
-                maxRows={6}
+                maxRows={5}
                 style={{ flex: 1 }}
                 styles={{
                   input: {
-                    fontSize: 16,
-                    padding: "8px 0",
+                    fontSize: 14,
+                    padding: "6px 0",
                     border: "none",
                     outline: "none",
                     resize: "none",
+                    color: "var(--text-primary)",
                   },
                 }}
               />
@@ -805,76 +1321,40 @@ export default function ChatInput() {
                 {isSending ? <IconPlayerStop size={18} /> : <IconSend size={18} />}
               </ActionIcon>
             </Box>
-          </Paper>
-        </div>
+          </Box>
+        </Paper>
       </Box>
 
-      {/* NOTE: We keep modals OUTSIDE the tour root so the bubble can sit left of the main card without getting shoved. */}
-      <Modal opened={loadModalOpen} onClose={() => setLoadModalOpen(false)} title={t("chat.savedConversations")} centered>
-        {isLoadingList ? (
-          <Group gap="xs">
-            <Loader size="sm" />
-            <Text c="dimmed">{t("chat.loading")}</Text>
-          </Group>
-        ) : savedConversations.length ? (
-          <Box style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {savedConversations.map((item) => (
-              <Paper
-                key={item.id}
-                withBorder
-                p="sm"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                }}
-              >
-                <Box>
-                  <Text size="sm" fw={500}>
-                    {item.title || t("chat.untitledChat")}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {item.created_at ? new Date(item.created_at).toLocaleString() : ""}
-                  </Text>
-                </Box>
-                <Group spacing="xs">
-                  <Button size="xs" variant="light" onClick={() => handleLoadConversation(item.id)}>
-                    {t("chat.open")}
-                  </Button>
-                  <ActionIcon
-                    size="xs"
-                    color="red"
-                    variant="subtle"
-                    onClick={() => handleDeleteConversation(item.id)}
-                    title={t("chat.deleteSavedConversation")}
-                  >
-                    <IconTrash size={14} />
-                  </ActionIcon>
-                </Group>
-              </Paper>
-            ))}
-          </Box>
-        ) : (
-          <Text c="dimmed" size="sm">
-            {t("chat.noSavedConversationsYet")}
-          </Text>
-        )}
-      </Modal>
-
-      <Modal opened={saveModalOpen} onClose={() => setSaveModalOpen(false)} title={t("chat.nameThisChat")} centered>
+      <Modal opened={Boolean(renameTarget)} onClose={() => setRenameTarget(null)} title="Rename chat" centered>
         <TextInput
-          label={t("chat.chatName")}
-          placeholder={t("chat.chatNamePlaceholder")}
-          value={saveTitle}
-          onChange={(event) => setSaveTitle(event.currentTarget.value)}
+          label="Chat name"
+          value={renameValue}
+          onChange={(event) => setRenameValue(event.currentTarget.value)}
+          autoFocus
+          onKeyDown={(event) => {
+            if (event.key === "Enter") handleRenameConversation();
+          }}
         />
         <Group justify="flex-end" mt="md">
-          <Button variant="subtle" onClick={() => setSaveModalOpen(false)}>
-            {t("chat.cancel")}
+          <Button variant="subtle" onClick={() => setRenameTarget(null)}>
+            Cancel
           </Button>
-          <Button onClick={handleConfirmSave} loading={isSaving}>
-            {t("chat.save")}
+          <Button onClick={handleRenameConversation} disabled={!renameValue.trim()}>
+            Rename
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal opened={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} title="Delete chat?" centered>
+        <Text size="sm" c="dimmed" mb="md">
+          This will remove “{deleteTarget?.title || t("chat.untitledChat")}” from your saved chats.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="subtle" onClick={() => setDeleteTarget(null)}>
+            Cancel
+          </Button>
+          <Button color="red" leftSection={<IconTrash size={16} />} onClick={handleDeleteConversation} loading={isLoadingList}>
+            Delete chat
           </Button>
         </Group>
       </Modal>

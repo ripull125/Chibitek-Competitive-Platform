@@ -1521,6 +1521,98 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   }
 });
 
+app.patch('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, conversation } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  const hasTitle = typeof title === 'string';
+  const hasConversation = Array.isArray(conversation);
+  if (!hasTitle && !hasConversation) {
+    return res.status(400).json({ error: 'Provide a title, conversation, or both.' });
+  }
+  if (hasConversation && !conversation.length) {
+    return res.status(400).json({ error: 'conversation must be a non-empty array' });
+  }
+
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
+
+  try {
+    const updates = {};
+    if (hasTitle) updates.title = title.trim() || 'New chat';
+    if (hasConversation) updates.conversation = conversation;
+
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Update conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ conversation: data });
+  } catch (err) {
+    console.error('Update conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to update conversation.' });
+  }
+});
+
+app.put('/api/chat/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, conversation } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  const hasTitle = typeof title === 'string';
+  const hasConversation = Array.isArray(conversation);
+  if (!hasTitle && !hasConversation) {
+    return res.status(400).json({ error: 'Provide a title, conversation, or both.' });
+  }
+  if (hasConversation && !conversation.length) {
+    return res.status(400).json({ error: 'conversation must be a non-empty array' });
+  }
+
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
+
+  try {
+    const updates = {};
+    if (hasTitle) updates.title = title.trim() || 'New chat';
+    if (hasConversation) updates.conversation = conversation;
+
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Update conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ conversation: data });
+  } catch (err) {
+    console.error('Update conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to update conversation.' });
+  }
+});
+
 app.delete('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });

@@ -168,7 +168,7 @@ const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded, 
   const gridCols = `28px 1fr ${COLS.map(c => c.w + "px").join(" ")}`;
 
   return (
-    <div ref={ref}>
+    <div ref={ref} data-tour="keyword-tracking-root">
       <Stack gap="sm">
 
         {/* ── Header card ── */}

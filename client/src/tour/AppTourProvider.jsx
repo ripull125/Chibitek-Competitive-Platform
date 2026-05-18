@@ -21,19 +21,23 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.dashboard.title", { defaultValue: "Dashboard" }),
-        body: t("tutorial.dashboard.body", { defaultValue: "Your high level snapshot. Scan performance, spot changes, then decide where to dig deeper." }),
+        body: t("tutorial.dashboard.body", { defaultValue: "This page shows the main performance summary." }),
+        target: "dashboard-kpis",
       },
       {
-        title: t("tutorial.engagementSnapshot.title", { defaultValue: "Engagement snapshot" }),
-        body: t("tutorial.engagementSnapshot.body", { defaultValue: "Top tiles summarize what is happening right now so you can orient yourself in seconds." }),
+        title: t("tutorial.kpis.title", { defaultValue: "KPI cards" }),
+        body: t("tutorial.kpis.body", { defaultValue: "Use these cards to quickly check posts, engagement, likes, comments, and shares." }),
+        target: "dashboard-kpis",
       },
       {
-        title: t("tutorial.opportunityAlerts.title", { defaultValue: "Opportunity alerts" }),
-        body: t("tutorial.opportunityAlerts.body", { defaultValue: "Watchouts and fast movers that are worth acting on early." }),
+        title: t("tutorial.topPosts.title", { defaultValue: "Top posts" }),
+        body: t("tutorial.topPosts.body", { defaultValue: "This section ranks the posts with the strongest engagement." }),
+        target: "dashboard-top-posts",
       },
       {
-        title: t("tutorial.whatWorksNow.title", { defaultValue: "What works now" }),
-        body: t("tutorial.whatWorksNow.body", { defaultValue: "Charts and tables highlight the topics driving the strongest engagement at the moment." }),
+        title: t("tutorial.platformCharts.title", { defaultValue: "Charts" }),
+        body: t("tutorial.platformCharts.body", { defaultValue: "These charts compare engagement over time and by platform." }),
+        target: "dashboard-platforms",
       },
     ],
   },
@@ -43,15 +47,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.competitorLookup.title", { defaultValue: "Competitor Lookup" }),
-        body: t("tutorial.competitorLookup.body", { defaultValue: "Search any competitor and pull recent posts so you can compare positioning and momentum." }),
+        body: t("tutorial.competitorLookup.body", { defaultValue: "Search a platform, username, URL, or keyword to pull competitor content." }),
+        target: "competitor-lookup-search",
       },
       {
-        title: t("tutorial.searchAndFilters.title", { defaultValue: "Search and filters" }),
-        body: t("tutorial.searchAndFilters.body", { defaultValue: "Use the search bar and filters to narrow results by platform, time window, or topic." }),
-      },
-      {
-        title: t("tutorial.postFeed.title", { defaultValue: "Post feed" }),
-        body: t("tutorial.postFeed.body", { defaultValue: "Open items for detail, then save the best examples for later." }),
+        title: t("tutorial.results.title", { defaultValue: "Results" }),
+        body: t("tutorial.results.body", { defaultValue: "Review the results, open the original post, or save useful posts for later." }),
+        target: "competitor-results",
       },
     ],
   },
@@ -61,15 +63,8 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.savedPosts.title", { defaultValue: "Saved Posts" }),
-        body: t("tutorial.savedPosts.body", { defaultValue: "Everything you saved lives here so you can reference it later and build your evidence library." }),
-      },
-      {
-        title: t("tutorial.taggingAndNotes.title", { defaultValue: "Tagging and notes" }),
-        body: t("tutorial.taggingAndNotes.body", { defaultValue: "Add tags or quick notes so you can find examples by theme, competitor, or campaign style." }),
-      },
-      {
-        title: t("tutorial.export.title", { defaultValue: "Export" }),
-        body: t("tutorial.export.body", { defaultValue: "Download your saved set when you need to share findings or move work into a deck." }),
+        body: t("tutorial.savedPosts.body", { defaultValue: "Saved posts are stored here so they can be reused in reports, keywords, and analysis." }),
+        target: "saved-posts-list",
       },
     ],
   },
@@ -79,13 +74,14 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.keywordTracking.title", { defaultValue: "Keyword Tracking" }),
-        body: t("tutorial.keywordTracking.body", { defaultValue: "Track what topics are rising and cooling off, then connect them to performance." }),
+        body: t("tutorial.keywordTracking.body", { defaultValue: "This page finds repeated words and topics from saved posts." }),
+        target: "keyword-tracking-root",
       },
       {
-        title: t("tutorial.trendingKeywords.title", { defaultValue: "Trending keywords" }),
-        body: t("tutorial.trendingKeywords.body", { defaultValue: "This table shows what is trending right now, including volume and rank movement." }),
+        title: t("tutorial.keywordRankings.title", { defaultValue: "Keyword rankings" }),
+        body: t("tutorial.keywordRankings.body", { defaultValue: "Use the rankings to see which topics appear most often and perform best." }),
+        target: "keyword-tracking-root",
       },
-      
     ],
   },
   {
@@ -93,12 +89,9 @@ const getTourFlow = (t) => [
     path: "/watchlist",
     tips: [
       {
-        title: t("tutorial.autoscraper.title", { defaultValue: "Autoscraper" }),
-        body: t("tutorial.autoscraper.body", { defaultValue: "Automatically pull posts from your watchlist so you can focus on analysis." }),
-      },
-      {
-        title: t("tutorial.configureAndRun.title", { defaultValue: "Configure and run" }),
-        body: t("tutorial.configureAndRun.body", { defaultValue: "Add targets, set schedules, and execute scrapes with a click to keep data fresh." }),
+        title: t("tutorial.autoscraper.title", { defaultValue: "Auto Scraper" }),
+        body: t("tutorial.autoscraper.body", { defaultValue: "Add searches here to pull new posts without manually searching every time." }),
+        target: "autoscraper-root",
       },
     ],
   },
@@ -108,11 +101,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.reports.title", { defaultValue: "Reports" }),
-        body: t("tutorial.reports.body", { defaultValue: "Generate shareable summaries so your insights can travel beyond the dashboard." }),
+        body: t("tutorial.reports.body", { defaultValue: "Describe the report you want, then let AI build the preview." }),
+        target: "reports-ai",
       },
       {
-        title: t("tutorial.buildAndDownload.title", { defaultValue: "Build and download" }),
-        body: t("tutorial.buildAndDownload.body", { defaultValue: "Create a report, review it quickly, then download for distribution or archiving." }),
+        title: t("tutorial.reportPreview.title", { defaultValue: "Report preview" }),
+        body: t("tutorial.reportPreview.body", { defaultValue: "Check the PDF layout before downloading it." }),
+        target: "reports-preview",
       },
     ],
   },
@@ -121,12 +116,14 @@ const getTourFlow = (t) => [
     path: "/chat",
     tips: [
       {
-        title: t("tutorial.chibitekChat.title", { defaultValue: "ChibitekAI Chat" }),
-        body: t("tutorial.chibitekChat.body", { defaultValue: "Ask questions, attach files, and save conversations so research stays organized." }),
+        title: t("tutorial.chat.title", { defaultValue: "Chat" }),
+        body: t("tutorial.chat.body", { defaultValue: "Ask questions about your posts, reports, or uploaded files." }),
+        target: "chat-composer",
       },
       {
-        title: t("tutorial.saveYourWork.title", { defaultValue: "Save your work" }),
-        body: t("tutorial.saveYourWork.body", { defaultValue: "Keep threads you want to reuse, and return to them when you build reports or briefs." }),
+        title: t("tutorial.chatActions.title", { defaultValue: "Chat actions" }),
+        body: t("tutorial.chatActions.body", { defaultValue: "Use these buttons to start common tasks faster." }),
+        target: "chat-quick-actions",
       },
     ],
   },
@@ -136,23 +133,96 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.settings.title", { defaultValue: "Settings" }),
-        body: t("tutorial.settings.body", { defaultValue: "Manage your account preferences and integrations. You can restart this tutorial any time." }),
+        body: t("tutorial.settings.body", { defaultValue: "Change language, theme, model, and account settings here." }),
+        target: "settings-tutorial-card",
       },
       {
-        title: t("tutorial.language.title", { defaultValue: "Language" }),
-        body: t("tutorial.language.body", { defaultValue: "Switch the app language here. Changes apply instantly across the interface." }),
-      },
-      {
-        title: t("tutorial.integrations.title", { defaultValue: "Integrations" }),
-        body: t("tutorial.integrations.body", { defaultValue: "Connect data sources so Chibitek can pull competitive content and updates automatically." }),
-      },
-      {
-        title: t("tutorial.tutorial.title", { defaultValue: "Tutorial" }),
-        body: t("tutorial.tutorial.body", { defaultValue: "Press Start whenever you want a quick refresher of the key screens." }),
+        title: t("tutorial.restartTutorial.title", { defaultValue: "Restart tutorial" }),
+        body: t("tutorial.restartTutorial.body", { defaultValue: "Press Start to run this walkthrough again." }),
+        target: "settings-tutorial-card",
       },
     ],
   },
 ];
+
+
+function TourSpotlight({ target, fadeState }) {
+  const [rect, setRect] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!target || typeof document === "undefined") {
+      setRect(null);
+      return undefined;
+    }
+
+    let disposed = false;
+    let retryTimer = null;
+
+    const findTarget = () => document.querySelector(`[data-tour="${target}"]`);
+
+    const update = () => {
+      if (disposed) return;
+      const el = findTarget();
+      if (!el) {
+        setRect(null);
+        return;
+      }
+      const next = el.getBoundingClientRect();
+      setRect({
+        top: Math.max(10, next.top - 10),
+        left: Math.max(10, next.left - 10),
+        width: Math.min(window.innerWidth - 20, next.width + 20),
+        height: Math.min(window.innerHeight - 20, next.height + 20),
+      });
+    };
+
+    const reveal = () => {
+      const el = findTarget();
+      if (!el) {
+        retryTimer = window.setTimeout(reveal, 180);
+        return;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      window.setTimeout(update, 220);
+    };
+
+    reveal();
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+
+    return () => {
+      disposed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [target]);
+
+  if (!rect) return null;
+
+  const isOut = fadeState === "out";
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+        borderRadius: 18,
+        pointerEvents: "none",
+        zIndex: 11990,
+        opacity: isOut ? 0 : 1,
+        transition: "opacity 180ms ease, top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease",
+        boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.58), 0 0 0 5px rgba(28, 126, 214, 0.98), 0 0 0 10px rgba(255, 255, 255, 0.85), 0 18px 60px rgba(28, 126, 214, 0.45)",
+        outline: "2px solid rgba(255,255,255,0.95)",
+        background: "rgba(28, 126, 214, 0.08)",
+      }}
+    />
+  );
+}
 
 function TourBox({
   title,
@@ -165,6 +235,7 @@ function TourBox({
   onNextScreen,
   onExit,
   fadeState,
+  target,
 }) {
   const { t } = useTranslation();
   const isOut = fadeState === "out";
@@ -178,6 +249,7 @@ function TourBox({
 
   return (
     <>
+      <TourSpotlight target={target} fadeState={fadeState} />
       <div
         style={{
           position: "fixed",
@@ -192,14 +264,13 @@ function TourBox({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
           <div
             style={{
-              background:
-                "linear-gradient(135deg, rgba(29,78,216,0.98) 0%, rgba(37,99,235,0.98) 55%, rgba(59,130,246,0.98) 100%)",
-              borderRadius: 20,
+              background: "var(--surface-1, #ffffff)",
+              borderRadius: 16,
               padding: "16px 16px 18px",
               boxShadow: "0 18px 52px rgba(0,0,0,0.22), 0 4px 14px rgba(0,0,0,0.14)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
-              border: "1px solid rgba(255,255,255,0.18)",
+              border: "1px solid var(--border-color, rgba(15,23,42,0.12))",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -208,7 +279,7 @@ function TourBox({
                   fontSize: 12,
                   fontWeight: 900,
                   letterSpacing: "0.05em",
-                  color: "rgba(255,255,255,0.92)",
+                  color: "var(--text-secondary, #64748b)",
                   textTransform: "uppercase",
                 }}
               >
@@ -221,8 +292,8 @@ function TourBox({
                 aria-label={t("tutorial.exit", { defaultValue: "Exit tutorial" })}
                 style={{
                   appearance: "none",
-                  border: "1px solid rgba(255,255,255,0.28)",
-                  background: "rgba(255,255,255,0.16)",
+                  border: "1px solid var(--border-color, rgba(15,23,42,0.12))",
+                  background: "var(--surface-2, #f8fafc)",
                   borderRadius: 999,
                   width: 34,
                   height: 34,
@@ -232,7 +303,7 @@ function TourBox({
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "rgba(255,255,255,0.96)",
+                  color: "var(--text-secondary, #64748b)",
                   boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
                 }}
               >
@@ -240,14 +311,14 @@ function TourBox({
               </button>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 900, color: "#ffffff" }}>{title}</div>
+            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 900, color: "var(--text-primary, #111827)" }}>{title}</div>
             <div
               style={{
                 marginTop: 6,
                 fontSize: 14,
                 fontWeight: 650,
-                color: "rgba(255,255,255,0.92)",
-                lineHeight: 1.35,
+                color: "var(--text-secondary, #64748b)",
+                lineHeight: 1.4,
               }}
             >
               {body}
@@ -262,7 +333,7 @@ function TourBox({
                 gap: 12,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 850, color: "rgba(255,255,255,0.86)" }}>
+              <div style={{ fontSize: 12, fontWeight: 850, color: "var(--text-secondary, #64748b)" }}>
                 {t("tutorial.tipOf", { current: Math.min(tipIndex + 1, tipCount), total: tipCount, defaultValue: "Tip {{current}} of {{total}}" })}
               </div>
 
@@ -274,8 +345,8 @@ function TourBox({
                   : t("tutorial.nextScreen", { defaultValue: "Next screen" })}
                 style={{
                   appearance: "none",
-                  border: "1px solid rgba(255,255,255,0.50)",
-                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(28, 126, 214, 0.35)",
+                  background: "#1c7ed6",
                   borderRadius: 999,
                   width: 44,
                   height: 44,
@@ -285,8 +356,8 @@ function TourBox({
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "#1d4ed8",
-                  boxShadow: "0 18px 44px rgba(0,0,0,0.22)",
+                  color: "#ffffff",
+                  boxShadow: "0 12px 28px rgba(28, 126, 214, 0.25)",
                   userSelect: "none",
                 }}
               >
@@ -304,15 +375,15 @@ function TourBox({
                     type="button"
                     style={{
                       appearance: "none",
-                      border: "1px solid rgba(255,255,255,0.45)",
-                      background: "rgba(255,255,255,0.92)",
+                      border: "1px solid rgba(28, 126, 214, 0.35)",
+                      background: "#e7f5ff",
                       borderRadius: 12,
                       padding: "0 14px",
                       height: 36,
                       fontWeight: 950,
                       fontSize: 13,
                       cursor: "pointer",
-                      color: "#1d4ed8",
+                      color: "#1c7ed6",
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
@@ -530,6 +601,7 @@ export default function AppTourProvider({ children }) {
           onNextScreen={onNextScreen}
           onExit={api.stop}
           fadeState={fadeState}
+          target={tip.target}
         />
       ) : null}
     </TourContext.Provider>

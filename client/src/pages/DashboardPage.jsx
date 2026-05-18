@@ -600,8 +600,8 @@ function TopPostsList({ posts }) {
                 className={classes.postRow}
                 style={{ textDecoration: "none", color: "inherit" }}
               >
-                <Group justify="space-between" wrap="nowrap">
-                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                <Group justify="space-between" wrap="wrap" gap="xs">
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 220, flex: "1 1 360px" }}>
                     <Text fw={800} c="dimmed" size="sm" style={{ width: 24, textAlign: "center" }}>
                       {i + 1}
                     </Text>
@@ -622,15 +622,15 @@ function TopPostsList({ posts }) {
                       </Group>
                     </Stack>
                   </Group>
-                  <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
+                  <Group gap={6} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end", marginLeft: "auto" }}>
                     <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
-                      <Group gap={3} wrap="nowrap" style={{ minWidth: 54, justifyContent: "flex-end" }}>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 34, justifyContent: "flex-end" }}>
                         <IconHeart size={14} color="#FF6B6B" style={{ flexShrink: 0 }} />
                         <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.likes || 0)}</Text>
                       </Group>
                     </Tooltip>
                     <Tooltip label={t("dashboard.comments", { defaultValue: "Comments" })}>
-                      <Group gap={3} wrap="nowrap" style={{ minWidth: 48, justifyContent: "flex-end" }}>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 38, justifyContent: "flex-end" }}>
                         <IconMessage size={14} color="#51CF66" style={{ flexShrink: 0 }} />
                         <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.comments || 0)}</Text>
                       </Group>
@@ -679,8 +679,8 @@ function CompetitorComparison({ competitors }) {
         <Stack gap="sm">
           {competitors.map((c) => (
             <Paper key={c.name} withBorder p="sm" radius="md" className={classes.postRow}>
-              <Group justify="space-between" wrap="nowrap">
-                <Group gap="sm" align="center" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              <Group justify="space-between" wrap="wrap" gap="xs">
+                <Group gap="sm" align="center" wrap="nowrap" style={{ minWidth: 220, flex: "1 1 300px" }}>
                   <Avatar size={32} radius="xl" color="teal" style={{ flexShrink: 0 }}>
                     {c.name.charAt(0).toUpperCase()}
                   </Avatar>
@@ -689,7 +689,7 @@ function CompetitorComparison({ competitors }) {
                     <Text size="xs" c="dimmed" lineClamp={1}>{t("dashboard.postsCollected", { count: c.posts, defaultValue: "{{count}} posts collected" })}</Text>
                   </Stack>
                 </Group>
-                <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
+                <Group gap={6} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end", marginLeft: "auto" }}>
                   <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
                     <Group gap={4}>
                       <IconHeart size={14} color="#FF6B6B" />

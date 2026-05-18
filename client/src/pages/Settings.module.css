@@ -387,3 +387,23 @@
   background: var(--mantine-color-dark-7);
   border-color: var(--mantine-color-dark-5);
 }
+:global([data-mantine-color-scheme="dark"]) .selectInput {
+  background: linear-gradient(180deg, var(--mantine-color-dark-6), var(--mantine-color-dark-7));
+  border-color: var(--mantine-color-dark-4);
+  color: var(--mantine-color-dark-0);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectDropdown {
+  background: var(--mantine-color-dark-7);
+  border-color: var(--mantine-color-dark-4);
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectOption[data-checked="true"] {
+  background: rgba(96, 165, 250, 0.18);
+  color: var(--mantine-color-dark-0);
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectOption[data-hovered="true"] {
+  background: rgba(96, 165, 250, 0.12);
+}

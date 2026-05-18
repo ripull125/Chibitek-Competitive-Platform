@@ -135,3 +135,24 @@
     width: 52px;
   }
 }
+:global([data-mantine-color-scheme="dark"]) .kpiCard,
+:global([data-mantine-color-scheme="dark"]) .sectionCard,
+:global([data-mantine-color-scheme="dark"]) .postRow {
+  background: var(--surface-1);
+  border-color: var(--border-color);
+}
+
+:global([data-mantine-color-scheme="dark"]) .postRow:hover {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.34);
+}
+
+@media (max-width: 960px) {
+  .sectionCard {
+    padding: 18px !important;
+  }
+
+  .postRow :global(.mantine-Group-root) {
+    row-gap: 6px;
+  }
+}
