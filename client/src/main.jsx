@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n/i18n";
 import AppTourProvider from "./tour/AppTourProvider.jsx";
+import { Notifications } from "@mantine/notifications";
 
 import {
   MantineProvider,
@@ -13,6 +14,7 @@ import {
 
 const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color-scheme" });
 import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
 
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
@@ -69,6 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <ColorSchemeScript defaultColorScheme="light" colorSchemeManager={colorSchemeManager} />
     <I18nextProvider i18n={i18n}>
       <MantineProvider defaultColorScheme="light" colorSchemeManager={colorSchemeManager}>
+        <Notifications position="top-right" zIndex={10000} />
         <BrowserRouter>
           {/* IMPORTANT: provider must wrap BOTH login and app */}
           <AppTourProvider>

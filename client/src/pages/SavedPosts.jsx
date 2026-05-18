@@ -14,6 +14,35 @@ import {
 import { apiUrl } from "../utils/api";
 import { supabase } from "../supabaseClient";
 
+/* ── auth helpers ─────────────────────────────────────────────────────────── */
+
+async function getAuthSession() {
+  const { data } = await supabase.auth.getSession();
+  return data?.session || null;
+}
+
+async function getPublicUserId() {
+  const session = await getAuthSession();
+  const authUserId = session?.user?.id || null;
+  if (!session?.access_token) return authUserId;
+
+  try {
+    const response = await fetch(apiUrl("/api/auth/access"), {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    return payload?.user_id || authUserId;
+  } catch {
+    return authUserId;
+  }
+}
+
+async function authHeaders() {
+  const session = await getAuthSession();
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+}
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
 function formatDate(str) {
@@ -1236,9 +1265,8 @@ export default function SavedPosts() {
     let mounted = true;
     const loadUser = async () => {
       if (!supabase) return;
-      const { data, error } = await supabase.auth.getUser();
-      if (error) return;
-      if (mounted) setCurrentUserId(data?.user?.id || null);
+      const publicUserId = await getPublicUserId();
+      if (mounted) setCurrentUserId(publicUserId || null);
     };
     loadUser();
     return () => { mounted = false; };
@@ -1253,7 +1281,8 @@ export default function SavedPosts() {
     }
     setNotice("");
     setLoading(true);
-    fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`))
+    authHeaders()
+      .then((headers) => fetch(apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`), { headers }))
       .then(r => r.json())
       .then(data => setPosts(data.posts || []))
       .catch(() => setNotice(t("savedPosts.failedLoadPosts")))
@@ -1274,7 +1303,7 @@ export default function SavedPosts() {
     try {
       const resp = await fetch(
         apiUrl(`/api/posts/${itemId}?user_id=${encodeURIComponent(currentUserId)}`),
-        { method: "DELETE" }
+        { method: "DELETE", headers: await authHeaders() }
       );
       if (!resp.ok) {
         const error = await resp.json();
@@ -1436,7 +1465,7 @@ export default function SavedPosts() {
                 try {
                   const resp = await fetch(
                     apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}`),
-                    { method: "DELETE" }
+                    { method: "DELETE", headers: await authHeaders() }
                   );
                   const ct = resp.headers.get("content-type") || "";
                   if (!resp.ok) {

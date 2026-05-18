@@ -4,6 +4,18 @@ import instagramRoutes from "./routes/instagramRoutes.js";
 import tiktokRoutes from "./routes/tiktokRoutes.js";
 import redditRoutes from "./routes/redditRoutes.js";
 import { normalizeXPost } from "./utils/normalizeXPost.js";
+import {
+  fetchPostsByUserId,
+  fetchUserMentions,
+  fetchFollowers,
+  fetchFollowing,
+  getUserIdByUsername,
+  lookupXInput,
+} from "./xApi.js";
+import { lookupLinkedInInput } from "./linkedinApi.js";
+import { lookupInstagramInput } from "./instagramApi.js";
+import { lookupTikTokInput } from "./tiktokApi.js";
+import { lookupRedditInput } from "./redditApi.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
 import express from 'express';
 import cors from 'cors';
@@ -435,12 +447,40 @@ async function getUserByEmail(email) {
 async function ensureVerifiedUserRow(authCtx) {
   if (!authCtx?.verified || !authCtx?.user || !authCtx?.email) return null;
 
-  const existing = await getUserByEmail(authCtx.email);
-  if (existing) return existing;
-
+  const authUserId = String(authCtx.user.id || '').trim();
   const meta = authCtx.user.user_metadata || {};
   const displayName = String(meta.full_name || meta.name || '').trim() || null;
   const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
+
+  // If an older fallback-created row exists using the Supabase Auth id as provider_user_id,
+  // reuse it instead of creating a second public.users row for the same person.
+  if (authUserId) {
+    const { data: byProvider, error: byProviderErr } = await supabase
+      .from('users')
+      .select('id, email, role, name, provider, created_at, updated_at')
+      .eq('provider_user_id', authUserId)
+      .limit(1)
+      .maybeSingle();
+    if (byProviderErr && !isMissingTableError(byProviderErr)) throw byProviderErr;
+    if (byProvider) {
+      const updates = {};
+      if (!byProvider.email && authCtx.email) updates.email = authCtx.email;
+      if (!byProvider.name && displayName) updates.name = displayName;
+      if (Object.keys(updates).length) {
+        const { data: updated, error: updateErr } = await supabase
+          .from('users')
+          .update(updates)
+          .eq('id', byProvider.id)
+          .select('id, email, role, name, provider, created_at, updated_at')
+          .single();
+        if (!updateErr && updated) return { ...updated, role: normalizeRole(updated.role) };
+      }
+      return { ...byProvider, role: normalizeRole(byProvider.role) };
+    }
+  }
+
+  const existing = await getUserByEmail(authCtx.email);
+  if (existing) return existing;
 
   const { data, error } = await supabase
     .from('users')
@@ -448,7 +488,7 @@ async function ensureVerifiedUserRow(authCtx) {
       email: authCtx.email,
       name: displayName,
       provider,
-      provider_user_id: String(authCtx.user.id || makeAdminCreatedProviderUserId(authCtx.email)),
+      provider_user_id: authUserId || makeAdminCreatedProviderUserId(authCtx.email),
       role: ROLE_USER,
     })
     .select('id, email, role, name, provider, created_at, updated_at')
@@ -462,6 +502,88 @@ async function ensureVerifiedUserRow(authCtx) {
     ...data,
     role: normalizeRole(data.role),
   };
+}
+
+
+async function getPublicUserIdByAnyIdentifier(identifier) {
+  const value = String(identifier || '').trim();
+  if (!value) return null;
+
+  // First try public.users.id, then provider_user_id. This lets older client code
+  // pass a Supabase Auth UUID while the DB stores a separate public.users.id.
+  const { data: byId, error: byIdErr } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', value)
+    .limit(1)
+    .maybeSingle();
+  if (byIdErr && !isMissingTableError(byIdErr)) throw byIdErr;
+  if (byId?.id) return byId.id;
+
+  const { data: byProvider, error: byProviderErr } = await supabase
+    .from('users')
+    .select('id')
+    .eq('provider_user_id', value)
+    .limit(1)
+    .maybeSingle();
+  if (byProviderErr && !isMissingTableError(byProviderErr)) throw byProviderErr;
+  if (byProvider?.id) return byProvider.id;
+
+  return null;
+}
+
+async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allowRawFallbackCreate = false } = {}) {
+  // Best path: use the bearer token, verify the Supabase Auth user, and map/create
+  // the row in public.users. That public.users.id is the only value safe for posts.user_id.
+  const token = getBearerToken(req);
+  if (token) {
+    const auth = await getRequestAuthContext(req);
+    if (!auth.ok) {
+      const err = new Error(auth.error || 'Invalid auth token.');
+      err.status = auth.status || 401;
+      throw err;
+    }
+    if (createFromAuth) {
+      const row = await ensureVerifiedUserRow(auth);
+      if (row?.id) return row.id;
+    }
+    const mapped = await getPublicUserIdByAnyIdentifier(auth.user?.id);
+    if (mapped) return mapped;
+  }
+
+  const rawUserId = String(getUserIdFromRequest(req) || '').trim();
+  if (!rawUserId) {
+    const err = new Error('Missing user id.');
+    err.status = 401;
+    throw err;
+  }
+
+  const mapped = await getPublicUserIdByAnyIdentifier(rawUserId);
+  if (mapped) return mapped;
+
+  // Last-resort compatibility for old clients that only send the Supabase Auth UUID
+  // and no Authorization header. This avoids FK failures for new users.
+  if (allowRawFallbackCreate && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawUserId)) {
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        id: rawUserId,
+        provider: 'supabase',
+        provider_user_id: rawUserId,
+        role: ROLE_USER,
+      })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data.id;
+    if (error && !isDuplicateKeyError(error)) throw error;
+
+    const raced = await getPublicUserIdByAnyIdentifier(rawUserId);
+    if (raced) return raced;
+  }
+
+  const err = new Error('User record was not found in public.users. Sign out and back in, then try again.');
+  err.status = 401;
+  throw err;
 }
 
 async function getAuthRoleByEmail(email) {
@@ -504,7 +626,9 @@ app.get('/api/auth/access', async (req, res) => {
       canManageAdmins: false,
     };
 
+    let userRow = null;
     try {
+      userRow = await ensureVerifiedUserRow(auth);
       access = await getAuthRoleByEmail(auth.email);
     } catch (lookupErr) {
       // Do not fail login checks hard if DB lookup has transient/schema issues.
@@ -513,6 +637,7 @@ app.get('/api/auth/access', async (req, res) => {
 
     return res.json({
       email: auth.email,
+      user_id: userRow?.id || access.user?.id || null,
       authorized: access.authorized,
       role: access.role,
       isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
@@ -1230,8 +1355,12 @@ app.post('/api/chat/conversations', async (req, res) => {
     return res.status(400).json({ error: 'conversation must be a non-empty array' });
   }
 
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data, error } = await supabase
@@ -1257,8 +1386,12 @@ app.post('/api/chat/conversations', async (req, res) => {
 });
 
 app.get('/api/chat/conversations', async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data, error } = await supabase
@@ -1284,8 +1417,12 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data, error } = await supabase
@@ -1311,8 +1448,12 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data, error } = await supabase
@@ -1338,8 +1479,12 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
 const deleteConversationById = async (id, req, res) => {
   if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
 
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data, error } = await supabase
@@ -1378,8 +1523,12 @@ app.post('/api/chat/conversations/:id', async (req, res) => {
 
 app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
     const username = req.params.username;
 
     const platformUserId = await getUserIdByUsername(username);
@@ -1478,7 +1627,7 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   }
 });
 
-app.post("/api/posts", async (req, res) => {
+async function savePostHandler(req, res) {
   const {
     platform_id: rawPlatformId,
     platform_name,
@@ -1508,56 +1657,92 @@ app.post("/api/posts", async (req, res) => {
     product_type,
   } = req.body;
 
-  if ((!rawPlatformId && !platform_name) || !platform_user_id || !platform_post_id || !user_id) {
+  const platformUserId = String(platform_user_id || '').trim();
+  const platformPostId = String(platform_post_id || '').trim();
+
+  if ((!rawPlatformId && !platform_name) || !platformUserId || !platformPostId) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id
+  let requestUserId;
+  try {
+    requestUserId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
+
+  // Resolve platform_id: prefer platform_name (dynamic lookup/create) over raw numeric id.
   const PLATFORM_NAME_MAP = { x: 'X', youtube: 'YouTube', reddit: 'Reddit', linkedin: 'LinkedIn', instagram: 'Instagram', tiktok: 'TikTok' };
-  let platform_id = rawPlatformId;
   const platformKey = String(platform_name || '').trim().toLowerCase();
+  let platform_id = rawPlatformId;
   if (platform_name) {
-    const resolvedName = PLATFORM_NAME_MAP[platform_name.toLowerCase()] || platform_name;
+    const resolvedName = PLATFORM_NAME_MAP[platformKey] || platform_name;
     platform_id = await ensurePlatform(resolvedName);
   }
 
-  const platformPostId = String(platform_post_id).trim();
   const isYouTube = platformKey === 'youtube' || Number(platform_id) === 8;
   const isX = platformKey === 'x' || Number(platform_id) === 1;
   const isInstagram = platformKey === 'instagram' || Number(platform_id) === 3;
   const isTikTok = platformKey === 'tiktok' || Number(platform_id) === 5;
   const isReddit = platformKey === 'reddit' || Number(platform_id) === REDDIT_PLATFORM_ID;
-  const cleanUsername = String(username || author_handle || platform_user_id || "").replace(/^@/, "");
-  const displayName = author_name || cleanUsername || platform_user_id;
+  const cleanUsername = String(username || author_handle || platformUserId || "").replace(/^@/, "");
+  const displayName = author_name || cleanUsername || platformUserId;
+
+  const loadExistingForThisUser = async () => {
+    const { data, error } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("user_id", requestUserId)
+      .eq("platform_id", platform_id)
+      .eq("platform_post_id", platformPostId)
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+    return Array.isArray(data) && data.length ? data[0] : null;
+  };
 
   try {
-    // Find or create competitor
-    let profileUrl = `https://unknown/${cleanUsername || platform_user_id}`;
-    if (isX) profileUrl = cleanUsername ? `https://x.com/${cleanUsername}` : `https://x.com/i/user/${platform_user_id}`;
-    if (isInstagram) profileUrl = `https://www.instagram.com/${username || platform_user_id}`;
-    if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platform_user_id}`;
-    if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platform_user_id}`;
-    if (isReddit) profileUrl = `https://www.reddit.com/user/${username || platform_user_id}`;
+    // Same-user duplicate check. This is the key fix: the lookup includes user_id,
+    // so User B is allowed to save a platform post that User A already saved.
+    const alreadySaved = await loadExistingForThisUser();
+    if (alreadySaved) {
+      return res.status(200).json({
+        saved: false,
+        already_saved: true,
+        post_id: alreadySaved.id,
+        message: "You have already saved this post.",
+      });
+    }
+
+    // Find or create competitor. Competitors remain platform-level entities; saved posts are user-level.
+    let profileUrl = `https://unknown/${cleanUsername || platformUserId}`;
+    if (isX) profileUrl = cleanUsername ? `https://x.com/${cleanUsername}` : `https://x.com/i/user/${platformUserId}`;
+    if (isInstagram) profileUrl = `https://www.instagram.com/${username || platformUserId}`;
+    if (isTikTok) profileUrl = `https://www.tiktok.com/@${username || platformUserId}`;
+    if (isYouTube) profileUrl = `https://www.youtube.com/channel/${platformUserId}`;
+    if (isReddit) profileUrl = `https://www.reddit.com/user/${username || platformUserId}`;
 
     let competitor;
-    const { data: existingComp, error: competitorError } = await supabase
+    const { data: existingComps, error: competitorError } = await supabase
       .from("competitors")
       .select("*")
       .eq("platform_id", platform_id)
-      .eq("platform_user_id", platform_user_id)
-      .maybeSingle();
+      .eq("platform_user_id", platformUserId)
+      .limit(1);
 
     if (competitorError) throw competitorError;
 
-    if (existingComp) {
-      competitor = existingComp;
+    if (Array.isArray(existingComps) && existingComps.length) {
+      competitor = existingComps[0];
     } else {
       const { data: newComp, error: compErr } = await supabase
         .from("competitors")
         .insert({
           platform_id,
-          platform_user_id,
-          display_name: displayName || username || platform_user_id,
+          platform_user_id: platformUserId,
+          display_name: displayName || username || platformUserId,
           profile_url: profileUrl,
         })
         .select()
@@ -1566,79 +1751,43 @@ app.post("/api/posts", async (req, res) => {
       competitor = newComp;
     }
 
-    // Find or create post
-    let post;
-    const { data: existingPost, error: existingPostErr } = await supabase
+    const { data: post, error: insertErr } = await supabase
       .from("posts")
-      .select("*")
-      .eq("platform_id", platform_id)
-      .eq("platform_post_id", platformPostId)
-      .maybeSingle();
-    if (existingPostErr) throw existingPostErr;
+      .insert({
+        platform_id,
+        competitor_id: competitor.id,
+        platform_post_id: platformPostId,
+        url: url || null,
+        content,
+        published_at,
+        user_id: requestUserId,
+      })
+      .select()
+      .single();
 
-    if (existingPost) {
-      const { data: updated, error: updateErr } = await supabase
-        .from("posts")
-        .update({
-          content,
-          published_at,
-          url: url || existingPost.url || null,
-          competitor_id: competitor.id,
-          // Keep ownership stable when set, but backfill when empty.
-          user_id: existingPost.user_id || user_id,
-        })
-        .eq("id", existingPost.id)
-        .select()
-        .single();
-      if (updateErr) throw updateErr;
-      post = updated;
-    } else {
-      const { data: newPost, error: insertErr } = await supabase
-        .from("posts")
-        .insert({
-          platform_id,
-          competitor_id: competitor.id,
-          platform_post_id: platformPostId,
-          url: url || null,
-          content,
-          published_at,
-          user_id,
-        })
-        .select()
-        .single();
-      if (insertErr) {
-        if (!isDuplicateKeyError(insertErr)) throw insertErr;
+    if (insertErr) {
+      if (!isDuplicateKeyError(insertErr)) throw insertErr;
 
-        // Concurrent saves can race on insert; resolve by loading the existing row.
-        const { data: racedPost, error: racedPostErr } = await supabase
-          .from('posts')
-          .select('*')
-          .eq('platform_id', platform_id)
-          .eq('platform_post_id', platformPostId)
-          .maybeSingle();
-        if (racedPostErr) throw racedPostErr;
-        if (!racedPost) throw insertErr;
-
-        const { data: synced, error: syncedErr } = await supabase
-          .from('posts')
-          .update({
-            content,
-            published_at,
-            url: url || racedPost.url || null,
-            competitor_id: competitor.id,
-            user_id: racedPost.user_id || user_id,
-          })
-          .eq('id', racedPost.id)
-          .select()
-          .single();
-        if (syncedErr) throw syncedErr;
-        post = synced;
-      } else {
-        post = newPost;
+      // If the user double-clicked or two saves raced, treat it as already saved.
+      const racedSameUserPost = await loadExistingForThisUser();
+      if (racedSameUserPost) {
+        return res.status(200).json({
+          saved: false,
+          already_saved: true,
+          post_id: racedSameUserPost.id,
+          message: "You have already saved this post.",
+        });
       }
+
+      // If we get here, the DB still has a global unique rule that blocks other users.
+      return res.status(409).json({
+        error: "Save blocked by an old database uniqueness rule that does not include user_id. Run the user-scoped saved-post SQL migration.",
+        code: "global_post_duplicate_constraint",
+        details: insertErr.message,
+      });
     }
 
-    console.log('[POST /api/posts] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments);
+    console.log('[savePostHandler] Saving metrics – likes:', likes, 'shares:', shares, 'comments:', comments);
     const { error: metricsErr } = await supabase.from("post_metrics").insert({
       post_id: post.id,
       snapshot_at: new Date(),
@@ -1649,8 +1798,7 @@ app.post("/api/posts", async (req, res) => {
     });
     if (metricsErr) throw metricsErr;
 
-    // For YouTube, save additional details. Replace the existing row so
-    // re-saving a video can backfill thumbnails and URLs.
+    // For YouTube, save additional details.
     if (isYouTube) {
       const youtubeExtra = {
         title,
@@ -1662,14 +1810,6 @@ app.post("/api/posts", async (req, res) => {
         url: url || null,
       };
 
-      const { error: deleteDetailsError } = await supabase
-        .from("post_details_platform")
-        .delete()
-        .eq("post_id", post.id);
-      if (deleteDetailsError) {
-        console.error('Error replacing YouTube post details:', deleteDetailsError);
-      }
-
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: youtubeExtra,
@@ -1679,9 +1819,7 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For X (Twitter), save additional details. Replace the existing details
-    // row so re-saving a post updates author/media fields instead of keeping
-    // the old stripped-down version.
+    // For X (Twitter), save author/media details.
     if (isX) {
       const xExtra = {
         author_name: author_name || displayName || cleanUsername,
@@ -1692,14 +1830,6 @@ app.post("/api/posts", async (req, res) => {
         url: url || null,
       };
 
-      const { error: deleteDetailsError } = await supabase
-        .from("post_details_platform")
-        .delete()
-        .eq("post_id", post.id);
-      if (deleteDetailsError) {
-        console.error('Error replacing X post details:', deleteDetailsError);
-      }
-
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: xExtra,
@@ -1709,8 +1839,7 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    // For Instagram, TikTok, Reddit — save author/details. Replace the
-    // existing row so re-saving can backfill media and author fields.
+    // For Instagram, TikTok, Reddit — save author/details.
     if (isInstagram || isTikTok || isReddit) {
       const socialExtra = {
         author_name: author_name || username,
@@ -1725,14 +1854,6 @@ app.post("/api/posts", async (req, res) => {
         product_type: product_type || null,
       };
 
-      const { error: deleteDetailsError } = await supabase
-        .from("post_details_platform")
-        .delete()
-        .eq("post_id", post.id);
-      if (deleteDetailsError) {
-        console.error('Error replacing social post details:', deleteDetailsError);
-      }
-
       const { error: detailsError } = await supabase.from("post_details_platform").insert({
         post_id: post.id,
         extra_json: socialExtra,
@@ -1742,16 +1863,24 @@ app.post("/api/posts", async (req, res) => {
       }
     }
 
-    res.json({ saved: true, post_id: post.id });
+    return res.json({ saved: true, already_saved: false, post_id: post.id });
   } catch (err) {
     console.error("Save post failed:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
-});
+}
+
+app.post("/api/posts", savePostHandler);
+// Same database table, less blocklist-prone route name for browsers/extensions.
+app.post("/api/saved-items", savePostHandler);
 
 app.get("/api/posts", async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data: posts, error } = await supabase
@@ -1830,8 +1959,12 @@ app.get("/api/posts", async (req, res) => {
 });
 
 app.delete("/api/posts", async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { error: deleteError } = await supabase
@@ -1849,8 +1982,12 @@ app.delete("/api/posts", async (req, res) => {
 app.delete("/api/posts/:id", async (req, res) => {
   const postId = req.params.id;
 
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     const { data: post, error: postError } = await supabase
@@ -2077,8 +2214,12 @@ app.post('/api/linkedin/search', async (req, res) => {
  */
 app.post('/api/linkedin/save', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const { type, data } = req.body;
     if (!type || !data) {
@@ -2521,6 +2662,13 @@ app.post('/api/linkedin/save', async (req, res) => {
 
     return res.status(400).json({ error: `Unknown save type: ${type}` });
   } catch (err) {
+    if (isDuplicateKeyError(err)) {
+      return res.status(200).json({
+        saved: false,
+        already_saved: true,
+        message: 'You have already saved this post.',
+      });
+    }
     console.error('LinkedIn save error:', err);
     return res.status(500).json({ error: err.message });
   }
@@ -3451,8 +3599,12 @@ const PLATFORM_DISPLAY = {
 };
 
 app.get('/api/keywords', async (req, res) => {
-  const userId = requireUserId(req, res);
-  if (!userId) return;
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
 
   try {
     // 1. Fetch all saved posts with metrics + platform name
@@ -3641,31 +3793,43 @@ app.get('/api/keywords', async (req, res) => {
   }
 });
 
-// ---------- GET  /api/posts/saved-ids — return platform_post_ids the user already saved --------
-app.get('/api/posts/saved-ids', async (req, res) => {
+// ---------- GET saved ids — return platform_post_ids the current user already saved --------
+async function getSavedIdsHandler(req, res) {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const { data, error } = await supabase
       .from('posts')
-      .select('platform_post_id')
+      .select('platform_id, platform_post_id')
       .eq('user_id', userId);
 
     if (error) throw error;
     const ids = (data || []).map((r) => r.platform_post_id);
-    return res.json({ ids });
+    const keys = (data || []).map((r) => `${r.platform_id}:${r.platform_post_id}`);
+    return res.json({ ids, keys });
   } catch (err) {
     console.error('saved-ids error:', err.message);
     return res.status(500).json({ error: err.message });
   }
-});
+}
+
+app.get('/api/posts/saved-ids', getSavedIdsHandler);
+app.get('/api/saved-items/saved-ids', getSavedIdsHandler);
 
 // ---------- GET  /api/watchlist — list all items for the user --------
 app.get('/api/watchlist', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const { data, error } = await supabase
       .from('watchlist_items')
@@ -3684,8 +3848,12 @@ app.get('/api/watchlist', async (req, res) => {
 // ---------- POST /api/watchlist — create a new item ------------------
 app.post('/api/watchlist', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const { platform, scrape_type, target, label, config } = req.body;
     if (!platform || !scrape_type || !target) {
@@ -3709,8 +3877,12 @@ app.post('/api/watchlist', async (req, res) => {
 // ---------- PATCH /api/watchlist/:id — toggle enabled / update -------
 app.patch('/api/watchlist/:id', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const updates = {};
     if (req.body.enabled !== undefined) updates.enabled = req.body.enabled;
@@ -3738,8 +3910,12 @@ app.patch('/api/watchlist/:id', async (req, res) => {
 // ---------- DELETE /api/watchlist/:id --------------------------------
 app.delete('/api/watchlist/:id', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const { error } = await supabase
       .from('watchlist_items')
@@ -3759,8 +3935,12 @@ app.delete('/api/watchlist/:id', async (req, res) => {
 // Can also accept ?item_id=<uuid> to run a single item.
 app.post('/api/watchlist/run', async (req, res) => {
   try {
-    const userId = requireUserId(req, res);
-    if (!userId) return;
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
 
     const singleId = req.query.item_id || req.body.item_id;
     let query = supabase
@@ -3827,9 +4007,163 @@ function trimToLimit(data, limit) {
   return data;
 }
 
+function cleanWatchlistTarget(value) {
+  return String(value || '').trim();
+}
+
+function extractLinkedInPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.profilePosts) ? r.profilePosts : []),
+    ...(Array.isArray(r.companyPosts) ? r.companyPosts : []),
+    ...(Array.isArray(r.searchPosts) ? r.searchPosts : []),
+    ...(r.post ? [r.post] : []),
+  ];
+}
+
+function extractInstagramPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.userPosts?.posts) ? r.userPosts.posts : []),
+    ...(Array.isArray(r.searchPosts) ? r.searchPosts : []),
+    ...(r.singlePost ? [r.singlePost] : []),
+  ];
+}
+
+function extractTikTokVideosFromLookup(result = {}) {
+  const r = result.results || result;
+  const fromProfile = Array.isArray(r.profileVideos?.itemList) ? r.profileVideos.itemList : [];
+  const fromKeyword = Array.isArray(r.searchKeyword?.itemList)
+    ? r.searchKeyword.itemList
+    : Array.isArray(r.searchKeyword?.search_item_list)
+      ? r.searchKeyword.search_item_list
+      : [];
+  const fromHashtag = Array.isArray(r.searchHashtag?.itemList)
+    ? r.searchHashtag.itemList
+    : Array.isArray(r.searchHashtag?.challenge_aweme_list)
+      ? r.searchHashtag.challenge_aweme_list
+      : Array.isArray(r.searchHashtag?.search_item_list)
+        ? r.searchHashtag.search_item_list
+        : [];
+  return [
+    ...fromProfile,
+    ...fromKeyword,
+    ...fromHashtag,
+    ...(r.video ? [r.video] : []),
+    ...(r.post && r.post !== r.video ? [r.post] : []),
+  ];
+}
+
+function extractRedditPostsFromLookup(result = {}) {
+  const r = result.results || result;
+  return [
+    ...(Array.isArray(r.userPosts?.posts) ? r.userPosts.posts : []),
+    ...(Array.isArray(r.subredditPosts?.posts) ? r.subredditPosts.posts : []),
+    ...(Array.isArray(r.subredditSearch?.posts) ? r.subredditSearch.posts : []),
+    ...(Array.isArray(r.search?.posts) ? r.search.posts : []),
+    ...(r.post ? [r.post] : []),
+  ];
+}
+
+function normalizeXLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  const searchTweets = r.searchTweets || {};
+  const tweets = [
+    ...(Array.isArray(r.userTweets) ? r.userTweets : []),
+    ...(Array.isArray(searchTweets?.tweets) ? searchTweets.tweets : []),
+    ...(Array.isArray(searchTweets?.data) ? searchTweets.data : []),
+    ...(r.tweetLookup ? [r.tweetLookup] : []),
+  ];
+  const users = [
+    ...(r.userLookup ? [r.userLookup] : []),
+    ...(Array.isArray(searchTweets?.users) ? searchTweets.users : []),
+    ...(Array.isArray(searchTweets?.includes?.users) ? searchTweets.includes.users : []),
+  ];
+  return {
+    tweets,
+    users,
+    mode: result.mode,
+    input: result.input,
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? searchTweets?.credits_remaining ?? null,
+  };
+}
+
+function normalizeLinkedInLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.mode,
+    profile: r.profile || null,
+    company: r.company || null,
+    posts: extractLinkedInPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeInstagramLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.mode,
+    profile: r.profile || null,
+    posts: extractInstagramPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeTikTokLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.inputType || result.mode,
+    profile: r.profile || null,
+    itemList: extractTikTokVideosFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+function normalizeRedditLookupForWatchlist(result = {}) {
+  const r = result.results || result;
+  return {
+    mode: result.inputType || result.mode,
+    profile: r.profile || r.userProfile || null,
+    subredditDetails: r.subredditDetails || null,
+    posts: extractRedditPostsFromLookup(result),
+    errors: result.errors || [],
+    credits_remaining: result.credits_remaining ?? null,
+  };
+}
+
+async function lookupYouTubeInputForWatchlist(target, limit) {
+  const query = cleanWatchlistTarget(target);
+  if (!query) throw new Error('Please enter a YouTube channel, video URL, video ID, or search term.');
+
+  const videoId = extractYouTubeVideoId(query);
+  if (videoId) {
+    const video = await fetchVideoDetails(videoId);
+    return { mode: 'video', videos: [video], video, errors: [] };
+  }
+
+  const looksLikeChannel = /^@/.test(query) || /youtube\.com\/(channel|c|user|@)/i.test(query) || /^UC[a-zA-Z0-9_-]{22}$/.test(query);
+  if (looksLikeChannel) {
+    const channelId = await resolveChannelId(query);
+    const [channel, videos] = await Promise.all([
+      fetchChannelDetails(channelId),
+      fetchChannelVideos(channelId, limit),
+    ]);
+    return { mode: 'channel', channel, videos, errors: [] };
+  }
+
+  const videos = await searchYouTube(query, limit);
+  return { mode: 'keyword', videos, errors: [] };
+}
+
 /**
- * Core dispatcher — given a watchlist item, call the right API and return raw data.
- * Post-processes results to trim to the configured max_results.
+ * Core dispatcher — Auto Scraper uses one simple search box. For every platform,
+ * route that target through the same platform lookup helpers used by the normal
+ * social search pages, then normalize the result into the shapes the watchlist
+ * renderers expect.
  */
 async function executeWatchlistItem(item) {
   const raw = await _executeWatchlistScrape(item);
@@ -3839,37 +4173,59 @@ async function executeWatchlistItem(item) {
 
 async function _executeWatchlistScrape(item) {
   const { platform, scrape_type, target, config = {} } = item;
+  const limit = Math.min(100, Math.max(1, Number(config.max_results) || 10));
+  const query = cleanWatchlistTarget(target);
 
+  if (!query) throw new Error('Auto Scraper target is required.');
+
+  // New/default Auto Scraper behavior: every card is a smart search card.
+  // This fixes LinkedIn, Instagram, Reddit, X, YouTube, and TikTok using one flow.
+  if (!scrape_type || scrape_type === 'search') {
+    switch (platform) {
+      case 'x':
+        return normalizeXLookupForWatchlist(await lookupXInput(query, limit));
+      case 'youtube':
+        return lookupYouTubeInputForWatchlist(query, limit);
+      case 'reddit':
+        return normalizeRedditLookupForWatchlist(await lookupRedditInput(query, limit));
+      case 'linkedin':
+        return normalizeLinkedInLookupForWatchlist(await lookupLinkedInInput(query, limit));
+      case 'instagram':
+        return normalizeInstagramLookupForWatchlist(await lookupInstagramInput(query, limit));
+      case 'tiktok':
+        return normalizeTikTokLookupForWatchlist(await lookupTikTokInput(query, limit));
+      default:
+        throw new Error(`Unknown platform: ${platform}`);
+    }
+  }
+
+  // Backward-compatible support for older watchlist rows that were created
+  // before the single-search Auto Scraper UI.
   switch (platform) {
-    /* ── X / Twitter ─────────────────────────────────────── */
     case 'x': {
       const username = target.replace(/^@/, '').trim();
       const user = await getUserIdByUsername(username);
       switch (scrape_type) {
-        case 'user_posts':
-          {
-            const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
-            return Array.isArray(postsResult) ? postsResult : (postsResult?.tweets || []);
-          }
+        case 'user_posts': {
+          const postsResult = await fetchPostsByUserId(user.id, config.max_results || 10);
+          return Array.isArray(postsResult) ? { tweets: postsResult, users: [user] } : { ...postsResult, users: postsResult?.users || [user] };
+        }
         case 'user_mentions':
           return fetchUserMentions(user.id, config.max_results || 10);
         case 'followers':
           return fetchFollowers(user.id, config.max_results || 20);
         case 'following':
           return fetchFollowing(user.id, config.max_results || 20);
-        case 'search':
-          return searchRecentTweets(target, config.max_results || 10);
         default:
           throw new Error(`Unknown X scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── YouTube ─────────────────────────────────────────── */
     case 'youtube': {
       switch (scrape_type) {
         case 'channel_videos': {
           const channelId = await resolveChannelId(target);
-          return fetchChannelVideos(channelId, config.max_results || 10);
+          return { videos: await fetchChannelVideos(channelId, config.max_results || 10) };
         }
         case 'channel_details': {
           const channelId = await resolveChannelId(target);
@@ -3880,47 +4236,38 @@ async function _executeWatchlistScrape(item) {
           if (!vid) throw new Error('Invalid YouTube video URL or ID');
           return fetchVideoDetails(vid);
         }
-        case 'search':
-          return searchYouTube(target, config.max_results || 10);
         default:
           throw new Error(`Unknown YouTube scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── Reddit ──────────────────────────────────────────── */
     case 'reddit': {
-      const limit = config.max_results || 25;
+      const oldLimit = config.max_results || 25;
       switch (scrape_type) {
         case 'subreddit_posts': {
           const sub = target.replace(/^r\//, '').trim();
-          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, limit);
+          return scrapeCreatorsPaginated('/v1/reddit/subreddit', { subreddit: sub, trim: true }, oldLimit);
         }
         case 'subreddit_details': {
           const sub = target.replace(/^r\//, '').trim();
           return scrapeCreators('/v1/reddit/subreddit/details', { subreddit: sub, trim: true });
         }
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/reddit/search', { query: target, trim: true }, limit);
         default:
           throw new Error(`Unknown Reddit scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── LinkedIn ────────────────────────────────────────── */
     case 'linkedin': {
       switch (scrape_type) {
         case 'profile':
-          return scrapeCreators('/v1/linkedin/profile', { url: target });
         case 'company':
-          return scrapeCreators('/v1/linkedin/company', { url: target });
         case 'post':
-          return scrapeCreators('/v1/linkedin/post', { url: target });
+          return normalizeLinkedInLookupForWatchlist(await lookupLinkedInInput(target, limit));
         default:
           throw new Error(`Unknown LinkedIn scrape_type: ${scrape_type}`);
       }
     }
 
-    /* ── Instagram ───────────────────────────────────────── */
     case 'instagram': {
       const handle = target.replace(/^@/, '').trim();
       switch (scrape_type) {
@@ -3935,17 +4282,14 @@ async function _executeWatchlistScrape(item) {
       }
     }
 
-    /* ── TikTok ──────────────────────────────────────────── */
     case 'tiktok': {
       const handle = target.replace(/^@/, '').trim();
-      const limit = config.max_results || 20;
+      const oldLimit = config.max_results || 20;
       switch (scrape_type) {
         case 'profile':
           return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
         case 'profile_videos':
-          return scrapeCreators('/v1/tiktok/profile', { handle, trim: true });
-        case 'search':
-          return scrapeCreatorsPaginated('/v1/tiktok/search/keyword', { query: target, trim: true }, limit);
+          return normalizeTikTokLookupForWatchlist(await lookupTikTokInput(`@${handle}`, oldLimit));
         default:
           throw new Error(`Unknown TikTok scrape_type: ${scrape_type}`);
       }
