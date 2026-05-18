@@ -78,7 +78,7 @@ const PLATFORM_COLORS = {
 };
 
 const SECTION_DEFS = [
-  { id: "summary", label: "AI recommendations", type: "Insight", icon: IconSparkles },
+  { id: "summary", label: "Smart takeaways", type: "Insight", icon: IconSparkles },
   { id: "kpis", label: "Scorecard", type: "Dashboard", icon: IconLayoutDashboard },
   { id: "timeline", label: "Performance trend", type: "Chart", icon: IconChartLine },
   { id: "platforms", label: "Platform performance", type: "Chart", icon: IconChartBar },
@@ -93,8 +93,8 @@ const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter((s) => !s.hidden);
 const DEFAULT_ORDER = VISIBLE_SECTION_DEFS.map((s) => s.id);
 const VALID_SECTION_IDS = new Set(SECTION_DEFS.map((s) => s.id));
 const PANEL_LAYOUT = {
-  summary: { span: 1, height: 118 },
-  kpis: { span: 1, height: 118 },
+  summary: { span: 1, height: 128 },
+  kpis: { span: 1, height: 128 },
   timeline: { span: 1, height: 220 },
   platforms: { span: 1, height: 220 },
   tone: { span: 1, height: 220 },
@@ -109,19 +109,19 @@ const REPORT_PRESETS = [
     id: "executive",
     label: "Executive",
     description: "KPIs, trends, competitors, keywords.",
-    sections: ["summary", "kpis", "timeline", "platforms", "competitors", "keywords"],
+    sections: ["kpis", "summary", "timeline", "platforms", "competitors", "keywords"],
   },
   {
     id: "visual",
     label: "Visual",
     description: "Charts and tone, fewer tables.",
-    sections: ["summary", "kpis", "timeline", "platforms", "tone"],
+    sections: ["kpis", "summary", "timeline", "platforms", "tone"],
   },
   {
     id: "data",
     label: "Data",
     description: "Tables and rankings.",
-    sections: ["summary", "kpis", "topPosts", "competitors", "keywords"],
+    sections: ["kpis", "summary", "topPosts", "competitors", "keywords"],
   },
 ];
 
@@ -386,10 +386,63 @@ function SectionTitle({ icon: Icon, title, subtitle }) {
 
 function EmptyReportState({ children }) {
   return (
-    <Paper p="md" radius="md" withBorder style={{ background: "#f8f9fa" }}>
-      <Text size="xs" c="dimmed" ta="center">{children}</Text>
+    <Paper p="xs" radius="md" withBorder style={{ background: "#f8f9fa" }}>
+      <Text size="10px" c="dimmed" ta="center">{children}</Text>
     </Paper>
   );
+}
+
+function titleCasePlatform(platform) {
+  const value = String(platform || "platform").trim();
+  if (!value) return "Platform";
+  if (value.toLowerCase() === "x") return "X";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function shortenText(value, max = 42) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1).trim()}…`;
+}
+
+function cleanInsightLines(summary) {
+  return String(summary || "")
+    .split(/\n+/)
+    .map((line) => line
+      .replace(/^#+\s*/g, "")
+      .replace(/\*\*/g, "")
+      .replace(/^[-•*\d.)\s]+/, "")
+      .replace(/^recommendations?:?\s*/i, "")
+      .replace(/^ai\s+(insights?|recommendations?)\s*:*/i, "")
+      .trim())
+    .filter(Boolean)
+    .filter((line) => !/^compact\s+ai\s+insights/i.test(line))
+    .filter((line) => !/^here\s+are/i.test(line))
+    .slice(0, 3);
+}
+
+function buildAutoTakeaways(analytics) {
+  if (!analytics) return [];
+  const lines = [];
+  const topPlatform = analytics.platformBreakdown?.[0];
+  const topPost = analytics.topPosts?.[0];
+  const topCompetitor = analytics.competitors?.[0];
+  const topKeyword = analytics.topKeywords?.[0];
+
+  if (topPlatform) {
+    lines.push(`${titleCasePlatform(topPlatform.platform)} leads with ${fmtK(topPlatform.engagement)} engagement.`);
+  }
+  if (topPost) {
+    lines.push(`Reuse themes from “${shortenText(getPostTitle(topPost), 34)}”.`);
+  }
+  if (topCompetitor) {
+    lines.push(`Watch @${shortenText(topCompetitor.name, 28)} for competitor signals.`);
+  }
+  if (topKeyword) {
+    lines.push(`Test “${shortenText(topKeyword.term, 22)}” in upcoming content.`);
+  }
+  if (!lines.length) lines.push("Save more posts to unlock report takeaways.");
+  return lines.slice(0, 3);
 }
 
 function KpiReport({ analytics }) {
@@ -640,23 +693,21 @@ function ToneEngagementReport({ data, view }) {
   );
 }
 
-function InsightReport({ summary }) {
-  if (!summary) return <EmptyReportState>Generate recommendations to fill this panel.</EmptyReportState>;
-  const lines = String(summary)
-    .split(/\n+/)
-    .map((line) => line.replace(/^[-•*\d.)\s]+/, "").trim())
-    .filter(Boolean)
-    .slice(0, 3);
+function InsightReport({ summary, analytics }) {
+  const lines = cleanInsightLines(summary);
+  const takeaways = lines.length ? lines : buildAutoTakeaways(analytics);
 
   return (
-    <Stack gap={6}>
-      {lines.map((line, index) => (
-        <Group key={`${line}-${index}`} gap="xs" align="flex-start" wrap="nowrap">
-          <ThemeIcon size={18} radius="xl" variant="light"><IconSparkles size={10} /></ThemeIcon>
-          <Text size="11px" lineClamp={2} style={{ lineHeight: 1.35 }}>{line}</Text>
-        </Group>
+    <SimpleGrid cols={1} spacing={5}>
+      {takeaways.map((line, index) => (
+        <Paper key={`${line}-${index}`} p={6} radius="md" withBorder style={{ background: "#f8fbff" }}>
+          <Group gap={7} align="flex-start" wrap="nowrap">
+            <ThemeIcon size={18} radius="xl" variant="light"><IconSparkles size={10} /></ThemeIcon>
+            <Text size="10px" lineClamp={2} style={{ lineHeight: 1.3 }}>{line}</Text>
+          </Group>
+        </Paper>
       ))}
-    </Stack>
+    </SimpleGrid>
   );
 }
 
@@ -866,7 +917,7 @@ export default function Reports() {
       const topPlatforms = analytics.platformBreakdown.slice(0, 3).map((p) => `${p.platform}: ${p.engagement} engagement across ${p.posts} posts`).join("; ");
       const topCompetitors = analytics.competitors.slice(0, 3).map((c) => `@${c.name}: ${c.engagement} engagement`).join("; ");
       const topKeywords = analytics.topKeywords.slice(0, 5).map((k) => `"${k.term}" KPI ${Math.round(k.kpi || 0)}`).join("; ");
-      const prompt = `Write compact recommendations for a Chibitek social analytics PDF. Use 3 bullets max. Each bullet must be under 12 words and action-oriented. No intro paragraph.\n\nData:\n- Posts: ${analytics.totalPosts}\n- Total engagement: ${analytics.totalEngagement}\n- Average engagement: ${analytics.avgEngagement}\n- Top platforms: ${topPlatforms || "N/A"}\n- Top competitors: ${topCompetitors || "N/A"}\n- Top keywords: ${topKeywords || "N/A"}`;
+      const prompt = `Write compact recommendations for a Chibitek social analytics PDF. Use 3 bullets max. Each bullet must be under 12 words and action-oriented. No intro paragraph, heading, markdown bold, or title.\n\nData:\n- Posts: ${analytics.totalPosts}\n- Total engagement: ${analytics.totalEngagement}\n- Average engagement: ${analytics.avgEngagement}\n- Top platforms: ${topPlatforms || "N/A"}\n- Top competitors: ${topCompetitors || "N/A"}\n- Top keywords: ${topKeywords || "N/A"}`;
       const aiSettings = loadAiSettings();
       const modelMeta = getModelMeta(aiSettings?.modelChoice);
       const res = await fetch(apiUrl("/api/chat"), {
@@ -882,9 +933,20 @@ export default function Reports() {
       if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
       const json = await res.json();
       setAiSummary(json.reply || json.message || "No insights generated.");
-      setSelectedSections((prev) => prev.includes("summary") ? prev : ["summary", ...prev]);
-      setSectionOrder((prev) => ["summary", ...prev.filter((id) => id !== "summary")]);
-      setStatusMessage("Recommendations generated and added to the PDF preview.");
+      setSelectedSections((prev) => prev.includes("summary") ? prev : [...prev, "summary"]);
+      setSectionOrder((prev) => {
+        const withoutSummary = prev.filter((id) => id !== "summary");
+        const kpiIndex = withoutSummary.indexOf("kpis");
+        if (kpiIndex >= 0) {
+          return [
+            ...withoutSummary.slice(0, kpiIndex + 1),
+            "summary",
+            ...withoutSummary.slice(kpiIndex + 1),
+          ];
+        }
+        return ["summary", ...withoutSummary];
+      });
+      setStatusMessage("Recommendations updated in the PDF preview.");
     } catch (error) {
       console.error("Summary failed:", error);
       setStatusMessage("Could not generate recommendations. Check that the chat endpoint is working.");
@@ -908,7 +970,7 @@ export default function Reports() {
         keywords: analytics.topKeywords.slice(0, 10),
         tones: analytics.toneDistribution,
       };
-      const prompt = `You are configuring a clean dashboard-style PDF report builder for Chibitek. Return only valid JSON.\n\nUser request:\n${reportPrompt}\n\nAvailable section IDs:\n${availableSections}\n\nData snapshot:\n${JSON.stringify(dataSnapshot)}\n\nReturn JSON with this shape:\n{\n  "title": "short report title",\n  "sections": ["summary", "kpis"],\n  "toneChartView": "scatter" or "bar",\n  "summary": "3 short bullets, each under 12 words"\n}\nRules: use only available section IDs; keep the report light; prefer summary first; include tone only when tone data exists or user asks for tone; include keywords only if keyword data exists or the user asks for keywords.`;
+      const prompt = `You are configuring a clean dashboard-style PDF report builder for Chibitek. Return only valid JSON.\n\nUser request:\n${reportPrompt}\n\nAvailable section IDs:\n${availableSections}\n\nData snapshot:\n${JSON.stringify(dataSnapshot)}\n\nReturn JSON with this shape:\n{\n  "title": "short report title",\n  "sections": ["summary", "kpis"],\n  "toneChartView": "scatter" or "bar",\n  "summary": "3 short bullets, each under 12 words, no heading"\n}\nRules: use only available section IDs; keep the report light; put kpis and summary near the top; do not include markdown headings in summary; include tone only when tone data exists or user asks for tone; include keywords only if keyword data exists or the user asks for keywords.`;
       const aiSettings = loadAiSettings();
       const modelMeta = getModelMeta(aiSettings?.modelChoice);
       const res = await fetch(apiUrl("/api/chat"), {
@@ -947,7 +1009,7 @@ export default function Reports() {
     const def = SECTION_DEFS.find((section) => section.id === id);
     const panelSubtitle = block?.rangeLabel ? `Rows ${block.rangeLabel}` : "";
     const body = {
-      summary: <InsightReport summary={aiSummary} />,
+      summary: <InsightReport summary={aiSummary} analytics={analytics} />,
       kpis: <KpiReport analytics={analytics} />,
       timeline: <TimelineReport data={analytics.engagementOverTime} />,
       platforms: <PlatformReport data={analytics.platformBreakdown} />,
@@ -1053,7 +1115,7 @@ export default function Reports() {
           <ThemeIcon radius="lg" size={42} variant="light"><IconFileAnalytics size={22} /></ThemeIcon>
           <div>
             <Title order={1}>Reports</Title>
-            <Text size="sm" c="dimmed">Ask AI, pick a quick layout, or toggle the panels you need.</Text>
+            <Text size="sm" c="dimmed">Build a clean PDF from your saved social data.</Text>
           </div>
         </Group>
         <Badge variant="light" color="blue">{analytics ? `${analytics.totalPosts} saved posts` : "Loading"}</Badge>
@@ -1065,88 +1127,91 @@ export default function Reports() {
         </Alert>
       )}
 
-      <Card withBorder shadow="sm" radius="xl" p="md" mb="lg">
-        <Stack gap="sm">
-          <Group justify="space-between" align="center">
-            <Group gap="xs">
-              <Title order={2} size="h3">Build the Report</Title>
-              <Badge variant="light" color="blue">{reportPages.length} page{reportPages.length === 1 ? "" : "s"}</Badge>
+      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md" mb="lg">
+        <Card withBorder shadow="sm" radius="xl" p="md">
+          <Stack gap="xs">
+            <Group justify="space-between" align="center">
+              <Title order={2} size="h4">Ask AI</Title>
+              <Badge variant="light" color="blue">Best option</Badge>
             </Group>
-            <Badge variant="light" color="gray">{analytics ? `${analytics.totalPosts} saved posts` : "Loading"}</Badge>
-          </Group>
+            <Textarea
+              autosize
+              minRows={2}
+              maxRows={3}
+              value={reportPrompt}
+              onChange={(event) => setReportPrompt(event.currentTarget.value)}
+              placeholder="Example: Make a clean PDF with KPIs, platforms, competitors, keywords, and next steps."
+            />
+            <Group gap="xs" grow>
+              <Button size="sm" leftSection={<IconSparkles size={15} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()}>
+                Build
+              </Button>
+              <Button size="sm" variant="light" leftSection={<IconDownload size={15} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()}>
+                Download
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
 
-          <Textarea
-            autosize
-            minRows={2}
-            maxRows={3}
-            value={reportPrompt}
-            onChange={(event) => setReportPrompt(event.currentTarget.value)}
-            placeholder="Tell AI what to include. Example: Make a clean PDF with KPIs, platform performance, competitors, keywords, and recommendations."
-          />
-
-          <Group gap="xs" wrap="wrap">
-            <Button size="sm" leftSection={<IconSparkles size={15} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()}>
-              Build
-            </Button>
-            <Button size="sm" variant="light" leftSection={<IconDownload size={15} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()}>
-              Build & Download
-            </Button>
-            <Button size="sm" variant="light" leftSection={<IconSparkles size={15} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
-              Recommendations
-            </Button>
-            <Button size="sm" variant="light" leftSection={<IconMoodSmile size={15} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
-              Analyze Tone
-            </Button>
-            <Button size="sm" variant="light" leftSection={<IconRefresh size={15} />} onClick={loadData} disabled={loading}>
-              Refresh
-            </Button>
+        <Card withBorder shadow="sm" radius="xl" p="md">
+          <Stack gap="xs">
+            <Group justify="space-between" align="center">
+              <Title order={2} size="h4">Quick Layout</Title>
+              <Badge variant="light" color="gray">{reportPages.length} page{reportPages.length === 1 ? "" : "s"}</Badge>
+            </Group>
+            <SimpleGrid cols={1} spacing={6}>
+              {REPORT_PRESETS.map((preset) => (
+                <Button key={preset.id} variant={activePresetId === preset.id ? "filled" : "light"} size="xs" radius="xl" onClick={() => applyPreset(preset)} justify="space-between">
+                  {preset.label}
+                </Button>
+              ))}
+            </SimpleGrid>
+            <TextInput size="xs" label="PDF title" value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
             <Button size="sm" leftSection={<IconDownload size={15} />} onClick={generatePDF} loading={generatingPdf} disabled={!analytics || selectedOrderedSections.length === 0}>
               Download PDF
             </Button>
-          </Group>
+          </Stack>
+        </Card>
 
-          <Group gap="xs" wrap="wrap">
-            <Text size="xs" fw={800} c="dimmed">Layouts</Text>
-            {REPORT_PRESETS.map((preset) => (
-              <Button key={preset.id} variant={activePresetId === preset.id ? "filled" : "light"} size="xs" radius="xl" onClick={() => applyPreset(preset)}>
-                {preset.label}
-              </Button>
-            ))}
-          </Group>
-
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
-            <TextInput size="sm" label="Title" value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
-            <NumberInput size="sm" label="Tone posts" value={postLimit} min={1} max={100} onChange={(value) => setPostLimit(Number(value) || 10)} />
-          </SimpleGrid>
-
-          <Stack gap={6}>
+        <Card withBorder shadow="sm" radius="xl" p="md">
+          <Stack gap="xs">
             <Group justify="space-between" align="center">
-              <Text fw={800} size="sm">Panels</Text>
-              <Group gap={5}>
-                <Badge size="xs" variant="light" color="gray">Keywords: {keywordStatus}</Badge>
-                <Badge size="xs" variant="light" color="gray">{keywordHelp}</Badge>
-              </Group>
+              <Title order={2} size="h4">Data Tools</Title>
+              <Badge variant="light" color="gray">{analytics ? `${analytics.totalPosts} posts` : "Loading"}</Badge>
             </Group>
-            <Group gap={6} wrap="wrap">
+            <SimpleGrid cols={2} spacing={6}>
+              <Button size="xs" variant="light" leftSection={<IconSparkles size={14} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
+                Improve Takeaways
+              </Button>
+              <Button size="xs" variant="light" leftSection={<IconMoodSmile size={14} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
+                Analyze Tone
+              </Button>
+            </SimpleGrid>
+            <NumberInput size="xs" label="Tone post sample" value={postLimit} min={1} max={100} onChange={(value) => setPostLimit(Number(value) || 10)} />
+            <Group gap={5} wrap="wrap">
               {VISIBLE_SECTION_DEFS.map((section) => {
                 const Icon = section.icon;
                 const active = selectedSections.includes(section.id);
                 return (
-                  <Button key={section.id} size="xs" radius="xl" variant={active ? "filled" : "light"} leftSection={<Icon size={12} />} onClick={() => toggleSection(section.id)}>
+                  <Button key={section.id} size="xs" radius="xl" variant={active ? "filled" : "light"} leftSection={<Icon size={11} />} onClick={() => toggleSection(section.id)}>
                     {section.label}
                   </Button>
                 );
               })}
             </Group>
+            <Group gap={5}>
+              <Badge size="xs" variant="light" color="gray">{keywords.length} keywords</Badge>
+              <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>Refresh</Button>
+            </Group>
           </Stack>
-        </Stack>
-      </Card>
+        </Card>
+      </SimpleGrid>
 
       <Card withBorder shadow="sm" radius="xl" p="lg">
         <Group justify="space-between" mb="md" align="flex-start">
           <div>
             <Title order={2} size="h3">Live Report Preview</Title>
-            <Text size="sm" c="dimmed">Preview appears below so the builder stays simple.</Text>
+            <Text size="sm" c="dimmed">What the PDF will look like.</Text>
           </div>
           <Group gap="xs">
             <Badge variant="light" color="blue">{PDF_EXPORT_SCALE}x export</Badge>
