@@ -65,6 +65,7 @@ import { apiUrl } from "../utils/api";
 import classes from "./DashboardPage.module.css";
 import { useTranslation } from "react-i18next";
 import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
+import { analyzeUniversalPosts, convertSavedPosts } from "./DataConverter";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -149,7 +150,7 @@ function useDashboardData() {
     return () => { mounted = false; };
   }, []);
 
-  return { posts, keywords, platformIdMap, loading, userId };
+  return { posts, setPosts, keywords, platformIdMap, loading, userId };
 }
 
 /* ------------------------------------------------------------------ */
@@ -597,11 +598,7 @@ function TopPostsList({ posts }) {
                 p="sm"
                 radius="md"
                 className={classes.postRow}
-                component={p.url ? "a" : "div"}
-                href={p.url || undefined}
-                target={p.url ? "_blank" : undefined}
-                rel={p.url ? "noopener noreferrer" : undefined}
-                style={{ textDecoration: "none", color: "inherit", cursor: p.url ? "pointer" : "default" }}
+                style={{ textDecoration: "none", color: "inherit" }}
               >
                 <Group justify="space-between" wrap="nowrap">
                   <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
@@ -625,28 +622,28 @@ function TopPostsList({ posts }) {
                       </Group>
                     </Stack>
                   </Group>
-                  <Group gap="lg" wrap="nowrap">
+                  <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
                     <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
-                      <Group gap={4}>
-                        <IconHeart size={14} color="#FF6B6B" />
-                        <Text size="sm" fw={600}>{fmtK(p.likes || 0)}</Text>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 54, justifyContent: "flex-end" }}>
+                        <IconHeart size={14} color="#FF6B6B" style={{ flexShrink: 0 }} />
+                        <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.likes || 0)}</Text>
                       </Group>
                     </Tooltip>
                     <Tooltip label={t("dashboard.comments", { defaultValue: "Comments" })}>
-                      <Group gap={4}>
-                        <IconMessage size={14} color="#51CF66" />
-                        <Text size="sm" fw={600}>{fmtK(p.comments || 0)}</Text>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 48, justifyContent: "flex-end" }}>
+                        <IconMessage size={14} color="#51CF66" style={{ flexShrink: 0 }} />
+                        <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.comments || 0)}</Text>
                       </Group>
                     </Tooltip>
                     <Tooltip label={t("dashboard.shares", { defaultValue: "Shares" })}>
-                      <Group gap={4}>
-                        <IconShare3 size={14} color="#845EF7" />
-                        <Text size="sm" fw={600}>{fmtK(p.shares || 0)}</Text>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 42, justifyContent: "flex-end" }}>
+                        <IconShare3 size={14} color="#845EF7" style={{ flexShrink: 0 }} />
+                        <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.shares || 0)}</Text>
                       </Group>
                     </Tooltip>
                     {p.url && (
                       <Tooltip label={t("dashboard.openOriginal", { defaultValue: "Open original" })}>
-                        <ActionIcon variant="subtle" size="sm" component="a" href={p.url} target="_blank" rel="noopener">
+                        <ActionIcon variant="subtle" size="sm" component="a" href={p.url} target="_blank" rel="noopener" style={{ flexShrink: 0 }}>
                           <IconExternalLink size={14} />
                         </ActionIcon>
                       </Tooltip>
@@ -683,16 +680,16 @@ function CompetitorComparison({ competitors }) {
           {competitors.map((c) => (
             <Paper key={c.name} withBorder p="sm" radius="md" className={classes.postRow}>
               <Group justify="space-between" wrap="nowrap">
-                <Group gap="sm" align="center">
-                  <Avatar size={32} radius="xl" color="teal">
+                <Group gap="sm" align="center" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                  <Avatar size={32} radius="xl" color="teal" style={{ flexShrink: 0 }}>
                     {c.name.charAt(0).toUpperCase()}
                   </Avatar>
-                  <Stack gap={2}>
-                    <Text fw={700} size="sm">@{c.name}</Text>
-                    <Text size="xs" c="dimmed">{t("dashboard.postsCollected", { count: c.posts, defaultValue: "{{count}} posts collected" })}</Text>
+                  <Stack gap={2} style={{ minWidth: 0 }}>
+                    <Text fw={700} size="sm" lineClamp={1}>@{c.name}</Text>
+                    <Text size="xs" c="dimmed" lineClamp={1}>{t("dashboard.postsCollected", { count: c.posts, defaultValue: "{{count}} posts collected" })}</Text>
                   </Stack>
                 </Group>
-                <Group gap="lg" wrap="nowrap">
+                <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
                   <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
                     <Group gap={4}>
                       <IconHeart size={14} color="#FF6B6B" />
@@ -792,7 +789,7 @@ function KeywordPerformance({ keywords }) {
 /* ------------------------------------------------------------------ */
 /*  Tone Distribution                                                  */
 /* ------------------------------------------------------------------ */
-function ToneBreakdown({ data }) {
+function ToneBreakdown({ data, onStartAnalysis, analyzing, hasPosts }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   return (
@@ -801,6 +798,20 @@ function ToneBreakdown({ data }) {
       subtitle={t("dashboard.contentToneDesc", { defaultValue: "Tone distribution across collected posts" })}
       icon={IconMoodSmile}
       onViewData={() => navigate("/reports")}
+      right={
+        <Button
+          size="xs"
+          variant={data.length ? "light" : "filled"}
+          leftSection={<IconSparkles size={14} />}
+          onClick={onStartAnalysis}
+          loading={analyzing}
+          disabled={!hasPosts}
+        >
+          {data.length
+            ? t("dashboard.refreshToneAnalysis", { defaultValue: "Refresh Analysis" })
+            : t("dashboard.startToneAnalysis", { defaultValue: "Start Analysis" })}
+        </Button>
+      }
       tourId="dashboard-tone"
     >
       {data.length > 0 ? (
@@ -962,8 +973,38 @@ function DashboardSkeleton() {
 /* ------------------------------------------------------------------ */
 export default function DashboardPage() {
   const { t } = useTranslation();
-  const { posts, keywords, platformIdMap, loading, userId } = useDashboardData();
+  const { posts, setPosts, keywords, platformIdMap, loading, userId } = useDashboardData();
+  const [toneAnalysisLoading, setToneAnalysisLoading] = useState(false);
   const analytics = useAnalytics(posts, keywords, platformIdMap);
+
+  const runToneAnalysisFromDashboard = useCallback(async () => {
+    if (!userId || !posts.length || toneAnalysisLoading) return;
+    setToneAnalysisLoading(true);
+    try {
+      const universalPosts = convertSavedPosts(posts);
+      const missing = universalPosts
+        .filter((post) => !post.tone && String(post.Message || "").trim())
+        .slice(-10);
+
+      if (!missing.length) return;
+
+      const analyzed = await analyzeUniversalPosts(missing, userId);
+      const toneById = new Map();
+      analyzed.forEach((post) => {
+        if (post.id && post.tone) toneById.set(post.id, post.tone);
+      });
+
+      if (toneById.size) {
+        setPosts((prev) => prev.map((post) => (
+          toneById.has(post.id) ? { ...post, tone: toneById.get(post.id) } : post
+        )));
+      }
+    } catch (error) {
+      console.error("Dashboard tone analysis failed:", error);
+    } finally {
+      setToneAnalysisLoading(false);
+    }
+  }, [posts, setPosts, toneAnalysisLoading, userId]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
@@ -1025,7 +1066,12 @@ export default function DashboardPage() {
             <EngagementTimeline data={analytics.engagementOverTime} platformNames={analytics.platformNames} />
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
               <PlatformBreakdown data={analytics.platformBreakdown} />
-              <ToneBreakdown data={analytics.toneDistribution} />
+              <ToneBreakdown
+                data={analytics.toneDistribution}
+                onStartAnalysis={runToneAnalysisFromDashboard}
+                analyzing={toneAnalysisLoading}
+                hasPosts={posts.length > 0}
+              />
             </SimpleGrid>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
               <TopPostsList posts={analytics.topPosts} />
