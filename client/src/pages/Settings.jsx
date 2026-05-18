@@ -20,7 +20,7 @@ import {
   Center,
   useMantineColorScheme,
 } from "@mantine/core";
-import { IconTrash, IconWorld, IconSun, IconMoon, IconDeviceDesktop } from "@tabler/icons-react";
+import { IconTrash, IconWorld, IconSun, IconMoon, IconDeviceDesktop, IconSearch } from "@tabler/icons-react";
 import { useAppTour } from "../tour/AppTourProvider.jsx";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -71,6 +71,12 @@ export default function Settings() {
   const [savingAdmin, setSavingAdmin] = useState(false);
   const [deletingAdminEmail, setDeletingAdminEmail] = useState("");
   const [deletingEmail, setDeletingEmail] = useState("");
+  const [currentAdminEmail, setCurrentAdminEmail] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [selectedOwnerEmail, setSelectedOwnerEmail] = useState("");
+  const [ownerTransferConfirm, setOwnerTransferConfirm] = useState("");
+  const [transferringOwnership, setTransferringOwnership] = useState(false);
   const [adminBanner, setAdminBanner] = useState(null);
   const initialAiSettings = useMemo(() => loadAiSettings(), []);
   const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
@@ -79,6 +85,77 @@ export default function Settings() {
     () => t(`languages.${language}`),
     [language, t]
   );
+
+  const roleLabel = (role) => {
+    const normalized = String(role || "user").trim().toLowerCase();
+    if (normalized === "owner") return "Owner";
+    if (normalized === "admin") return "Admin";
+    return "User";
+  };
+
+  const roleBadgeColor = (role) => {
+    const normalized = String(role || "user").trim().toLowerCase();
+    if (normalized === "owner") return "violet";
+    if (normalized === "admin") return "blue";
+    return "gray";
+  };
+
+  const userRoleCounts = useMemo(() => {
+    return (users || []).reduce(
+      (counts, user) => {
+        const role = String(user?.role || "user").trim().toLowerCase();
+        if (role === "owner") counts.owner += 1;
+        else if (role === "admin") counts.admin += 1;
+        else counts.user += 1;
+        counts.all += 1;
+        return counts;
+      },
+      { all: 0, owner: 0, admin: 0, user: 0 }
+    );
+  }, [users]);
+
+  const filteredUsers = useMemo(() => {
+    const query = String(userSearch || "").trim().toLowerCase();
+
+    return (users || []).filter((user) => {
+      const role = String(user?.role || "user").trim().toLowerCase();
+      const normalizedRole = role === "regular" ? "user" : role;
+      if (roleFilter !== "all" && normalizedRole !== roleFilter) return false;
+
+      if (!query) return true;
+
+      return [user?.email, user?.name, user?.provider, normalizedRole]
+        .map((value) => String(value || "").toLowerCase())
+        .some((value) => value.includes(query));
+    });
+  }, [users, userSearch, roleFilter]);
+
+  const ownershipTransferOptions = useMemo(() => {
+    const currentEmail = String(currentAdminEmail || "").trim().toLowerCase();
+    const seen = new Set();
+
+    return (users || [])
+      .filter((user) => {
+        const email = String(user?.email || "").trim().toLowerCase();
+        if (!email || email === currentEmail || seen.has(email)) return false;
+        seen.add(email);
+
+        return String(user?.role || "user").trim().toLowerCase() !== "owner";
+      })
+      .map((user) => {
+        const email = String(user?.email || "").trim().toLowerCase();
+        const name = String(user?.name || "").trim();
+        const role = roleLabel(user?.role);
+        return {
+          value: email,
+          label: [name || null, email, `(${role})`].filter(Boolean).join(" "),
+        };
+      });
+  }, [users, currentAdminEmail]);
+
+  const ownershipConfirmPhrase = selectedOwnerEmail ? `TRANSFER ${selectedOwnerEmail}` : "";
+  const ownershipConfirmMatches =
+    Boolean(selectedOwnerEmail) && ownerTransferConfirm.trim() === ownershipConfirmPhrase;
 
   const adminCandidateOptions = useMemo(() => {
     const seen = new Set();
@@ -175,6 +252,7 @@ export default function Settings() {
           typeof payload?.canManageAdmins === "boolean"
             ? payload.canManageAdmins
             : role === "owner";
+        setCurrentAdminEmail(String(payload?.email || "").trim().toLowerCase());
         setAccessRole(role);
         setCanManageRegularUsers(manageUsers);
         setCanManageAdmins(manageAdmins);
@@ -354,6 +432,66 @@ export default function Settings() {
       setAdminBanner({ color: "red", message: err?.message || "Failed to delete user." });
     } finally {
       setDeletingEmail("");
+    }
+  }
+
+  async function handleTransferOwnership(e) {
+    e.preventDefault();
+    const targetEmail = String(selectedOwnerEmail || "").trim().toLowerCase();
+
+    if (!targetEmail || !/^\S+@\S+\.\S+$/.test(targetEmail)) {
+      setAdminBanner({ color: "red", message: "Please choose the new owner." });
+      return;
+    }
+
+    if (ownerTransferConfirm.trim() !== ownershipConfirmPhrase) {
+      setAdminBanner({
+        color: "red",
+        message: `Type ${ownershipConfirmPhrase} to confirm the transfer.`,
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Transfer ownership to ${targetEmail}? Your account will become an admin after this change.`
+    );
+    if (!confirmed) return;
+
+    setTransferringOwnership(true);
+    setAdminBanner(null);
+    try {
+      const headers = await getAuthHeader();
+      const response = await fetch(apiUrl("/api/admin/transfer-ownership"), {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          targetEmail,
+          confirmation: ownershipConfirmPhrase,
+        }),
+      });
+
+      const payload = await readResponsePayload(response);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to transfer ownership.");
+      }
+
+      setSelectedOwnerEmail("");
+      setOwnerTransferConfirm("");
+      setAccessRole("admin");
+      setCanManageAdmins(false);
+      setCanManageRegularUsers(true);
+      setAdminBanner({
+        color: "green",
+        message: `Ownership transferred to ${payload?.owner?.email || targetEmail}. Your account is now an admin.`,
+      });
+      await loadAdminLists();
+    } catch (err) {
+      setAdminBanner({ color: "red", message: err?.message || "Failed to transfer ownership." });
+    } finally {
+      setTransferringOwnership(false);
     }
   }
 
@@ -605,6 +743,53 @@ export default function Settings() {
                       </Stack>
                     </form>
                   ) : null}
+
+                  {canManageAdmins ? (
+                    <form onSubmit={handleTransferOwnership} className={`${classes.inlineForm} ${classes.ownerTransferForm}`}>
+                      <Stack gap="xs">
+                        <Group justify="space-between" gap="xs">
+                          <Text fw={700}>Transfer Ownership</Text>
+                          <Badge color="violet" variant="light">Owner only</Badge>
+                        </Group>
+                        <Text size="sm" c="dimmed">
+                          Pick the new owner. Your account will automatically become an admin after transfer.
+                        </Text>
+                        <Select
+                          value={selectedOwnerEmail}
+                          onChange={(value) => {
+                            setSelectedOwnerEmail(value || "");
+                            setOwnerTransferConfirm("");
+                          }}
+                          data={ownershipTransferOptions}
+                          label="New owner"
+                          placeholder={ownershipTransferOptions.length ? "Choose user" : "No eligible users"}
+                          searchable
+                          clearable
+                          nothingFoundMessage="No matching users"
+                        />
+                        <TextInput
+                          value={ownerTransferConfirm}
+                          onChange={(e) => setOwnerTransferConfirm(e.currentTarget.value)}
+                          label="Confirmation"
+                          placeholder={ownershipConfirmPhrase || "Select a user first"}
+                          disabled={!selectedOwnerEmail}
+                          description={
+                            selectedOwnerEmail
+                              ? `Type ${ownershipConfirmPhrase} to confirm.`
+                              : "Select a new owner to generate the confirmation phrase."
+                          }
+                        />
+                        <Button
+                          type="submit"
+                          color="red"
+                          loading={transferringOwnership}
+                          disabled={!ownershipConfirmMatches}
+                        >
+                          Transfer Ownership
+                        </Button>
+                      </Stack>
+                    </form>
+                  ) : null}
                 </Group>
 
                 <Divider />
@@ -616,80 +801,118 @@ export default function Settings() {
                 ) : (
                   <Stack gap="md" w="100%">
                     <Box>
-                      <Group justify="space-between" mb={6}>
-                        <Text fw={700}>Users</Text>
-                        <Badge variant="light">{users.length}</Badge>
+                      <Group justify="space-between" mb={8} align="end" className={classes.listToolbar}>
+                        <Box>
+                          <Text fw={700}>Users</Text>
+                          <Text size="sm" c="dimmed">Search and filter instead of scanning the full email list.</Text>
+                        </Box>
+                        <Badge variant="light">{filteredUsers.length} of {users.length}</Badge>
                       </Group>
-                      <Box className={classes.listWrap}>
+
+                      <Group gap="sm" mb="sm" align="end" className={classes.listFilters}>
+                        <TextInput
+                          value={userSearch}
+                          onChange={(e) => setUserSearch(e.currentTarget.value)}
+                          placeholder="Search email, name, provider, or role"
+                          leftSection={<IconSearch size={16} />}
+                          className={classes.userSearch}
+                        />
+                        <SegmentedControl
+                          value={roleFilter}
+                          onChange={setRoleFilter}
+                          data={[
+                            { value: "all", label: `All (${userRoleCounts.all})` },
+                            { value: "owner", label: `Owners (${userRoleCounts.owner})` },
+                            { value: "admin", label: `Admins (${userRoleCounts.admin})` },
+                            { value: "user", label: `Users (${userRoleCounts.user})` },
+                          ]}
+                        />
+                      </Group>
+
+                      <Box className={`${classes.listWrap} ${classes.scrollList}`}>
                         <Box className={classes.userListHead}>
                           <Text className={classes.colEmail}>Email</Text>
                           <Text className={classes.colName}>Name</Text>
-                          <Text className={classes.colMeta}>Provider</Text>
+                          <Text className={classes.colMeta}>Role</Text>
                           <Text className={classes.colAction}>Action</Text>
                         </Box>
-                        {users.length ? users.map((user) => (
-                          <Box key={user.email} className={classes.userListRow}>
-                            <Text className={classes.colEmail}>{user.email || "-"}</Text>
-                            <Text className={classes.colName}>{user.name || "-"}</Text>
-                            <Text className={classes.colMeta}>{user.provider || "-"}</Text>
-                            <Box className={classes.colAction}>
-                              {String(user.role || "").toLowerCase() === "owner" ? (
-                                <Badge size="sm" color="violet" variant="light">Owner</Badge>
-                              ) : String(user.role || "").toLowerCase() === "admin" ? (
-                                <Badge size="sm" color="gray" variant="light">Admin</Badge>
-                              ) : (
-                                <Button
-                                  color="red"
-                                  variant="light"
-                                  size="xs"
-                                  leftSection={<IconTrash size={14} />}
-                                  loading={deletingEmail === String(user.email || "").toLowerCase()}
-                                  onClick={() => handleDeleteUser(user.email)}
-                                >
-                                  Delete
-                                </Button>
-                              )}
+                        {filteredUsers.length ? filteredUsers.map((user) => {
+                          const normalizedRole = String(user.role || "user").toLowerCase();
+                          const normalizedEmail = String(user.email || "").toLowerCase();
+                          return (
+                            <Box key={`${normalizedEmail}-${normalizedRole}`} className={classes.userListRow}>
+                              <Text className={classes.colEmail}>{user.email || "-"}</Text>
+                              <Text className={classes.colName}>{user.name || user.provider || "-"}</Text>
+                              <Box className={classes.colMeta}>
+                                <Badge size="sm" color={roleBadgeColor(normalizedRole)} variant="light">
+                                  {roleLabel(normalizedRole)}
+                                </Badge>
+                              </Box>
+                              <Box className={classes.colAction}>
+                                {normalizedRole === "owner" || normalizedRole === "admin" ? (
+                                  <Text size="sm" c="dimmed">Protected</Text>
+                                ) : (
+                                  <Button
+                                    color="red"
+                                    variant="light"
+                                    size="xs"
+                                    leftSection={<IconTrash size={14} />}
+                                    loading={deletingEmail === normalizedEmail}
+                                    onClick={() => handleDeleteUser(user.email)}
+                                  >
+                                    Delete
+                                  </Button>
+                                )}
+                              </Box>
                             </Box>
-                          </Box>
-                        )) : (
-                          <Text size="sm" c="dimmed" p="sm">No users found.</Text>
+                          );
+                        }) : (
+                          <Text size="sm" c="dimmed" p="sm">No users match the current filter.</Text>
                         )}
                       </Box>
                     </Box>
 
                     <Box>
                       <Group justify="space-between" mb={6}>
-                        <Text fw={700}>Admins</Text>
+                        <Text fw={700}>Admins & Owners</Text>
                         <Badge variant="light">{admins.length}</Badge>
                       </Group>
-                      <Box className={classes.listWrap}>
+                      <Box className={`${classes.listWrap} ${classes.compactList}`}>
                         <Box className={classes.listHead}>
                           <Text className={classes.colEmail}>Email</Text>
                           <Text className={classes.colMeta}>Status</Text>
                           <Text className={classes.colAction}>Action</Text>
                         </Box>
-                        {admins.length ? admins.map((admin) => (
-                          <Box key={admin.email} className={classes.listRow}>
-                            <Text className={classes.colEmail}>{admin.email}</Text>
-                            <Text className={classes.colMeta}>{admin.role === "owner" ? "Owner" : "Admin"}</Text>
-                            {canManageAdmins && admin.role === "admin" ? (
-                              <Box className={classes.colAction}>
-                                <Button
-                                  color="red"
-                                  variant="light"
-                                  size="xs"
-                                  leftSection={<IconTrash size={14} />}
-                                  loading={deletingAdminEmail === String(admin.email || "").toLowerCase()}
-                                  onClick={() => handleDeleteAdmin(admin.email)}
-                                >
-                                  Remove Admin
-                                </Button>
+                        {admins.length ? admins.map((admin) => {
+                          const adminRole = String(admin.role || "").toLowerCase();
+                          const adminEmail = String(admin.email || "").toLowerCase();
+                          return (
+                            <Box key={`${adminEmail}-${adminRole}`} className={classes.listRow}>
+                              <Text className={classes.colEmail}>{admin.email}</Text>
+                              <Box className={classes.colMeta}>
+                                <Badge size="sm" color={roleBadgeColor(adminRole)} variant="light">
+                                  {roleLabel(adminRole)}
+                                </Badge>
                               </Box>
-                            ) : (
-                              <Box className={classes.colAction}>-</Box>
-                            )}
-                          </Box>
-                        )) : (
+                              {canManageAdmins && adminRole === "admin" ? (
+                                <Box className={classes.colAction}>
+                                  <Button
+                                    color="red"
+                                    variant="light"
+                                    size="xs"
+                                    leftSection={<IconTrash size={14} />}
+                                    loading={deletingAdminEmail === adminEmail}
+                                    onClick={() => handleDeleteAdmin(admin.email)}
+                                  >
+                                    Remove Admin
+                                  </Button>
+                                </Box>
+                              ) : (
+                                <Box className={classes.colAction}>-</Box>
+                              )}
+                            </Box>
+                          );
+                        }) : (
                           <Text size="sm" c="dimmed" p="sm">No admins found.</Text>
                         )}
                       </Box>

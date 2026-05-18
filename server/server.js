@@ -706,7 +706,7 @@ app.get('/api/admin/users', async (req, res) => {
       .from('users')
       .select('email, name, provider, role, created_at, updated_at')
       .not('email', 'is', null)
-      .order('created_at', { ascending: false });
+      .order('email', { ascending: true });
 
     if (error) {
       throw error;
@@ -886,7 +886,8 @@ app.get('/api/admin/admins', async (req, res) => {
       .select('email, role, created_at, updated_at')
       .in('role', [ROLE_OWNER, ROLE_ADMIN])
       .not('email', 'is', null)
-      .order('created_at', { ascending: false });
+      .order('role', { ascending: false })
+      .order('email', { ascending: true });
 
     if (error) {
       throw error;
@@ -978,6 +979,82 @@ app.delete('/api/admin/admins', async (req, res) => {
   } catch (err) {
     console.error('Delete admin failed:', err);
     return res.status(500).json({ error: 'Failed to delete admin.' });
+  }
+});
+
+app.post('/api/admin/transfer-ownership', async (req, res) => {
+  try {
+    const auth = await requireOwner(req, res);
+    if (!auth) return;
+
+    const targetEmail = normalizeEmail(req.body?.targetEmail || req.body?.email);
+    const confirmation = String(req.body?.confirmation || '').trim();
+    if (!targetEmail || !/^\S+@\S+\.\S+$/.test(targetEmail)) {
+      return res.status(400).json({ error: 'Valid target email is required.' });
+    }
+
+    const expectedConfirmation = `TRANSFER ${targetEmail}`;
+    if (confirmation !== expectedConfirmation) {
+      return res.status(400).json({ error: `Type ${expectedConfirmation} to confirm ownership transfer.` });
+    }
+
+    const currentOwner = await getUserByEmail(auth.email);
+    if (!currentOwner || normalizeRole(currentOwner.role) !== ROLE_OWNER) {
+      return res.status(403).json({ error: 'Only the current owner can transfer ownership.' });
+    }
+
+    if (normalizeEmail(currentOwner.email) === targetEmail) {
+      return res.status(400).json({ error: 'Choose a different user to become owner.' });
+    }
+
+    const targetUser = await getUserByEmail(targetEmail);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user was not found. Add the user first, then transfer ownership.' });
+    }
+
+    if (normalizeRole(targetUser.role) === ROLE_OWNER) {
+      return res.status(400).json({ error: 'Target user is already an owner.' });
+    }
+
+    const previousTargetRole = normalizeRole(targetUser.role);
+
+    // Supabase JS does not provide a multi-row transaction here, so update the target first
+    // and roll it back if the current-owner downgrade fails. The UI and API guard this path
+    // so it should only run for deliberate owner transfers.
+    const { data: newOwner, error: ownerUpdateError } = await supabase
+      .from('users')
+      .update({ role: ROLE_OWNER })
+      .eq('id', targetUser.id)
+      .select('email, role, updated_at')
+      .single();
+
+    if (ownerUpdateError) {
+      throw ownerUpdateError;
+    }
+
+    const { data: previousOwner, error: previousOwnerUpdateError } = await supabase
+      .from('users')
+      .update({ role: ROLE_ADMIN })
+      .eq('id', currentOwner.id)
+      .select('email, role, updated_at')
+      .single();
+
+    if (previousOwnerUpdateError) {
+      await supabase
+        .from('users')
+        .update({ role: previousTargetRole })
+        .eq('id', targetUser.id);
+      throw previousOwnerUpdateError;
+    }
+
+    return res.json({
+      owner: newOwner,
+      previousOwner,
+      transferred: true,
+    });
+  } catch (err) {
+    console.error('Transfer ownership failed:', err);
+    return res.status(500).json({ error: 'Failed to transfer ownership.' });
   }
 });
 
