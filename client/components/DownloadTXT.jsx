@@ -1,7 +1,9 @@
 import { Button } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { downloadFile } from "./downloadFile";
 
 const DownloadTXT = ({ data }) => {
+  const { t } = useTranslation();
   const handleDownload = () => {
     const txtLines = [
       `Heading: ${data.heading}`,
@@ -21,7 +23,7 @@ const DownloadTXT = ({ data }) => {
     downloadFile(content, "scraped-data.txt", "text/plain");
   };
 
-  return <Button color="grape" onClick={handleDownload}>Download TXT</Button>;
+  return <Button color="grape" onClick={handleDownload}>{t("common.downloadTxt")}</Button>;
 };
 
 export default DownloadTXT;

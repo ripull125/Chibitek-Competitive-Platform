@@ -104,6 +104,142 @@ const fmtDate = (d) => {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
+const looksLikeUrl = (value) => /^https?:\/\//i.test(String(value || "").trim());
+
+const getOriginalPostUrl = (post = {}) => {
+  const extra = post.extra || {};
+  const platform = String(
+    post.platformName ||
+    post._platform ||
+    post.platform_name ||
+    post.platform ||
+    extra.platform ||
+    ""
+  ).toLowerCase();
+  const platformId = Number(post.platform_id || 0);
+  const platformPostId = String(
+    post.platform_post_id ||
+    post.platformPostId ||
+    extra.platform_post_id ||
+    extra.platformPostId ||
+    extra.post_id ||
+    extra.postId ||
+    extra.id ||
+    ""
+  ).trim();
+
+  const candidates = [
+    post.url,
+    post.post_url,
+    post.postUrl,
+    post.permalink_url,
+    post.permalinkUrl,
+    post.permalink,
+    post.link,
+    post.href,
+    post.share_url,
+    post.shareUrl,
+    extra.url,
+    extra.post_url,
+    extra.postUrl,
+    extra.postUrlCanonical,
+    extra.permalink_url,
+    extra.permalinkUrl,
+    extra.permalink,
+    extra.reddit_url,
+    extra.redditUrl,
+    extra.link,
+    extra.href,
+    extra.short_url,
+    extra.shortUrl,
+    extra.share_url,
+    extra.shareUrl,
+    extra.video_url,
+    extra.videoUrl,
+    extra.web_url,
+    extra.webUrl,
+  ];
+
+  const raw = candidates.find((value) => typeof value === "string" && value.trim());
+  if (raw) {
+    const value = raw.trim();
+    if (looksLikeUrl(value)) return value;
+    if (value.startsWith("//")) return `https:${value}`;
+    if (value.startsWith("/r/") || value.startsWith("/user/") || value.startsWith("/comments/")) {
+      return `https://www.reddit.com${value}`;
+    }
+    if (platform.includes("youtube") && /^[A-Za-z0-9_-]{11}$/.test(value)) {
+      return `https://www.youtube.com/watch?v=${value}`;
+    }
+    if (platform.includes("reddit") && value.startsWith("/")) return `https://www.reddit.com${value}`;
+  }
+
+  const isX = platform.includes("twitter") || platform === "x" || platformId === 1 || platformId === 4;
+  const isLinkedIn = platform.includes("linkedin") || platformId === 2;
+  const isInstagram = platform.includes("instagram") || platformId === 3;
+  const isTikTok = platform.includes("tiktok") || platformId === 5;
+  const isReddit = platform.includes("reddit") || platformId === 6 || platformId === 10;
+  const isYouTube = platform.includes("youtube") || platformId === 8 || extra.channelTitle || extra.videoId;
+
+  const videoId = extra.videoId || extra.video_id || post.videoId || post.video_id || (isYouTube ? platformPostId : "");
+  if (isYouTube && videoId) return `https://www.youtube.com/watch?v=${videoId}`;
+
+  if (isReddit) {
+    const redditPermalink = extra.reddit_permalink || extra.redditPermalink || extra.permalink || post.permalink;
+    if (redditPermalink) {
+      const path = String(redditPermalink).trim();
+      return looksLikeUrl(path) ? path : `https://www.reddit.com${path.startsWith("/") ? path : `/${path}`}`;
+    }
+    const subreddit = String(extra.subreddit || post.subreddit || "").replace(/^r\//i, "").trim();
+    const cleanId = platformPostId.replace(/^t3_/i, "");
+    if (subreddit && cleanId) return `https://www.reddit.com/r/${subreddit}/comments/${cleanId}`;
+    if (cleanId) return `https://www.reddit.com/comments/${cleanId}`;
+  }
+
+  if (isX && platformPostId) return `https://x.com/i/web/status/${platformPostId}`;
+
+  if (isLinkedIn && platformPostId) {
+    if (looksLikeUrl(platformPostId)) return platformPostId;
+    if (platformPostId.startsWith("urn:li:")) return `https://www.linkedin.com/feed/update/${platformPostId}`;
+    if (/^activity[-:]?\d+$/i.test(platformPostId)) {
+      const activityId = platformPostId.replace(/^activity[-:]?/i, "");
+      return `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}`;
+    }
+    if (/^\d{8,}$/.test(platformPostId)) return `https://www.linkedin.com/feed/update/urn:li:activity:${platformPostId}`;
+  }
+
+  if (isTikTok && platformPostId) {
+    const handle = String(post.username || extra.author_handle || extra.username || "").replace(/^@/, "");
+    return handle
+      ? `https://www.tiktok.com/@${handle}/video/${platformPostId}`
+      : `https://www.tiktok.com/video/${platformPostId}`;
+  }
+
+  if (isInstagram) {
+    const shortcode = extra.shortcode || extra.code || (/^[A-Za-z0-9_-]{5,}$/.test(platformPostId) && !/^\d+$/.test(platformPostId) ? platformPostId : "");
+    if (shortcode) {
+      const isReel = extra.is_video === true || extra.type === "reel" || extra.product_type === "clips";
+      return `https://www.instagram.com/${isReel ? "reel" : "p"}/${shortcode}/`;
+    }
+  }
+
+  return null;
+};
+
+const getTrendLabel = (trendDir, t) => {
+  const normalized = String(trendDir || "stable").toLowerCase();
+  if (["rising", "up", "upward"].includes(normalized)) {
+    return t("dashboard.trendRising", { defaultValue: "rising" });
+  }
+  if (["falling", "down", "downward"].includes(normalized)) {
+    return t("dashboard.trendFalling", { defaultValue: "falling" });
+  }
+  if (["stable", "flat", "steady", "—", "-"].includes(normalized)) {
+    return t("dashboard.stable", { defaultValue: "stable" });
+  }
+  return trendDir || t("dashboard.stable", { defaultValue: "stable" });
+};
+
 /* ------------------------------------------------------------------ */
 /*  Data fetching hook                                                 */
 /* ------------------------------------------------------------------ */
@@ -157,7 +293,7 @@ function useDashboardData() {
 /*  Derived analytics                                                  */
 /* ------------------------------------------------------------------ */
 function guessPlatform(post) {
-  const url = (post.url || "").toLowerCase();
+  const url = (getOriginalPostUrl(post) || "").toLowerCase();
   if (url.includes("twitter.com") || url.includes("x.com")) return "x";
   if (url.includes("linkedin.com")) return "linkedin";
   if (url.includes("instagram.com")) return "instagram";
@@ -236,6 +372,7 @@ function useAnalytics(posts, keywords, platformIdMap) {
     const topPosts = [...taggedPosts]
       .map((p) => ({
         ...p,
+        url: getOriginalPostUrl(p),
         engagement: (p.likes || 0) + (p.comments || 0) + (p.shares || 0),
         platformName: p._platform,
       }))
@@ -283,6 +420,7 @@ function useAnalytics(posts, keywords, platformIdMap) {
 /*  Reusable Section Card                                              */
 /* ------------------------------------------------------------------ */
 function SectionCard({ title, subtitle, icon: Icon, children, onViewData, right, tourId }) {
+  const { t } = useTranslation();
   return (
     <Card withBorder shadow="sm" radius="lg" p="xl" className={classes.sectionCard} data-tour={tourId}>
       <Group justify="space-between" align="flex-start" mb="md">
@@ -302,7 +440,7 @@ function SectionCard({ title, subtitle, icon: Icon, children, onViewData, right,
         <Group gap="xs">
           {right}
           {onViewData && (
-            <Tooltip label="View raw data">
+            <Tooltip label={t("common.viewRawData")}>
               <ActionIcon variant="light" radius="lg" size="lg" onClick={onViewData}>
                 <IconExternalLink size={18} />
               </ActionIcon>
@@ -591,6 +729,7 @@ function TopPostsList({ posts }) {
           {posts.map((p, i) => {
             const PlatIcon = PLATFORM_ICONS[p.platformName] || IconChartDots;
             const platformColor = PLATFORM_COLORS[p.platformName] || "#868e96";
+            const originalUrl = getOriginalPostUrl(p);
             return (
               <Paper
                 key={p.id || i}
@@ -600,8 +739,8 @@ function TopPostsList({ posts }) {
                 className={classes.postRow}
                 style={{ textDecoration: "none", color: "inherit" }}
               >
-                <Group justify="space-between" wrap="nowrap">
-                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                <Group justify="space-between" wrap="wrap" gap="xs">
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 220, flex: "1 1 360px" }}>
                     <Text fw={800} c="dimmed" size="sm" style={{ width: 24, textAlign: "center" }}>
                       {i + 1}
                     </Text>
@@ -622,15 +761,15 @@ function TopPostsList({ posts }) {
                       </Group>
                     </Stack>
                   </Group>
-                  <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
+                  <Group gap={6} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end", marginLeft: "auto" }}>
                     <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
-                      <Group gap={3} wrap="nowrap" style={{ minWidth: 54, justifyContent: "flex-end" }}>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 34, justifyContent: "flex-end" }}>
                         <IconHeart size={14} color="#FF6B6B" style={{ flexShrink: 0 }} />
                         <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.likes || 0)}</Text>
                       </Group>
                     </Tooltip>
                     <Tooltip label={t("dashboard.comments", { defaultValue: "Comments" })}>
-                      <Group gap={3} wrap="nowrap" style={{ minWidth: 48, justifyContent: "flex-end" }}>
+                      <Group gap={3} wrap="nowrap" style={{ minWidth: 38, justifyContent: "flex-end" }}>
                         <IconMessage size={14} color="#51CF66" style={{ flexShrink: 0 }} />
                         <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.comments || 0)}</Text>
                       </Group>
@@ -641,12 +780,20 @@ function TopPostsList({ posts }) {
                         <Text size="sm" fw={600} style={{ whiteSpace: "nowrap" }}>{fmtK(p.shares || 0)}</Text>
                       </Group>
                     </Tooltip>
-                    {p.url && (
-                      <Tooltip label={t("dashboard.openOriginal", { defaultValue: "Open original" })}>
-                        <ActionIcon variant="subtle" size="sm" component="a" href={p.url} target="_blank" rel="noopener" style={{ flexShrink: 0 }}>
-                          <IconExternalLink size={14} />
-                        </ActionIcon>
-                      </Tooltip>
+                    {originalUrl && (
+                      <Button
+                        component="a"
+                        href={originalUrl}
+                        target="_blank"
+                        rel="noopener"
+                        size="xs"
+                        variant="light"
+                        radius="xl"
+                        rightSection={<IconExternalLink size={13} />}
+                        style={{ flexShrink: 0 }}
+                      >
+                        {t("dashboard.viewPost", { defaultValue: "View post" })}
+                      </Button>
                     )}
                   </Group>
                 </Group>
@@ -679,8 +826,8 @@ function CompetitorComparison({ competitors }) {
         <Stack gap="sm">
           {competitors.map((c) => (
             <Paper key={c.name} withBorder p="sm" radius="md" className={classes.postRow}>
-              <Group justify="space-between" wrap="nowrap">
-                <Group gap="sm" align="center" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+              <Group justify="space-between" wrap="wrap" gap="xs">
+                <Group gap="sm" align="center" wrap="nowrap" style={{ minWidth: 220, flex: "1 1 300px" }}>
                   <Avatar size={32} radius="xl" color="teal" style={{ flexShrink: 0 }}>
                     {c.name.charAt(0).toUpperCase()}
                   </Avatar>
@@ -689,7 +836,7 @@ function CompetitorComparison({ competitors }) {
                     <Text size="xs" c="dimmed" lineClamp={1}>{t("dashboard.postsCollected", { count: c.posts, defaultValue: "{{count}} posts collected" })}</Text>
                   </Stack>
                 </Group>
-                <Group gap={8} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end" }}>
+                <Group gap={6} wrap="nowrap" style={{ flex: "0 0 auto", justifyContent: "flex-end", marginLeft: "auto" }}>
                   <Tooltip label={t("dashboard.likes", { defaultValue: "Likes" })}>
                     <Group gap={4}>
                       <IconHeart size={14} color="#FF6B6B" />
@@ -739,6 +886,7 @@ function KeywordPerformance({ keywords }) {
           {keywords.map((kw, i) => {
             const trendColor = kw.trendDir === "rising" ? "teal" : kw.trendDir === "falling" ? "red" : "gray";
             const TrendIcon = kw.trendDir === "rising" ? IconArrowUpRight : kw.trendDir === "falling" ? IconArrowDownRight : IconTrendingUp;
+            const trendLabel = getTrendLabel(kw.trendDir, t);
             return (
               <Paper key={kw.term} withBorder p="sm" radius="md" className={classes.postRow}>
                 <Group justify="space-between" wrap="nowrap">
@@ -765,9 +913,9 @@ function KeywordPerformance({ keywords }) {
                     <Tooltip label={t("dashboard.avgEngagementTooltip", { value: kw.avgEngagement || 0, defaultValue: "Avg engagement: {{value}}" })}>
                       <Badge variant="light" color="blue" size="sm">{fmtK(kw.avgEngagement || 0)} {t("dashboard.avgShort", { defaultValue: "avg" })}</Badge>
                     </Tooltip>
-                    <Tooltip label={t("dashboard.trendTooltip", { value: kw.trendDir || t("dashboard.stable", { defaultValue: "stable" }), defaultValue: "Trend: {{value}}" })}>
+                    <Tooltip label={t("dashboard.trendTooltip", { value: trendLabel, defaultValue: "Trend: {{value}}" })}>
                       <Badge variant="light" color={trendColor} size="sm" leftSection={<TrendIcon size={12} />}>
-                        {kw.trendDir || t("dashboard.stable", { defaultValue: "stable" })}
+                        {trendLabel}
                       </Badge>
                     </Tooltip>
                   </Group>

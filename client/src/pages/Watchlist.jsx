@@ -90,23 +90,25 @@ function getConfigFields(t) {
 
 const DEFAULT_SORT_MODE = "date_desc";
 const SORT_OPTIONS = [
-  { value: "date_desc", label: "Newest first" },
-  { value: "date_asc", label: "Oldest first" },
-  { value: "metrics_desc", label: "Most engagement" },
-  { value: "likes_desc", label: "Most likes" },
-  { value: "comments_desc", label: "Most comments" },
-  { value: "shares_desc", label: "Most shares" },
+  { value: "date_desc", labelKey: "common.newestFirst" },
+  { value: "date_asc", labelKey: "common.oldestFirst" },
+  { value: "metrics_desc", labelKey: "common.mostEngagement" },
+  { value: "likes_desc", labelKey: "common.mostLikes" },
+  { value: "comments_desc", labelKey: "common.mostComments" },
+  { value: "shares_desc", labelKey: "common.mostShares" },
 ];
 
 function SortSelect({ value, onChange, compact = true }) {
+  const { t } = useTranslation();
+  const options = SORT_OPTIONS.map((option) => ({ ...option, label: t(option.labelKey) }));
   return (
     <Select
-      label={compact ? undefined : "Sort posts"}
-      aria-label="Sort posts"
+      label={compact ? undefined : t("common.sortPosts")}
+      aria-label={t("common.sortPosts")}
       size="xs"
       value={value || DEFAULT_SORT_MODE}
       onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
-      data={SORT_OPTIONS}
+      data={options}
       checkIconPosition="right"
       allowDeselect={false}
       w={compact ? 190 : 210}
@@ -368,7 +370,7 @@ export default function Watchlist() {
 
   /* ═══ render ═══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "24px 32px", width: "100%", maxWidth: "min(100%, 1500px)", margin: "0 auto" }}>
+    <div data-tour="autoscraper-root" style={{ padding: "24px 32px", width: "100%", maxWidth: "min(100%, 1500px)", margin: "0 auto" }}>
       <Group justify="space-between" mb="md">
         <div>
           <Title order={2}>
@@ -1673,12 +1675,12 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
             <img src={normalizeImageUrl(p.image || p.profileImage || p.picture)} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Text fw={700} size="lg" lineClamp={2}>{p.name || p.fullName || "LinkedIn profile"}</Text>
+            <Text fw={700} size="lg" lineClamp={2}>{p.name || p.fullName || t("watchlist.linkedinProfile")}</Text>
             {p.headline && <Text size="sm" c="dimmed" lineClamp={2}>{p.headline}</Text>}
             {p.location && <Text size="xs" c="dimmed">{p.location}</Text>}
             {(p.url || p.linkedInUrl || p.linkedinUrl) && isSafeUrl(p.url || p.linkedInUrl || p.linkedinUrl) && (
               <Text size="xs" c="blue" component="a" href={p.url || p.linkedInUrl || p.linkedinUrl} target="_blank" rel="noopener" lineClamp={1}>
-                View on LinkedIn
+                {t("watchlist.viewOnLinkedIn")}
               </Text>
             )}
           </div>
@@ -1706,13 +1708,13 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
     <Card withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group gap="sm" align="start">
-          {normalizeImageUrl(c.logo || c.image) && <MediaPreview src={c.logo || c.image} alt={c.name || "LinkedIn company"} radius={8} />}
+          {normalizeImageUrl(c.logo || c.image) && <MediaPreview src={c.logo || c.image} alt={c.name || t("watchlist.linkedinCompany")} radius={8} />}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Text fw={700} size="lg" lineClamp={2}>{c.name || "LinkedIn company"}</Text>
+            <Text fw={700} size="lg" lineClamp={2}>{c.name || t("watchlist.linkedinCompany")}</Text>
             {c.industry && <Text size="xs" c="dimmed">{c.industry}</Text>}
             {(c.url || c.linkedInUrl || c.linkedinUrl) && isSafeUrl(c.url || c.linkedInUrl || c.linkedinUrl) && (
               <Text size="xs" c="blue" component="a" href={c.url || c.linkedInUrl || c.linkedinUrl} target="_blank" rel="noopener" lineClamp={1}>
-                View on LinkedIn
+                {t("watchlist.viewOnLinkedIn")}
               </Text>
             )}
           </div>
@@ -1748,12 +1750,12 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
     return (
       <Card key={id || i} withBorder radius="sm" p="xs" {...cardLinkProps(url)}>
         <Group gap="sm" wrap="nowrap" align="start">
-          <MediaPreview src={image} videoSrc={videoUrl} alt={content || "LinkedIn post preview"} title="LinkedIn video" />
+          <MediaPreview src={image} videoSrc={videoUrl} alt={content || t("watchlist.linkedinPostPreview")} title={t("watchlist.linkedinVideo")} />
           <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
             <Group gap={6} wrap="nowrap">
               <Text size="xs" fw={600} lineClamp={1}>{authorName}</Text>
               {authorUrl && isSafeUrl(authorUrl) && (
-                <Text size="xs" c="blue" component="a" href={authorUrl} target="_blank" rel="noopener">Profile</Text>
+                <Text size="xs" c="blue" component="a" href={authorUrl} target="_blank" rel="noopener">{t("watchlist.profile")}</Text>
               )}
             </Group>
             <ExpandableText text={content} size="sm" initialLines={4} />
@@ -1797,7 +1799,7 @@ function LinkedInRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = 
         {renderProfile(profile)}
         {renderCompany(company)}
         {posts.length > 0 ? posts.map(renderPost) : (
-          !profile && !company && <Text size="sm" c="dimmed">No LinkedIn posts returned.</Text>
+          !profile && !company && <Text size="sm" c="dimmed">{t("watchlist.noLinkedinPosts")}</Text>
         )}
       </Stack>
     );
@@ -1865,7 +1867,7 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
           <Card key={post.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(igPostUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
               {(thumb || videoUrl) && (
-                <MediaPreview src={thumb} videoSrc={videoUrl} alt={post.caption || "Instagram post preview"} title="Instagram video" />
+                <MediaPreview src={thumb} videoSrc={videoUrl} alt={post.caption || t("watchlist.instagramPostPreview")} title={t("watchlist.instagramVideo")} />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 {(post.caption || post.text) && <ExpandableText text={post.caption || post.text} size="xs" initialLines={3} />}
@@ -1943,7 +1945,7 @@ function TikTokRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode = DE
         return (
           <Card key={vid.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(videoUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
-              <MediaPreview src={cover} videoSrc={playableVideoUrl} alt={vid.desc || vid.description || "TikTok video preview"} title="TikTok video" />
+              <MediaPreview src={cover} videoSrc={playableVideoUrl} alt={vid.desc || vid.description || t("watchlist.tiktokVideoPreview")} title={t("watchlist.tiktokVideo")} />
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 <ExpandableText text={vid.desc || vid.description || vid.title} size="xs" initialLines={3} />
                 {vid.author && <Text size="xs" c="dimmed">@{typeof vid.author === "string" ? vid.author : vid.author.uniqueId || vid.author.nickname}</Text>}

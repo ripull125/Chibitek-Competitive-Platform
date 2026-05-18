@@ -136,13 +136,19 @@ function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
 }
 
 function SortSelect({ value, onChange }) {
+  const { t } = useTranslation();
+  const translatedOptions = SORT_OPTIONS.map((option) => ({
+    ...option,
+    label: t(`savedPosts.sortOptions.${option.value}`, { defaultValue: option.label }),
+  }));
+
   return (
     <Select
-      aria-label="Sort saved posts"
+      aria-label={t("savedPosts.sortSavedPosts", { defaultValue: "Sort saved posts" })}
       size="xs"
       value={value}
       onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
-      data={SORT_OPTIONS}
+      data={translatedOptions}
       allowDeselect={false}
       checkIconPosition="right"
       w={190}
@@ -251,7 +257,9 @@ function cleanDisplayTextForMedia(text = "", mediaItems = []) {
     .trim();
 }
 
-function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open video on X", embedFallbackUrl = null }) {
+function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = null, embedFallbackUrl = null }) {
+  const { t } = useTranslation();
+  const resolvedVideoLabel = videoLabel || t("savedPosts.openVideoOnX");
   const items = dedupeMediaForDisplay(media, maxItems);
   if (!items.length) {
     const embedUrl = embedFallbackUrl ? instagramEmbedUrl(embedFallbackUrl) : null;
@@ -261,7 +269,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
       <div style={{ maxWidth: 420, width: "100%" }}>
         <iframe
           src={embedUrl}
-          title="Instagram post media"
+          title={t("savedPosts.instagramPostMedia")}
           loading="lazy"
           style={{
             width: "100%",
@@ -336,7 +344,7 @@ function XMediaPreview({ media, postUrl = null, maxItems = 4, videoLabel = "Open
                       fontWeight: 700,
                     }}
                   >
-                    Open video on X
+                    {resolvedVideoLabel}
                   </span>
                 </a>
               );
@@ -358,6 +366,7 @@ function isUsableInstagramImageUrl(url) {
 }
 
 function InstagramMediaPreview({ media, postUrl = null }) {
+  const { t } = useTranslation();
   const items = dedupeMediaForDisplay(media, 10);
   const imageItems = items
     .map((item, index) => {
@@ -377,10 +386,10 @@ function InstagramMediaPreview({ media, postUrl = null }) {
       <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 460, width: "100%" }}>
         <Stack gap={4}>
           <Text size="xs" c="dimmed">
-            Instagram photos/videos are not available from the API for inline preview.
+            {t("savedPosts.instagramPreviewUnavailable")}
           </Text>
           <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-            View the post on Instagram to see the media →
+            {t("savedPosts.viewInstagramMedia")}
           </Text>
         </Stack>
       </Card>
@@ -413,9 +422,9 @@ function InstagramMediaPreview({ media, postUrl = null }) {
       </SimpleGrid>
       {(hasHiddenMedia || postUrl) && (
         <Text size="xs" c="dimmed">
-          Some Instagram media may not preview here. {postUrl && (
+          {t("savedPosts.someInstagramMediaMayNotPreview")} {postUrl && (
             <Text span c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-              View post →
+              {t("savedPosts.viewPostArrow")}
             </Text>
           )}
         </Text>
@@ -697,82 +706,127 @@ function getYoutubeVideoIdFromSavedPost(post = {}, postUrl = null) {
   return null;
 }
 
+function getYoutubeEmbedUrl(videoId) {
+  if (!videoId) return null;
+  const origin = typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
+  const params = new URLSearchParams({
+    rel: "0",
+    modestbranding: "1",
+    playsinline: "1",
+  });
+  if (origin) params.set("origin", origin);
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+}
+
 function YoutubeThumbnailPreview({ post, postUrl = null }) {
+  const { t } = useTranslation();
   const extra = post?.extra || {};
   const videoId = getYoutubeVideoIdFromSavedPost(post, postUrl);
   const thumbUrl = extra.thumbnailUrl || getYoutubeThumbnailUrl(extra.thumbnails);
+  const [showPlayer, setShowPlayer] = useState(false);
+  const embedUrl = videoId ? getYoutubeEmbedUrl(videoId) : null;
 
-  if (videoId) {
+  if (embedUrl && showPlayer) {
     return (
-      <AspectRatio
-        ratio={16 / 9}
-        mt="xs"
-        style={{
-          maxWidth: 520,
-          overflow: "hidden",
-          borderRadius: 12,
-          border: "1px solid #edf2f7",
-          background: "#f8f9fa",
-        }}
-      >
-        <iframe
-          src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-          title={extra.title || post.title || "YouTube video"}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
-          style={{ border: 0, width: "100%", height: "100%" }}
-        />
-      </AspectRatio>
+      <Stack gap={6} mt="xs" style={{ maxWidth: 520 }}>
+        <AspectRatio
+          ratio={16 / 9}
+          style={{
+            overflow: "hidden",
+            borderRadius: 12,
+            border: "1px solid var(--border-color)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <iframe
+            src={embedUrl}
+            title={extra.title || post.title || t("savedPosts.youtubeVideo")}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            style={{ border: 0, width: "100%", height: "100%" }}
+          />
+        </AspectRatio>
+        <Group gap="xs" justify="space-between" wrap="wrap">
+          <Text size="xs" c="dimmed">{t("savedPosts.youtubeBlockedHint")}</Text>
+          {postUrl ? (
+            <Button size="compact-xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer" rightSection={<IconExternalLink size={12} />}>
+              {t("savedPosts.openYoutube")}
+            </Button>
+          ) : null}
+        </Group>
+      </Stack>
     );
   }
 
-  if (!thumbUrl) return null;
+  if (!thumbUrl && !embedUrl) return null;
 
   return (
-    <a
-      href={postUrl || undefined}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        display: "block",
-        position: "relative",
-        maxWidth: 520,
-        textDecoration: "none",
-      }}
-    >
-      <img
-        src={thumbUrl}
-        alt={extra.title || "YouTube video thumbnail"}
-        loading="lazy"
+    <Stack gap={6} mt="xs" style={{ maxWidth: 520 }}>
+      <button
+        type="button"
+        onClick={() => embedUrl ? setShowPlayer(true) : null}
         style={{
-          width: "100%",
-          maxHeight: 260,
-          objectFit: "cover",
-          borderRadius: 12,
-          border: "1px solid #edf2f7",
-          background: "#f8f9fa",
           display: "block",
-        }}
-      />
-      <span
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          background: "rgba(255, 0, 0, 0.88)",
-          color: "white",
-          borderRadius: 999,
-          padding: "8px 13px",
-          fontSize: 13,
-          fontWeight: 800,
-          boxShadow: "0 8px 20px rgba(0,0,0,0.22)",
+          position: "relative",
+          width: "100%",
+          padding: 0,
+          border: "1px solid var(--border-color)",
+          borderRadius: 12,
+          overflow: "hidden",
+          background: "var(--surface-2)",
+          cursor: embedUrl ? "pointer" : "default",
+          boxShadow: "none",
         }}
       >
-        ▶
-      </span>
-    </a>
+        {thumbUrl ? (
+          <img
+            src={thumbUrl}
+            alt={extra.title || t("savedPosts.youtubeVideo")}
+            loading="lazy"
+            style={{
+              width: "100%",
+              aspectRatio: "16 / 9",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <AspectRatio ratio={16 / 9}>
+            <div style={{ display: "grid", placeItems: "center", color: "var(--text-secondary)" }}>{t("savedPosts.youtubeVideo")}</div>
+          </AspectRatio>
+        )}
+        <span
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            background: "rgba(255, 0, 0, 0.90)",
+            color: "white",
+            borderRadius: 999,
+            padding: "10px 16px",
+            fontSize: 13,
+            fontWeight: 900,
+            boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+          }}
+        >
+          {t("savedPosts.play")}
+        </span>
+      </button>
+      <Group gap="xs" wrap="wrap">
+        {embedUrl ? (
+          <Button size="compact-xs" variant="light" onClick={() => setShowPlayer(true)}>
+            {t("savedPosts.playInApp")}
+          </Button>
+        ) : null}
+        {postUrl ? (
+          <Button size="compact-xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer" rightSection={<IconExternalLink size={12} />}>
+            {t("savedPosts.openOriginal")}
+          </Button>
+        ) : null}
+      </Group>
+    </Stack>
   );
 }
 
@@ -1334,7 +1388,7 @@ export default function SavedPosts() {
     });
 
   return (
-    <Stack gap="lg" style={{ position: "relative" }}>
+    <Stack gap="lg" style={{ position: "relative" }} data-tour="saved-posts-list">
       <LoadingOverlay visible={loading} />
 
       {/* page header */}
@@ -1350,7 +1404,7 @@ export default function SavedPosts() {
               leftSection={<IconTrash size={14} />}
               onClick={() => setDeleteAllModal(true)}
             >
-              Delete All
+              {t("savedPosts.deleteAll")}
             </Button>
           )}
           <Badge variant="filled" size="lg" radius="sm" color="blue">
@@ -1397,7 +1451,7 @@ export default function SavedPosts() {
               </Group>
               {(cfg?.label === "X / Twitter" || cfg?.label === "X") && (
                 <Alert variant="light" color="blue" radius="md" py="xs" icon={<IconBrandX size={16} />}>
-                  X videos may only show as thumbnails here. Open the post on X to watch the video.
+                  {t("savedPosts.xVideoThumbnailOnly")}
                 </Alert>
               )}
               <Collapse in={isOpen}>
@@ -1449,13 +1503,13 @@ export default function SavedPosts() {
       <Modal
         opened={deleteAllModal}
         onClose={() => setDeleteAllModal(false)}
-        title="Delete All Saved Posts"
+        title={t("savedPosts.deleteAllSavedPosts")}
         centered
       >
         <Stack gap="lg">
-          <Text>Are you sure you want to delete all {posts.length} saved posts? This cannot be undone.</Text>
+          <Text>{t("savedPosts.confirmDeleteAll", { count: posts.length })}</Text>
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteAllModal(false)}>Cancel</Button>
+            <Button variant="default" onClick={() => setDeleteAllModal(false)}>{t("savedPosts.cancel")}</Button>
             <Button
               color="red"
               loading={deletingAll}
@@ -1484,7 +1538,7 @@ export default function SavedPosts() {
                 }
               }}
             >
-              Delete All
+              {t("savedPosts.deleteAll")}
             </Button>
           </Group>
         </Stack>

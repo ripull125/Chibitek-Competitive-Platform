@@ -3989,4 +3989,533 @@ const resources = {
   }
 };
 
+
+const EXTRA_TRANSLATIONS = {
+  en: {
+    common: {
+      loading: "Loading",
+      generated: "Generated",
+      page: "Page",
+      noData: "No data",
+      new: "New",
+      rename: "Rename",
+      cancel: "Cancel",
+      delete: "Delete",
+      refresh: "Refresh",
+      download: "Download",
+      send: "Send",
+      current: "Current:",
+      file: "file",
+      files: "files",
+      postsCount: "{{count}} posts",
+      savedPostsCount: "{{count}} saved posts",
+      pagesCount: "{{count}} page",
+      pagesCount_plural: "{{count}} pages",
+      exportScale: "{{scale}}x export"
+    },
+    nav: {
+      profile: "Profile",
+      connectedIntegrations: "Connected Integrations"
+    },
+    appTitle: {
+      default: "Chibitek",
+      dashboard: "Dashboard",
+      competitorLookup: "Competitor Lookup",
+      savedPosts: "Saved Posts",
+      watchlist: "Auto-Scrape",
+      keywordTracking: "Keyword Tracking",
+      reports: "Reports",
+      chat: "Chat",
+      settings: "Settings",
+      profile: "Profile",
+      connectedIntegrations: "Connected Integrations",
+      login: "Sign in"
+    },
+    settings: {
+      appearanceLabel: "Appearance",
+      themeTitle: "Theme",
+      themeDesc: "Choose light, dark, or match your system.",
+      light: "Light",
+      dark: "Dark",
+      system: "System",
+      aiLabel: "AI",
+      chatModelTitle: "Chat Model",
+      chatModelDesc: "Choose a model from one shared list. This setting is synced with Chat.",
+      chooseAiModel: "Choose AI model",
+      adminLabel: "Admin",
+      ownerLabel: "Owner",
+      adminConsoleTitle: "Admin Console",
+      loadingAdminControls: "Loading admin controls...",
+      usersAdminsOwners: "Users, Admins & Owners",
+      usersTitle: "Users",
+      ownerAdminDesc: "Owners can manage regular users and admin users.",
+      adminUserDesc: "Admins can manage regular users only.",
+      addUser: "Add User",
+      userEmail: "User email",
+      fullNameOptional: "Full name (optional)",
+      name: "Name",
+      addAdmin: "Add Admin",
+      selectUser: "Select user",
+      chooseUser: "Choose user",
+      noEligibleUsers: "No eligible users",
+      noMatchingUsers: "No matching users",
+      transferOwnership: "Transfer Ownership",
+      ownerOnly: "Owner only",
+      transferOwnershipDesc: "Pick the new owner. Your account will automatically become an admin after transfer.",
+      newOwner: "New owner",
+      confirmation: "Confirmation",
+      selectUserFirst: "Select a user first",
+      typeToConfirm: "Type {{phrase}} to confirm.",
+      selectOwnerToConfirm: "Select a new owner to generate the confirmation phrase.",
+      usersListDesc: "Search and filter instead of scanning the full email list.",
+      searchUsersPlaceholder: "Search email, name, provider, or role",
+      email: "Email",
+      role: "Role",
+      status: "Status",
+      action: "Action",
+      protected: "Protected",
+      noUsersMatch: "No users match the current filter.",
+      adminsOwners: "Admins & Owners",
+      removeAdmin: "Remove Admin",
+      noAdminsFound: "No admins found.",
+      allCount: "All ({{count}})",
+      ownersCount: "Owners ({{count}})",
+      adminsCount: "Admins ({{count}})",
+      usersCount: "Users ({{count}})",
+      deleteUserFailed: "Failed to delete user.",
+      chooseNewOwner: "Please choose the new owner.",
+      transferConfirmPrompt: "Transfer ownership to {{email}}? Your account will become an admin after this change.",
+      transferConfirmType: "Type {{phrase}} to confirm the transfer.",
+      ownershipTransferred: "Ownership transferred to {{email}}. Your account is now an admin.",
+      transferOwnershipFailed: "Failed to transfer ownership."
+    },
+    chat: {
+      openSidebar: "Open sidebar",
+      collapseSidebar: "Collapse sidebar",
+      savedChats: "Saved chats",
+      searchChats: "Search chats",
+      chooseAiModel: "Choose AI model",
+      copyMessage: "Copy message",
+      attachFiles: "Attach files",
+      stopGenerating: "Stop generating",
+      whatWorkOn: "What do you want to work on?",
+      recentPostSummary: "Recent post summary",
+      quickSummarizeSavedPosts: "Summarize saved posts",
+      quickSummarizeSavedPostsPrompt: "Summarize my most recent saved posts in 4 simple bullets, then tell me the best next step.",
+      quickFindThemes: "Find winning themes",
+      quickFindThemesPrompt: "Look at the recent post context and identify the themes that seem to drive the most engagement.",
+      quickDraftRecommendations: "Draft recommendations",
+      quickDraftRecommendationsPrompt: "Give me 3 concise recommendations I could use in a competitive report.",
+      filesAttached: "{{count}} file",
+      filesAttached_plural: "{{count}} files",
+      renameChat: "Rename chat",
+      rename: "Rename",
+      deleteChatQuestion: "Delete chat?",
+      deleteChatConfirm: "This will remove “{{title}}” from your saved chats."
+    },
+    reports: {
+      title: "Reports",
+      subtitle: "Build a clean PDF from your saved social data.",
+      smartTakeaways: "Smart takeaways",
+      scorecard: "Scorecard",
+      performanceTrend: "Performance trend",
+      platformPerformance: "Platform performance",
+      toneAnalysis: "Tone analysis",
+      topPosts: "Top posts",
+      competitors: "Competitors",
+      keywords: "Keywords",
+      tonePerformance: "Tone performance",
+      typeInsight: "Insight",
+      typeDashboard: "Dashboard",
+      typeChart: "Chart",
+      typeTone: "Tone",
+      typeTable: "Table",
+      presetExecutive: "Executive",
+      presetExecutiveDesc: "KPIs, trends, competitors, keywords.",
+      presetVisual: "Visual",
+      presetVisualDesc: "Charts and tone, fewer tables.",
+      presetData: "Data",
+      presetDataDesc: "Tables and rankings.",
+      defaultTitle: "Chibitek Analytics Report",
+      askAi: "Ask AI",
+      bestOption: "Best option",
+      promptPlaceholder: "Example: Make a clean PDF with KPIs, platforms, competitors, keywords, and next steps.",
+      build: "Build",
+      quickLayout: "Quick Layout",
+      pdfTitle: "PDF title",
+      dataTools: "Data Tools",
+      improveTakeaways: "Improve Takeaways",
+      analyzeTone: "Analyze Tone",
+      tonePostSample: "Tone post sample",
+      livePreview: "Live Report Preview",
+      livePreviewDesc: "What the PDF will look like.",
+      rows: "Rows {{range}}",
+      footer: "Chibitek Competitive Platform",
+      noTimeline: "No timeline data yet.",
+      noPlatform: "No platform data yet.",
+      noTone: "No tone data yet. Click Analyze Tone.",
+      mostUsed: "Most Used",
+      bestResult: "Best Result",
+      runAnalysis: "Run analysis",
+      noPosts: "No posts collected yet.",
+      noCompetitors: "No competitor data yet.",
+      keywordAfterSaved: "Keyword rankings appear after saved posts are collected.",
+      rankedCount: "{{count}} ranked",
+      noToneEngagement: "No tone engagement data yet.",
+      noReportData: "No report data yet. Collect posts first, then refresh this page.",
+      selectPanel: "Select at least one report panel.",
+      loading: "Loading",
+      layoutApplied: "{{layout}} layout applied.",
+      keywordStatus: "{{count}} keywords from {{posts}} saved posts",
+      filteringOneOff: "Filtering one-off words",
+      morePostsCleaner: "More saved posts = cleaner rankings",
+      aiBuiltDownloading: "AI built the report. Downloading the PDF now.",
+      aiBuiltPreview: "AI built the report preview below.",
+      aiBuilderFailed: "AI report builder failed. The quick layouts still work, so you can use those and download.",
+      generatedOn: "Generated {{date}}",
+      saveMorePosts: "Save more posts to unlock report takeaways.",
+      leadPlatform: "{{platform}} leads with {{engagement}} engagement.",
+      reuseThemes: "Reuse themes from “{{title}}”.",
+      watchCompetitor: "Watch @{{name}} for competitor signals.",
+      testKeyword: "Test “{{keyword}}” in upcoming content.",
+      kpiPosts: "Posts",
+      kpiEngagement: "Engagement",
+      kpiLikes: "Likes",
+      kpiComments: "Comments",
+      kpiShares: "Shares",
+      kpiAvg: "Avg.",
+      tableCompetitor: "Competitor",
+      tableCom: "Com.",
+      tableEng: "Eng.",
+      tableKeyword: "Keyword",
+      tableKpi: "KPI"
+    },
+    competitorLookup: {
+      xSimpleDesc: "Use @username or a profile URL to fetch an account's recent posts, paste a tweet URL for single-tweet metrics, or enter keywords to search.",
+      xSimplePlaceholder: "@username, x.com/username, tweet URL, or keyword",
+      xVideoFallback: "X videos may only show as thumbnails here. Open the post on X to watch the video.",
+      loadNextPosts: "Load next 10 posts",
+      loadNextResults: "Load next 10 results",
+      youtubeSimpleDesc: "One bar lookup for channel URL, video URL, or keyword.",
+      youtubeSimplePlaceholder: "Channel URL, video URL, or keyword",
+      linkedinSimpleDesc: "Use @username for a creator profile, paste a LinkedIn profile/company/post URL, or enter keywords to search recent LinkedIn posts.",
+      linkedinSimplePlaceholder: "@username, linkedin.com/in/..., linkedin.com/company/..., post URL, or keywords",
+      instagramSimpleDesc: "Use @username to see an account's recent posts and metrics, paste a post/profile URL, or enter keywords to search.",
+      instagramSimplePlaceholder: "@username, instagram.com URL, or keyword",
+      tiktokSimpleDesc: "Use @username to fetch an account's recent videos and metrics, paste a video URL for its stats, use #hashtag, or enter keywords to search.",
+      tiktokSimplePlaceholder: "@username, tiktok.com/video URL, #hashtag, or keyword",
+      redditSimpleDesc: "Use u/username or @username for a user, r/subreddit for one community, keywords for posts across Reddit, or paste a Reddit post URL to show the post plus comments.",
+      redditSimplePlaceholder: "u/spez, r/startups, Reddit post URL, or keyword",
+      linkedinSearch: "LinkedIn Search",
+      instagramSearch: "Instagram Search",
+      tiktokSearch: "TikTok Search",
+      redditSearch: "Reddit Search",
+      saveVideo: "Save Video",
+      youtubeResults: "YouTube Results",
+      instagramResults: "Instagram Results",
+      quickLookup: "Quick Lookup",
+      quickLookupDesc: "Use a URL for direct lookup, use @handle for account lookup, or type a phrase for regular search.",
+      callsUsed: "Calls used: {{count}}",
+      quickLookupError: "Quick lookup error",
+      resultsCount: "Results: {{count}}",
+      intent: "Intent: {{intent}}",
+      route: "Route: {{route}}",
+      untitledResult: "Untitled result"
+    },
+    savedPosts: {
+      sortSavedPosts: "Sort saved posts",
+      instagramPostMedia: "Instagram post media",
+      youtubeBlockedHint: "If YouTube blocks the embed, open the original video.",
+      youtubeVideo: "YouTube video",
+      deleteAllSavedPosts: "Delete All Saved Posts"
+    }
+  },
+  ja: {
+    common: { loading: "読み込み中", generated: "生成日時", page: "ページ", noData: "データなし", new: "新規", rename: "名前変更", cancel: "キャンセル", delete: "削除", refresh: "更新", download: "ダウンロード", send: "送信", file: "ファイル", files: "ファイル", postsCount: "{{count}} 件の投稿", savedPostsCount: "{{count}} 件の保存済み投稿", pagesCount: "{{count}} ページ", pagesCount_plural: "{{count}} ページ", exportScale: "{{scale}}倍 書き出し" },
+    nav: { profile: "プロフィール", connectedIntegrations: "連携サービス" },
+    appTitle: { default: "Chibitek", dashboard: "ダッシュボード", competitorLookup: "競合検索", savedPosts: "保存済み投稿", watchlist: "自動スクレイプ", keywordTracking: "キーワード追跡", reports: "レポート", chat: "チャット", settings: "設定", profile: "プロフィール", connectedIntegrations: "連携サービス", login: "サインイン" },
+    settings: { appearanceLabel: "外観", themeTitle: "テーマ", themeDesc: "ライト、ダーク、またはシステム設定に合わせます。", light: "ライト", dark: "ダーク", system: "システム", aiLabel: "AI", chatModelTitle: "チャットモデル", chatModelDesc: "共通リストからモデルを選択します。この設定はチャットと同期されます。", chooseAiModel: "AIモデルを選択", adminLabel: "管理者", ownerLabel: "オーナー", adminConsoleTitle: "管理コンソール", loadingAdminControls: "管理コントロールを読み込み中...", usersAdminsOwners: "ユーザー・管理者・オーナー", usersTitle: "ユーザー", ownerAdminDesc: "オーナーは通常ユーザーと管理者を管理できます。", adminUserDesc: "管理者は通常ユーザーのみ管理できます。", addUser: "ユーザーを追加", userEmail: "ユーザーメール", fullNameOptional: "氏名（任意）", name: "名前", addAdmin: "管理者を追加", selectUser: "ユーザーを選択", chooseUser: "ユーザーを選択", noEligibleUsers: "対象ユーザーなし", noMatchingUsers: "一致するユーザーなし", transferOwnership: "所有権を移行", ownerOnly: "オーナーのみ", transferOwnershipDesc: "新しいオーナーを選択します。移行後、あなたのアカウントは管理者になります。", newOwner: "新しいオーナー", confirmation: "確認", selectUserFirst: "先にユーザーを選択", typeToConfirm: "{{phrase}} と入力して確認してください。", selectOwnerToConfirm: "確認フレーズを作成するには新しいオーナーを選択してください。", usersListDesc: "長いメール一覧をスクロールせず、検索とフィルターで絞り込みます。", searchUsersPlaceholder: "メール、名前、プロバイダー、役割を検索", email: "メール", role: "役割", status: "ステータス", action: "操作", protected: "保護済み", noUsersMatch: "現在のフィルターに一致するユーザーはいません。", adminsOwners: "管理者とオーナー", removeAdmin: "管理者を削除", noAdminsFound: "管理者が見つかりません。", allCount: "すべて ({{count}})", ownersCount: "オーナー ({{count}})", adminsCount: "管理者 ({{count}})", usersCount: "ユーザー ({{count}})", deleteUserFailed: "ユーザーの削除に失敗しました。", chooseNewOwner: "新しいオーナーを選択してください。", transferConfirmPrompt: "{{email}} に所有権を移行しますか？移行後、あなたのアカウントは管理者になります。", transferConfirmType: "所有権移行を確認するには {{phrase}} と入力してください。", ownershipTransferred: "所有権を {{email}} に移行しました。あなたのアカウントは管理者になりました。", transferOwnershipFailed: "所有権の移行に失敗しました。" },
+    chat: { openSidebar: "サイドバーを開く", collapseSidebar: "サイドバーを閉じる", savedChats: "保存済みチャット", searchChats: "チャットを検索", chooseAiModel: "AIモデルを選択", copyMessage: "メッセージをコピー", attachFiles: "ファイルを添付", stopGenerating: "生成を停止", whatWorkOn: "何を作業しますか？", recentPostSummary: "最近の投稿要約", quickSummarizeSavedPosts: "保存済み投稿を要約", quickSummarizeSavedPostsPrompt: "最近の保存済み投稿を4つの簡単な箇条書きで要約し、次の最善手を教えてください。", quickFindThemes: "伸びているテーマを探す", quickFindThemesPrompt: "最近の投稿コンテキストを見て、最もエンゲージメントを生みそうなテーマを特定してください。", quickDraftRecommendations: "提案を作成", quickDraftRecommendationsPrompt: "競合レポートに使える簡潔な提案を3つください。", filesAttached: "{{count}} 個のファイル", filesAttached_plural: "{{count}} 個のファイル", renameChat: "チャット名を変更", rename: "名前変更", deleteChatQuestion: "チャットを削除しますか？", deleteChatConfirm: "「{{title}}」を保存済みチャットから削除します。" },
+    reports: { title: "レポート", subtitle: "保存済みソーシャルデータから見やすいPDFを作成します。", smartTakeaways: "重要ポイント", scorecard: "スコアカード", performanceTrend: "パフォーマンス推移", platformPerformance: "プラットフォーム別成果", toneAnalysis: "トーン分析", topPosts: "トップ投稿", competitors: "競合", keywords: "キーワード", tonePerformance: "トーン別成果", typeInsight: "インサイト", typeDashboard: "ダッシュボード", typeChart: "グラフ", typeTone: "トーン", typeTable: "表", presetExecutive: "エグゼクティブ", presetExecutiveDesc: "KPI、推移、競合、キーワード。", presetVisual: "ビジュアル", presetVisualDesc: "グラフとトーン中心、表は少なめ。", presetData: "データ", presetDataDesc: "表とランキング中心。", defaultTitle: "Chibitek 分析レポート", askAi: "AIに依頼", bestOption: "おすすめ", promptPlaceholder: "例: KPI、プラットフォーム、競合、キーワード、次のアクションを含むPDFを作成。", build: "作成", quickLayout: "クイックレイアウト", pdfTitle: "PDFタイトル", dataTools: "データツール", improveTakeaways: "要点を改善", analyzeTone: "トーン分析", tonePostSample: "トーン分析件数", livePreview: "レポートプレビュー", livePreviewDesc: "PDFの見た目です。", rows: "行 {{range}}", footer: "Chibitek Competitive Platform", noTimeline: "時系列データがありません。", noPlatform: "プラットフォームデータがありません。", noTone: "トーンデータがありません。トーン分析をクリックしてください。", mostUsed: "最多", bestResult: "最良結果", runAnalysis: "分析を実行", noPosts: "投稿がまだ収集されていません。", noCompetitors: "競合データがありません。", keywordAfterSaved: "保存済み投稿が集まるとキーワードランキングが表示されます。", rankedCount: "{{count}} 件ランクイン", noToneEngagement: "トーン別エンゲージメントデータがありません。", noReportData: "レポートデータがありません。投稿を収集して更新してください。", selectPanel: "少なくとも1つのパネルを選択してください。", loading: "読み込み中", layoutApplied: "{{layout}} レイアウトを適用しました。", keywordStatus: "{{posts}} 件の保存済み投稿から {{count}} 個のキーワード", filteringOneOff: "単発ワードを除外中", morePostsCleaner: "保存投稿が増えるほどランキングが安定します", aiBuiltDownloading: "AIがレポートを作成しました。PDFをダウンロードします。", aiBuiltPreview: "AIが下のプレビューを作成しました。", aiBuilderFailed: "AIレポート作成に失敗しました。クイックレイアウトは利用できます。", generatedOn: "生成日時 {{date}}", saveMorePosts: "投稿をさらに保存すると要点が表示されます。", leadPlatform: "{{platform}} が {{engagement}} エンゲージメントでリード。", reuseThemes: "「{{title}}」のテーマを再利用。", watchCompetitor: "@{{name}} の競合シグナルを確認。", testKeyword: "次のコンテンツで「{{keyword}}」を試す。", kpiPosts: "投稿", kpiEngagement: "エンゲージメント", kpiLikes: "いいね", kpiComments: "コメント", kpiShares: "シェア", kpiAvg: "平均", tableCompetitor: "競合", tableCom: "コメ", tableEng: "Eng.", tableKeyword: "キーワード", tableKpi: "KPI" },
+    competitorLookup: { xSimpleDesc: "@username またはプロフィールURLで最近の投稿を取得し、ツイートURLで単体指標、キーワードで検索できます。", xSimplePlaceholder: "@username、x.com/username、ツイートURL、またはキーワード", xVideoFallback: "X動画はサムネイルのみ表示される場合があります。動画はXで開いて視聴してください。", loadNextPosts: "次の10件の投稿を読み込む", loadNextResults: "次の10件の結果を読み込む", youtubeSimpleDesc: "チャンネルURL、動画URL、キーワードを1つのバーで検索。", youtubeSimplePlaceholder: "チャンネルURL、動画URL、またはキーワード", linkedinSimpleDesc: "@username、LinkedInプロフィール/会社/投稿URL、またはキーワードで最近の投稿を検索できます。", linkedinSimplePlaceholder: "@username、linkedin.com/in/...、会社URL、投稿URL、またはキーワード", instagramSimpleDesc: "@usernameで最近の投稿と指標を表示し、投稿/プロフィールURLやキーワードでも検索できます。", instagramSimplePlaceholder: "@username、Instagram URL、またはキーワード", tiktokSimpleDesc: "@usernameで最近の動画、動画URLで統計、#hashtagやキーワードでも検索できます。", tiktokSimplePlaceholder: "@username、TikTok動画URL、#hashtag、またはキーワード", redditSimpleDesc: "u/username、@username、r/subreddit、キーワード、Reddit投稿URLで検索できます。", redditSimplePlaceholder: "u/spez、r/startups、Reddit投稿URL、またはキーワード", linkedinSearch: "LinkedIn検索", instagramSearch: "Instagram検索", tiktokSearch: "TikTok検索", redditSearch: "Reddit検索", saveVideo: "動画を保存", youtubeResults: "YouTube結果", instagramResults: "Instagram結果", quickLookup: "クイック検索", quickLookupDesc: "URLは直接検索、@handleはアカウント検索、フレーズは通常検索に使います。", callsUsed: "使用回数: {{count}}", quickLookupError: "クイック検索エラー", resultsCount: "結果: {{count}}", intent: "意図: {{intent}}", route: "ルート: {{route}}", untitledResult: "無題の結果" },
+    savedPosts: { sortSavedPosts: "保存済み投稿を並べ替え", instagramPostMedia: "Instagram投稿メディア", youtubeBlockedHint: "YouTubeが埋め込みをブロックする場合は元動画を開いてください。", youtubeVideo: "YouTube動画", deleteAllSavedPosts: "保存済み投稿をすべて削除" }
+  },
+  fr: {
+    common: { loading: "Chargement", generated: "Généré", page: "Page", noData: "Aucune donnée", new: "Nouveau", rename: "Renommer", cancel: "Annuler", delete: "Supprimer", refresh: "Actualiser", download: "Télécharger", send: "Envoyer", file: "fichier", files: "fichiers", postsCount: "{{count}} publications", savedPostsCount: "{{count}} publications enregistrées", pagesCount: "{{count}} page", pagesCount_plural: "{{count}} pages", exportScale: "Export {{scale}}x" },
+    nav: { profile: "Profil", connectedIntegrations: "Intégrations connectées" },
+    appTitle: { default: "Chibitek", dashboard: "Tableau de bord", competitorLookup: "Recherche concurrentielle", savedPosts: "Publications enregistrées", watchlist: "Auto-scrape", keywordTracking: "Suivi des mots-clés", reports: "Rapports", chat: "Chat", settings: "Paramètres", profile: "Profil", connectedIntegrations: "Intégrations connectées", login: "Connexion" },
+    settings: { appearanceLabel: "Apparence", themeTitle: "Thème", themeDesc: "Choisissez clair, sombre ou le thème du système.", light: "Clair", dark: "Sombre", system: "Système", aiLabel: "IA", chatModelTitle: "Modèle de chat", chatModelDesc: "Choisissez un modèle dans une liste commune. Ce réglage est synchronisé avec le chat.", chooseAiModel: "Choisir un modèle IA", adminLabel: "Admin", ownerLabel: "Propriétaire", adminConsoleTitle: "Console admin", loadingAdminControls: "Chargement des contrôles admin...", usersAdminsOwners: "Utilisateurs, admins et propriétaires", usersTitle: "Utilisateurs", ownerAdminDesc: "Les propriétaires peuvent gérer les utilisateurs et les admins.", adminUserDesc: "Les admins peuvent gérer uniquement les utilisateurs standard.", addUser: "Ajouter un utilisateur", userEmail: "E-mail utilisateur", fullNameOptional: "Nom complet (facultatif)", name: "Nom", addAdmin: "Ajouter un admin", selectUser: "Sélectionner un utilisateur", chooseUser: "Choisir un utilisateur", noEligibleUsers: "Aucun utilisateur éligible", noMatchingUsers: "Aucun utilisateur correspondant", transferOwnership: "Transférer la propriété", ownerOnly: "Propriétaire uniquement", transferOwnershipDesc: "Choisissez le nouveau propriétaire. Votre compte deviendra automatiquement admin après le transfert.", newOwner: "Nouveau propriétaire", confirmation: "Confirmation", selectUserFirst: "Sélectionnez d'abord un utilisateur", typeToConfirm: "Tapez {{phrase}} pour confirmer.", selectOwnerToConfirm: "Sélectionnez un nouveau propriétaire pour générer la phrase de confirmation.", usersListDesc: "Recherchez et filtrez au lieu de parcourir toute la liste d'e-mails.", searchUsersPlaceholder: "Rechercher e-mail, nom, fournisseur ou rôle", email: "E-mail", role: "Rôle", status: "Statut", action: "Action", protected: "Protégé", noUsersMatch: "Aucun utilisateur ne correspond au filtre actuel.", adminsOwners: "Admins et propriétaires", removeAdmin: "Retirer l'admin", noAdminsFound: "Aucun admin trouvé.", allCount: "Tous ({{count}})", ownersCount: "Propriétaires ({{count}})", adminsCount: "Admins ({{count}})", usersCount: "Utilisateurs ({{count}})", deleteUserFailed: "Échec de la suppression de l'utilisateur.", chooseNewOwner: "Veuillez choisir le nouveau propriétaire.", transferConfirmPrompt: "Transférer la propriété à {{email}} ? Votre compte deviendra admin après ce changement.", transferConfirmType: "Tapez {{phrase}} pour confirmer le transfert.", ownershipTransferred: "Propriété transférée à {{email}}. Votre compte est maintenant admin.", transferOwnershipFailed: "Échec du transfert de propriété." },
+    chat: { openSidebar: "Ouvrir la barre latérale", collapseSidebar: "Réduire la barre latérale", savedChats: "Chats enregistrés", searchChats: "Rechercher des chats", chooseAiModel: "Choisir un modèle IA", copyMessage: "Copier le message", attachFiles: "Joindre des fichiers", stopGenerating: "Arrêter la génération", whatWorkOn: "Sur quoi voulez-vous travailler ?", recentPostSummary: "Résumé des publications récentes", quickSummarizeSavedPosts: "Résumer les publications", quickSummarizeSavedPostsPrompt: "Résume mes publications enregistrées les plus récentes en 4 puces simples, puis donne-moi la meilleure prochaine étape.", quickFindThemes: "Trouver les thèmes gagnants", quickFindThemesPrompt: "Regarde le contexte des publications récentes et identifie les thèmes qui semblent générer le plus d'engagement.", quickDraftRecommendations: "Rédiger des recommandations", quickDraftRecommendationsPrompt: "Donne-moi 3 recommandations concises à utiliser dans un rapport concurrentiel.", filesAttached: "{{count}} fichier", filesAttached_plural: "{{count}} fichiers", renameChat: "Renommer le chat", rename: "Renommer", deleteChatQuestion: "Supprimer le chat ?", deleteChatConfirm: "Cela supprimera “{{title}}” de vos chats enregistrés." },
+    reports: { title: "Rapports", subtitle: "Créez un PDF clair à partir de vos données sociales enregistrées.", smartTakeaways: "Points clés", scorecard: "Scorecard", performanceTrend: "Tendance de performance", platformPerformance: "Performance par plateforme", toneAnalysis: "Analyse du ton", topPosts: "Meilleures publications", competitors: "Concurrents", keywords: "Mots-clés", tonePerformance: "Performance du ton", typeInsight: "Insight", typeDashboard: "Tableau de bord", typeChart: "Graphique", typeTone: "Ton", typeTable: "Tableau", presetExecutive: "Exécutif", presetExecutiveDesc: "KPI, tendances, concurrents, mots-clés.", presetVisual: "Visuel", presetVisualDesc: "Graphiques et ton, moins de tableaux.", presetData: "Données", presetDataDesc: "Tableaux et classements.", defaultTitle: "Rapport analytique Chibitek", askAi: "Demander à l'IA", bestOption: "Meilleure option", promptPlaceholder: "Exemple : crée un PDF clair avec KPI, plateformes, concurrents, mots-clés et prochaines étapes.", build: "Créer", quickLayout: "Disposition rapide", pdfTitle: "Titre du PDF", dataTools: "Outils de données", improveTakeaways: "Améliorer les points clés", analyzeTone: "Analyser le ton", tonePostSample: "Échantillon de ton", livePreview: "Aperçu du rapport", livePreviewDesc: "Aperçu du PDF.", rows: "Lignes {{range}}", footer: "Chibitek Competitive Platform", noTimeline: "Aucune donnée de tendance.", noPlatform: "Aucune donnée de plateforme.", noTone: "Aucune donnée de ton. Cliquez sur Analyser le ton.", mostUsed: "Le plus utilisé", bestResult: "Meilleur résultat", runAnalysis: "Lancer l'analyse", noPosts: "Aucune publication collectée.", noCompetitors: "Aucune donnée concurrente.", keywordAfterSaved: "Les classements de mots-clés apparaissent après l'enregistrement de publications.", rankedCount: "{{count}} classés", noToneEngagement: "Aucune donnée d'engagement par ton.", noReportData: "Aucune donnée de rapport. Collectez des publications puis actualisez.", selectPanel: "Sélectionnez au moins un panneau.", loading: "Chargement", layoutApplied: "Disposition {{layout}} appliquée.", keywordStatus: "{{count}} mots-clés depuis {{posts}} publications enregistrées", filteringOneOff: "Filtrage des mots isolés", morePostsCleaner: "Plus de publications = classements plus propres", aiBuiltDownloading: "L'IA a créé le rapport. Téléchargement du PDF.", aiBuiltPreview: "L'IA a créé l'aperçu ci-dessous.", aiBuilderFailed: "Échec du générateur IA. Les dispositions rapides fonctionnent toujours.", generatedOn: "Généré {{date}}", saveMorePosts: "Enregistrez plus de publications pour débloquer les points clés.", leadPlatform: "{{platform}} mène avec {{engagement}} engagements.", reuseThemes: "Réutilisez les thèmes de “{{title}}”.", watchCompetitor: "Surveillez @{{name}} pour les signaux concurrents.", testKeyword: "Testez “{{keyword}}” dans le prochain contenu.", kpiPosts: "Publications", kpiEngagement: "Engagement", kpiLikes: "J'aime", kpiComments: "Commentaires", kpiShares: "Partages", kpiAvg: "Moy.", tableCompetitor: "Concurrent", tableCom: "Com.", tableEng: "Eng.", tableKeyword: "Mot-clé", tableKpi: "KPI" },
+    competitorLookup: { xSimpleDesc: "Utilisez @username ou une URL de profil pour récupérer les publications récentes, une URL de tweet pour les métriques d'un tweet, ou des mots-clés pour chercher.", xSimplePlaceholder: "@username, x.com/username, URL de tweet ou mot-clé", xVideoFallback: "Les vidéos X peuvent s'afficher seulement en miniatures. Ouvrez la publication sur X pour regarder la vidéo.", loadNextPosts: "Charger les 10 publications suivantes", loadNextResults: "Charger les 10 résultats suivants", youtubeSimpleDesc: "Recherche unique pour URL de chaîne, URL de vidéo ou mot-clé.", youtubeSimplePlaceholder: "URL de chaîne, URL de vidéo ou mot-clé", linkedinSimpleDesc: "Utilisez @username, une URL LinkedIn profil/entreprise/publication, ou des mots-clés pour chercher des publications récentes.", linkedinSimplePlaceholder: "@username, linkedin.com/in/..., URL d'entreprise, URL de publication ou mots-clés", instagramSimpleDesc: "Utilisez @username pour voir les publications récentes et métriques, collez une URL ou cherchez par mots-clés.", instagramSimplePlaceholder: "@username, URL Instagram ou mot-clé", tiktokSimpleDesc: "Utilisez @username pour les vidéos récentes, une URL vidéo pour les stats, #hashtag ou des mots-clés.", tiktokSimplePlaceholder: "@username, URL vidéo TikTok, #hashtag ou mot-clé", redditSimpleDesc: "Utilisez u/username, @username, r/subreddit, des mots-clés ou une URL de publication Reddit.", redditSimplePlaceholder: "u/spez, r/startups, URL Reddit ou mot-clé", linkedinSearch: "Recherche LinkedIn", instagramSearch: "Recherche Instagram", tiktokSearch: "Recherche TikTok", redditSearch: "Recherche Reddit", saveVideo: "Enregistrer la vidéo", youtubeResults: "Résultats YouTube", instagramResults: "Résultats Instagram", quickLookup: "Recherche rapide", quickLookupDesc: "URL pour recherche directe, @handle pour compte, phrase pour recherche standard.", callsUsed: "Appels utilisés : {{count}}", quickLookupError: "Erreur de recherche rapide", resultsCount: "Résultats : {{count}}", intent: "Intention : {{intent}}", route: "Route : {{route}}", untitledResult: "Résultat sans titre" },
+    savedPosts: { sortSavedPosts: "Trier les publications", instagramPostMedia: "Média de publication Instagram", youtubeBlockedHint: "Si YouTube bloque l'intégration, ouvrez la vidéo originale.", youtubeVideo: "Vidéo YouTube", deleteAllSavedPosts: "Supprimer toutes les publications enregistrées" }
+  },
+  de: {
+    common: { loading: "Wird geladen", generated: "Erstellt", page: "Seite", noData: "Keine Daten", new: "Neu", rename: "Umbenennen", cancel: "Abbrechen", delete: "Löschen", refresh: "Aktualisieren", download: "Herunterladen", send: "Senden", file: "Datei", files: "Dateien", postsCount: "{{count}} Beiträge", savedPostsCount: "{{count}} gespeicherte Beiträge", pagesCount: "{{count}} Seite", pagesCount_plural: "{{count}} Seiten", exportScale: "{{scale}}x Export" },
+    nav: { profile: "Profil", connectedIntegrations: "Verbundene Integrationen" },
+    appTitle: { default: "Chibitek", dashboard: "Dashboard", competitorLookup: "Wettbewerbssuche", savedPosts: "Gespeicherte Beiträge", watchlist: "Auto-Scrape", keywordTracking: "Keyword-Tracking", reports: "Berichte", chat: "Chat", settings: "Einstellungen", profile: "Profil", connectedIntegrations: "Verbundene Integrationen", login: "Anmelden" },
+    settings: { appearanceLabel: "Darstellung", themeTitle: "Design", themeDesc: "Hell, dunkel oder Systemeinstellung wählen.", light: "Hell", dark: "Dunkel", system: "System", aiLabel: "KI", chatModelTitle: "Chat-Modell", chatModelDesc: "Wählen Sie ein Modell aus einer gemeinsamen Liste. Diese Einstellung wird mit Chat synchronisiert.", chooseAiModel: "KI-Modell wählen", adminLabel: "Admin", ownerLabel: "Owner", adminConsoleTitle: "Admin-Konsole", loadingAdminControls: "Admin-Steuerung wird geladen...", usersAdminsOwners: "Benutzer, Admins & Owner", usersTitle: "Benutzer", ownerAdminDesc: "Owner können Benutzer und Admins verwalten.", adminUserDesc: "Admins können nur normale Benutzer verwalten.", addUser: "Benutzer hinzufügen", userEmail: "Benutzer-E-Mail", fullNameOptional: "Vollständiger Name (optional)", name: "Name", addAdmin: "Admin hinzufügen", selectUser: "Benutzer auswählen", chooseUser: "Benutzer wählen", noEligibleUsers: "Keine berechtigten Benutzer", noMatchingUsers: "Keine passenden Benutzer", transferOwnership: "Ownership übertragen", ownerOnly: "Nur Owner", transferOwnershipDesc: "Neuen Owner wählen. Ihr Konto wird danach automatisch Admin.", newOwner: "Neuer Owner", confirmation: "Bestätigung", selectUserFirst: "Zuerst Benutzer wählen", typeToConfirm: "Geben Sie {{phrase}} zur Bestätigung ein.", selectOwnerToConfirm: "Wählen Sie einen neuen Owner, um die Bestätigung zu erzeugen.", usersListDesc: "Suchen und filtern statt die ganze E-Mail-Liste zu durchsuchen.", searchUsersPlaceholder: "E-Mail, Name, Anbieter oder Rolle suchen", email: "E-Mail", role: "Rolle", status: "Status", action: "Aktion", protected: "Geschützt", noUsersMatch: "Keine Benutzer passen zum aktuellen Filter.", adminsOwners: "Admins & Owner", removeAdmin: "Admin entfernen", noAdminsFound: "Keine Admins gefunden.", allCount: "Alle ({{count}})", ownersCount: "Owner ({{count}})", adminsCount: "Admins ({{count}})", usersCount: "Benutzer ({{count}})", deleteUserFailed: "Benutzer konnte nicht gelöscht werden.", chooseNewOwner: "Bitte neuen Owner wählen.", transferConfirmPrompt: "Ownership an {{email}} übertragen? Ihr Konto wird danach Admin.", transferConfirmType: "Geben Sie {{phrase}} ein, um die Übertragung zu bestätigen.", ownershipTransferred: "Ownership an {{email}} übertragen. Ihr Konto ist jetzt Admin.", transferOwnershipFailed: "Ownership konnte nicht übertragen werden." },
+    chat: { openSidebar: "Seitenleiste öffnen", collapseSidebar: "Seitenleiste einklappen", savedChats: "Gespeicherte Chats", searchChats: "Chats suchen", chooseAiModel: "KI-Modell wählen", copyMessage: "Nachricht kopieren", attachFiles: "Dateien anhängen", stopGenerating: "Generierung stoppen", whatWorkOn: "Woran möchten Sie arbeiten?", recentPostSummary: "Zusammenfassung aktueller Beiträge", quickSummarizeSavedPosts: "Gespeicherte Beiträge zusammenfassen", quickSummarizeSavedPostsPrompt: "Fasse meine neuesten gespeicherten Beiträge in 4 einfachen Stichpunkten zusammen und nenne den besten nächsten Schritt.", quickFindThemes: "Erfolgreiche Themen finden", quickFindThemesPrompt: "Analysiere den Kontext aktueller Beiträge und identifiziere die Themen mit dem stärksten Engagement.", quickDraftRecommendations: "Empfehlungen entwerfen", quickDraftRecommendationsPrompt: "Gib mir 3 kurze Empfehlungen für einen Wettbewerbsbericht.", filesAttached: "{{count}} Datei", filesAttached_plural: "{{count}} Dateien", renameChat: "Chat umbenennen", rename: "Umbenennen", deleteChatQuestion: "Chat löschen?", deleteChatConfirm: "Dies entfernt „{{title}}“ aus Ihren gespeicherten Chats." },
+    reports: { title: "Berichte", subtitle: "Erstellen Sie ein klares PDF aus gespeicherten Social-Daten.", smartTakeaways: "Wichtige Erkenntnisse", scorecard: "Scorecard", performanceTrend: "Performance-Trend", platformPerformance: "Plattform-Performance", toneAnalysis: "Tonalitätsanalyse", topPosts: "Top-Beiträge", competitors: "Wettbewerber", keywords: "Keywords", tonePerformance: "Ton-Performance", typeInsight: "Insight", typeDashboard: "Dashboard", typeChart: "Diagramm", typeTone: "Ton", typeTable: "Tabelle", presetExecutive: "Executive", presetExecutiveDesc: "KPIs, Trends, Wettbewerber, Keywords.", presetVisual: "Visuell", presetVisualDesc: "Diagramme und Ton, weniger Tabellen.", presetData: "Daten", presetDataDesc: "Tabellen und Rankings.", defaultTitle: "Chibitek Analytics-Bericht", askAi: "KI fragen", bestOption: "Beste Option", promptPlaceholder: "Beispiel: Erstelle ein klares PDF mit KPIs, Plattformen, Wettbewerbern, Keywords und nächsten Schritten.", build: "Erstellen", quickLayout: "Schnelllayout", pdfTitle: "PDF-Titel", dataTools: "Datentools", improveTakeaways: "Takeaways verbessern", analyzeTone: "Ton analysieren", tonePostSample: "Ton-Beitragsprobe", livePreview: "Live-Berichtsvorschau", livePreviewDesc: "So wird das PDF aussehen.", rows: "Zeilen {{range}}", footer: "Chibitek Competitive Platform", noTimeline: "Noch keine Zeitreihendaten.", noPlatform: "Noch keine Plattformdaten.", noTone: "Noch keine Ton-Daten. Klicken Sie auf Ton analysieren.", mostUsed: "Am häufigsten", bestResult: "Bestes Ergebnis", runAnalysis: "Analyse ausführen", noPosts: "Noch keine Beiträge gesammelt.", noCompetitors: "Noch keine Wettbewerberdaten.", keywordAfterSaved: "Keyword-Rankings erscheinen, nachdem Beiträge gespeichert wurden.", rankedCount: "{{count}} gerankt", noToneEngagement: "Noch keine Engagement-Daten nach Ton.", noReportData: "Keine Berichtsdaten. Beiträge sammeln und aktualisieren.", selectPanel: "Mindestens ein Berichtspanel auswählen.", loading: "Wird geladen", layoutApplied: "{{layout}}-Layout angewendet.", keywordStatus: "{{count}} Keywords aus {{posts}} gespeicherten Beiträgen", filteringOneOff: "Einmalige Wörter werden gefiltert", morePostsCleaner: "Mehr gespeicherte Beiträge = klarere Rankings", aiBuiltDownloading: "KI hat den Bericht erstellt. PDF wird heruntergeladen.", aiBuiltPreview: "KI hat die Vorschau unten erstellt.", aiBuilderFailed: "KI-Berichtserstellung fehlgeschlagen. Schnelllayouts funktionieren weiterhin.", generatedOn: "Erstellt {{date}}", saveMorePosts: "Speichern Sie mehr Beiträge für Berichtserkenntnisse.", leadPlatform: "{{platform}} führt mit {{engagement}} Engagement.", reuseThemes: "Themen aus „{{title}}“ wiederverwenden.", watchCompetitor: "@{{name}} auf Wettbewerbssignale beobachten.", testKeyword: "„{{keyword}}“ in kommenden Inhalten testen.", kpiPosts: "Beiträge", kpiEngagement: "Engagement", kpiLikes: "Likes", kpiComments: "Kommentare", kpiShares: "Shares", kpiAvg: "Ø", tableCompetitor: "Wettbewerber", tableCom: "Kom.", tableEng: "Eng.", tableKeyword: "Keyword", tableKpi: "KPI" },
+    competitorLookup: { xSimpleDesc: "Nutzen Sie @username oder Profil-URL für aktuelle Beiträge, Tweet-URL für Einzelmetriken oder Keywords für die Suche.", xSimplePlaceholder: "@username, x.com/username, Tweet-URL oder Keyword", xVideoFallback: "X-Videos werden hier eventuell nur als Thumbnails angezeigt. Öffnen Sie den Beitrag auf X.", loadNextPosts: "Nächste 10 Beiträge laden", loadNextResults: "Nächste 10 Ergebnisse laden", youtubeSimpleDesc: "Eine Suchleiste für Kanal-URL, Video-URL oder Keyword.", youtubeSimplePlaceholder: "Kanal-URL, Video-URL oder Keyword", linkedinSimpleDesc: "Nutzen Sie @username, LinkedIn Profil-/Firmen-/Post-URL oder Keywords für aktuelle LinkedIn-Beiträge.", linkedinSimplePlaceholder: "@username, linkedin.com/in/..., Firmen-URL, Post-URL oder Keywords", instagramSimpleDesc: "Nutzen Sie @username für aktuelle Posts und Metriken, URLs oder Keywords für Suche.", instagramSimplePlaceholder: "@username, Instagram-URL oder Keyword", tiktokSimpleDesc: "Nutzen Sie @username für aktuelle Videos, Video-URL für Stats, #hashtag oder Keywords.", tiktokSimplePlaceholder: "@username, TikTok-Video-URL, #hashtag oder Keyword", redditSimpleDesc: "Nutzen Sie u/username, @username, r/subreddit, Keywords oder eine Reddit-Post-URL.", redditSimplePlaceholder: "u/spez, r/startups, Reddit-Post-URL oder Keyword", linkedinSearch: "LinkedIn-Suche", instagramSearch: "Instagram-Suche", tiktokSearch: "TikTok-Suche", redditSearch: "Reddit-Suche", saveVideo: "Video speichern", youtubeResults: "YouTube-Ergebnisse", instagramResults: "Instagram-Ergebnisse", quickLookup: "Schnellsuche", quickLookupDesc: "URL für Direktsuche, @handle für Konto, Phrase für normale Suche.", callsUsed: "Aufrufe verwendet: {{count}}", quickLookupError: "Schnellsuche-Fehler", resultsCount: "Ergebnisse: {{count}}", intent: "Intent: {{intent}}", route: "Route: {{route}}", untitledResult: "Unbenanntes Ergebnis" },
+    savedPosts: { sortSavedPosts: "Gespeicherte Beiträge sortieren", instagramPostMedia: "Instagram-Beitragsmedium", youtubeBlockedHint: "Wenn YouTube die Einbettung blockiert, öffnen Sie das Originalvideo.", youtubeVideo: "YouTube-Video", deleteAllSavedPosts: "Alle gespeicherten Beiträge löschen" }
+  },
+  es: {
+    common: { loading: "Cargando", generated: "Generado", page: "Página", noData: "Sin datos", new: "Nuevo", rename: "Cambiar nombre", cancel: "Cancelar", delete: "Eliminar", refresh: "Actualizar", download: "Descargar", send: "Enviar", file: "archivo", files: "archivos", postsCount: "{{count}} publicaciones", savedPostsCount: "{{count}} publicaciones guardadas", pagesCount: "{{count}} página", pagesCount_plural: "{{count}} páginas", exportScale: "Exportación {{scale}}x" },
+    nav: { profile: "Perfil", connectedIntegrations: "Integraciones conectadas" },
+    appTitle: { default: "Chibitek", dashboard: "Panel", competitorLookup: "Búsqueda de competidores", savedPosts: "Publicaciones guardadas", watchlist: "Auto-scrape", keywordTracking: "Seguimiento de palabras clave", reports: "Informes", chat: "Chat", settings: "Configuración", profile: "Perfil", connectedIntegrations: "Integraciones conectadas", login: "Iniciar sesión" },
+    settings: { appearanceLabel: "Apariencia", themeTitle: "Tema", themeDesc: "Elige claro, oscuro o usar el sistema.", light: "Claro", dark: "Oscuro", system: "Sistema", aiLabel: "IA", chatModelTitle: "Modelo de chat", chatModelDesc: "Elige un modelo de una lista compartida. Esta configuración se sincroniza con Chat.", chooseAiModel: "Elegir modelo de IA", adminLabel: "Admin", ownerLabel: "Propietario", adminConsoleTitle: "Consola de admin", loadingAdminControls: "Cargando controles de admin...", usersAdminsOwners: "Usuarios, admins y propietarios", usersTitle: "Usuarios", ownerAdminDesc: "Los propietarios pueden gestionar usuarios normales y admins.", adminUserDesc: "Los admins solo pueden gestionar usuarios normales.", addUser: "Agregar usuario", userEmail: "Correo del usuario", fullNameOptional: "Nombre completo (opcional)", name: "Nombre", addAdmin: "Agregar admin", selectUser: "Seleccionar usuario", chooseUser: "Elegir usuario", noEligibleUsers: "No hay usuarios elegibles", noMatchingUsers: "No hay usuarios coincidentes", transferOwnership: "Transferir propiedad", ownerOnly: "Solo propietario", transferOwnershipDesc: "Elige el nuevo propietario. Tu cuenta pasará automáticamente a admin después de la transferencia.", newOwner: "Nuevo propietario", confirmation: "Confirmación", selectUserFirst: "Selecciona un usuario primero", typeToConfirm: "Escribe {{phrase}} para confirmar.", selectOwnerToConfirm: "Selecciona un nuevo propietario para generar la frase de confirmación.", usersListDesc: "Busca y filtra en vez de revisar toda la lista de correos.", searchUsersPlaceholder: "Buscar correo, nombre, proveedor o rol", email: "Correo", role: "Rol", status: "Estado", action: "Acción", protected: "Protegido", noUsersMatch: "Ningún usuario coincide con el filtro actual.", adminsOwners: "Admins y propietarios", removeAdmin: "Quitar admin", noAdminsFound: "No se encontraron admins.", allCount: "Todos ({{count}})", ownersCount: "Propietarios ({{count}})", adminsCount: "Admins ({{count}})", usersCount: "Usuarios ({{count}})", deleteUserFailed: "No se pudo eliminar el usuario.", chooseNewOwner: "Elige el nuevo propietario.", transferConfirmPrompt: "¿Transferir la propiedad a {{email}}? Tu cuenta pasará a admin después de este cambio.", transferConfirmType: "Escribe {{phrase}} para confirmar la transferencia.", ownershipTransferred: "Propiedad transferida a {{email}}. Tu cuenta ahora es admin.", transferOwnershipFailed: "No se pudo transferir la propiedad." },
+    chat: { openSidebar: "Abrir barra lateral", collapseSidebar: "Contraer barra lateral", savedChats: "Chats guardados", searchChats: "Buscar chats", chooseAiModel: "Elegir modelo de IA", copyMessage: "Copiar mensaje", attachFiles: "Adjuntar archivos", stopGenerating: "Detener generación", whatWorkOn: "¿En qué quieres trabajar?", recentPostSummary: "Resumen de publicaciones recientes", quickSummarizeSavedPosts: "Resumir publicaciones guardadas", quickSummarizeSavedPostsPrompt: "Resume mis publicaciones guardadas más recientes en 4 viñetas simples y dime el mejor siguiente paso.", quickFindThemes: "Encontrar temas ganadores", quickFindThemesPrompt: "Revisa el contexto reciente de publicaciones e identifica los temas que parecen generar más engagement.", quickDraftRecommendations: "Redactar recomendaciones", quickDraftRecommendationsPrompt: "Dame 3 recomendaciones concisas para usar en un informe competitivo.", filesAttached: "{{count}} archivo", filesAttached_plural: "{{count}} archivos", renameChat: "Cambiar nombre del chat", rename: "Cambiar nombre", deleteChatQuestion: "¿Eliminar chat?", deleteChatConfirm: "Esto quitará “{{title}}” de tus chats guardados." },
+    reports: { title: "Informes", subtitle: "Crea un PDF limpio desde tus datos sociales guardados.", smartTakeaways: "Conclusiones clave", scorecard: "Marcador", performanceTrend: "Tendencia de rendimiento", platformPerformance: "Rendimiento por plataforma", toneAnalysis: "Análisis de tono", topPosts: "Mejores publicaciones", competitors: "Competidores", keywords: "Palabras clave", tonePerformance: "Rendimiento por tono", typeInsight: "Insight", typeDashboard: "Panel", typeChart: "Gráfico", typeTone: "Tono", typeTable: "Tabla", presetExecutive: "Ejecutivo", presetExecutiveDesc: "KPI, tendencias, competidores, palabras clave.", presetVisual: "Visual", presetVisualDesc: "Gráficos y tono, menos tablas.", presetData: "Datos", presetDataDesc: "Tablas y rankings.", defaultTitle: "Informe analítico de Chibitek", askAi: "Pedir a la IA", bestOption: "Mejor opción", promptPlaceholder: "Ejemplo: crea un PDF limpio con KPI, plataformas, competidores, palabras clave y próximos pasos.", build: "Crear", quickLayout: "Diseño rápido", pdfTitle: "Título del PDF", dataTools: "Herramientas de datos", improveTakeaways: "Mejorar conclusiones", analyzeTone: "Analizar tono", tonePostSample: "Muestra de tono", livePreview: "Vista previa del informe", livePreviewDesc: "Así se verá el PDF.", rows: "Filas {{range}}", footer: "Chibitek Competitive Platform", noTimeline: "Aún no hay datos de tendencia.", noPlatform: "Aún no hay datos de plataforma.", noTone: "Aún no hay datos de tono. Haz clic en Analizar tono.", mostUsed: "Más usado", bestResult: "Mejor resultado", runAnalysis: "Ejecutar análisis", noPosts: "Aún no se han recopilado publicaciones.", noCompetitors: "Aún no hay datos de competidores.", keywordAfterSaved: "Los rankings de palabras clave aparecen después de guardar publicaciones.", rankedCount: "{{count}} clasificadas", noToneEngagement: "Aún no hay datos de engagement por tono.", noReportData: "Aún no hay datos de informe. Recopila publicaciones y actualiza.", selectPanel: "Selecciona al menos un panel del informe.", loading: "Cargando", layoutApplied: "Diseño {{layout}} aplicado.", keywordStatus: "{{count}} palabras clave de {{posts}} publicaciones guardadas", filteringOneOff: "Filtrando palabras únicas", morePostsCleaner: "Más publicaciones guardadas = rankings más claros", aiBuiltDownloading: "La IA creó el informe. Descargando PDF.", aiBuiltPreview: "La IA creó la vista previa abajo.", aiBuilderFailed: "Falló el generador de informes IA. Los diseños rápidos aún funcionan.", generatedOn: "Generado {{date}}", saveMorePosts: "Guarda más publicaciones para desbloquear conclusiones.", leadPlatform: "{{platform}} lidera con {{engagement}} de engagement.", reuseThemes: "Reutiliza temas de “{{title}}”.", watchCompetitor: "Observa @{{name}} para señales competitivas.", testKeyword: "Prueba “{{keyword}}” en próximo contenido.", kpiPosts: "Publicaciones", kpiEngagement: "Engagement", kpiLikes: "Me gusta", kpiComments: "Comentarios", kpiShares: "Compartidos", kpiAvg: "Prom.", tableCompetitor: "Competidor", tableCom: "Com.", tableEng: "Eng.", tableKeyword: "Palabra clave", tableKpi: "KPI" },
+    competitorLookup: { xSimpleDesc: "Usa @username o una URL de perfil para obtener publicaciones recientes, pega una URL de tweet para métricas individuales o escribe palabras clave para buscar.", xSimplePlaceholder: "@username, x.com/username, URL de tweet o palabra clave", xVideoFallback: "Los videos de X pueden mostrarse solo como miniaturas. Abre la publicación en X para ver el video.", loadNextPosts: "Cargar las siguientes 10 publicaciones", loadNextResults: "Cargar los siguientes 10 resultados", youtubeSimpleDesc: "Búsqueda en una barra para URL de canal, URL de video o palabra clave.", youtubeSimplePlaceholder: "URL de canal, URL de video o palabra clave", linkedinSimpleDesc: "Usa @username, URL de perfil/empresa/publicación de LinkedIn o palabras clave para buscar publicaciones recientes.", linkedinSimplePlaceholder: "@username, linkedin.com/in/..., URL de empresa, URL de publicación o palabras clave", instagramSimpleDesc: "Usa @username para ver publicaciones recientes y métricas, pega una URL o busca por palabras clave.", instagramSimplePlaceholder: "@username, URL de Instagram o palabra clave", tiktokSimpleDesc: "Usa @username para videos recientes, URL de video para stats, #hashtag o palabras clave.", tiktokSimplePlaceholder: "@username, URL de video TikTok, #hashtag o palabra clave", redditSimpleDesc: "Usa u/username, @username, r/subreddit, palabras clave o una URL de publicación de Reddit.", redditSimplePlaceholder: "u/spez, r/startups, URL de publicación de Reddit o palabra clave", linkedinSearch: "Buscar LinkedIn", instagramSearch: "Buscar Instagram", tiktokSearch: "Buscar TikTok", redditSearch: "Buscar Reddit", saveVideo: "Guardar video", youtubeResults: "Resultados de YouTube", instagramResults: "Resultados de Instagram", quickLookup: "Búsqueda rápida", quickLookupDesc: "URL para búsqueda directa, @handle para cuenta o una frase para búsqueda normal.", callsUsed: "Llamadas usadas: {{count}}", quickLookupError: "Error de búsqueda rápida", resultsCount: "Resultados: {{count}}", intent: "Intención: {{intent}}", route: "Ruta: {{route}}", untitledResult: "Resultado sin título" },
+    savedPosts: { sortSavedPosts: "Ordenar publicaciones guardadas", instagramPostMedia: "Medio de publicación de Instagram", youtubeBlockedHint: "Si YouTube bloquea el embed, abre el video original.", youtubeVideo: "Video de YouTube", deleteAllSavedPosts: "Eliminar todas las publicaciones guardadas" }
+  }
+};
+
+function deepMergeTranslation(target, source) {
+  Object.entries(source || {}).forEach(([key, value]) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) target[key] = {};
+      deepMergeTranslation(target[key], value);
+    } else {
+      target[key] = value;
+    }
+  });
+}
+
+Object.entries(EXTRA_TRANSLATIONS).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_MORE = {
+  en: { chat: { attachedFilesPrompt: "See attached files for context.", noResponse: "No response.", missingToken: "Server is missing the GitHub token. Please add it and try again.", modelUnavailable: "Sorry, I could not reach the language model right now.", copiedMessage: "Copied message.", copyFailed: "Could not copy this message.", attachFailed: "Could not attach that file.", signInToRename: "Sign in to rename chats.", chatRenamed: "Chat renamed.", failedToRename: "Failed to rename chat.", newChatStatus: "New chat", savedStatus: "Saved", savedLocally: "Saved locally", autosaveIssue: "Autosave issue", autosaveOn: "Autosave on", chatsHeading: "Chats", open: "Open", noMatchingChats: "No matching chats.", autoSaveHint: "Your chats will save here automatically.", model: "model", unknown: "unknown" } },
+  ja: { chat: { attachedFilesPrompt: "添付ファイルをコンテキストとして参照してください。", noResponse: "応答がありません。", missingToken: "サーバーにGitHubトークンがありません。追加して再試行してください。", modelUnavailable: "現在、言語モデルに接続できませんでした。", copiedMessage: "メッセージをコピーしました。", copyFailed: "このメッセージをコピーできませんでした。", attachFailed: "そのファイルを添付できませんでした。", signInToRename: "チャット名を変更するにはサインインしてください。", chatRenamed: "チャット名を変更しました。", failedToRename: "チャット名の変更に失敗しました。", newChatStatus: "新しいチャット", savedStatus: "保存済み", savedLocally: "ローカル保存済み", autosaveIssue: "自動保存の問題", autosaveOn: "自動保存オン", chatsHeading: "チャット", open: "開く", noMatchingChats: "一致するチャットがありません。", autoSaveHint: "チャットはここに自動保存されます。", model: "モデル", unknown: "不明" } },
+  fr: { chat: { attachedFilesPrompt: "Voir les fichiers joints pour le contexte.", noResponse: "Aucune réponse.", missingToken: "Le serveur n'a pas de jeton GitHub. Ajoutez-le puis réessayez.", modelUnavailable: "Impossible de joindre le modèle de langage pour le moment.", copiedMessage: "Message copié.", copyFailed: "Impossible de copier ce message.", attachFailed: "Impossible de joindre ce fichier.", signInToRename: "Connectez-vous pour renommer les chats.", chatRenamed: "Chat renommé.", failedToRename: "Échec du renommage du chat.", newChatStatus: "Nouveau chat", savedStatus: "Enregistré", savedLocally: "Enregistré localement", autosaveIssue: "Problème d'autosave", autosaveOn: "Autosave activé", chatsHeading: "Chats", open: "Ouvrir", noMatchingChats: "Aucun chat correspondant.", autoSaveHint: "Vos chats s'enregistreront ici automatiquement.", model: "modèle", unknown: "inconnu" } },
+  de: { chat: { attachedFilesPrompt: "Siehe angehängte Dateien für Kontext.", noResponse: "Keine Antwort.", missingToken: "Auf dem Server fehlt das GitHub-Token. Bitte hinzufügen und erneut versuchen.", modelUnavailable: "Das Sprachmodell ist derzeit nicht erreichbar.", copiedMessage: "Nachricht kopiert.", copyFailed: "Diese Nachricht konnte nicht kopiert werden.", attachFailed: "Diese Datei konnte nicht angehängt werden.", signInToRename: "Melden Sie sich an, um Chats umzubenennen.", chatRenamed: "Chat umbenannt.", failedToRename: "Chat konnte nicht umbenannt werden.", newChatStatus: "Neuer Chat", savedStatus: "Gespeichert", savedLocally: "Lokal gespeichert", autosaveIssue: "Autosave-Problem", autosaveOn: "Autosave aktiv", chatsHeading: "Chats", open: "Öffnen", noMatchingChats: "Keine passenden Chats.", autoSaveHint: "Ihre Chats werden hier automatisch gespeichert.", model: "Modell", unknown: "unbekannt" } },
+  es: { chat: { attachedFilesPrompt: "Consulta los archivos adjuntos para contexto.", noResponse: "Sin respuesta.", missingToken: "Falta el token de GitHub en el servidor. Agrégalo e inténtalo de nuevo.", modelUnavailable: "No pude conectar con el modelo de lenguaje ahora mismo.", copiedMessage: "Mensaje copiado.", copyFailed: "No se pudo copiar este mensaje.", attachFailed: "No se pudo adjuntar ese archivo.", signInToRename: "Inicia sesión para cambiar el nombre de los chats.", chatRenamed: "Chat renombrado.", failedToRename: "No se pudo cambiar el nombre del chat.", newChatStatus: "Nuevo chat", savedStatus: "Guardado", savedLocally: "Guardado localmente", autosaveIssue: "Problema de autoguardado", autosaveOn: "Autoguardado activo", chatsHeading: "Chats", open: "Abrir", noMatchingChats: "No hay chats coincidentes.", autoSaveHint: "Tus chats se guardarán aquí automáticamente.", model: "modelo", unknown: "desconocido" } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_MORE).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_REPORT_STATUS = {
+  en: { reports: { toneAlreadyAvailable: "Tone analysis is already available for these posts.", toneNoLabelsWithError: "Tone analysis did not return labels: {{error}}", toneNoLabels: "Tone analysis ran, but no tone labels came back.", toneComplete: "Tone analysis complete for {{count}} posts.", toneFailed: "Tone analysis failed. Check the AI service and /api/tone endpoint.", noInsights: "No insights generated.", recommendationsUpdated: "Recommendations updated in the PDF preview.", recommendationsFailed: "Could not generate recommendations. Check that the chat endpoint is working." } },
+  ja: { reports: { toneAlreadyAvailable: "これらの投稿にはすでにトーン分析があります。", toneNoLabelsWithError: "トーン分析でラベルが返りませんでした: {{error}}", toneNoLabels: "トーン分析は実行されましたが、ラベルが返りませんでした。", toneComplete: "{{count}} 件の投稿のトーン分析が完了しました。", toneFailed: "トーン分析に失敗しました。AIサービスと /api/tone エンドポイントを確認してください。", noInsights: "インサイトは生成されませんでした。", recommendationsUpdated: "PDFプレビューの提案を更新しました。", recommendationsFailed: "提案を生成できませんでした。チャットエンドポイントを確認してください。" } },
+  fr: { reports: { toneAlreadyAvailable: "L'analyse du ton est déjà disponible pour ces publications.", toneNoLabelsWithError: "L'analyse du ton n'a pas renvoyé d'étiquettes : {{error}}", toneNoLabels: "L'analyse du ton s'est exécutée, mais aucune étiquette n'est revenue.", toneComplete: "Analyse du ton terminée pour {{count}} publications.", toneFailed: "Échec de l'analyse du ton. Vérifiez le service IA et /api/tone.", noInsights: "Aucun insight généré.", recommendationsUpdated: "Recommandations mises à jour dans l'aperçu PDF.", recommendationsFailed: "Impossible de générer les recommandations. Vérifiez l'endpoint de chat." } },
+  de: { reports: { toneAlreadyAvailable: "Tonalitätsanalyse ist für diese Beiträge bereits verfügbar.", toneNoLabelsWithError: "Tonalitätsanalyse lieferte keine Labels: {{error}}", toneNoLabels: "Tonalitätsanalyse lief, aber es kamen keine Labels zurück.", toneComplete: "Tonalitätsanalyse für {{count}} Beiträge abgeschlossen.", toneFailed: "Tonalitätsanalyse fehlgeschlagen. KI-Dienst und /api/tone prüfen.", noInsights: "Keine Erkenntnisse generiert.", recommendationsUpdated: "Empfehlungen in der PDF-Vorschau aktualisiert.", recommendationsFailed: "Empfehlungen konnten nicht generiert werden. Chat-Endpunkt prüfen." } },
+  es: { reports: { toneAlreadyAvailable: "El análisis de tono ya está disponible para estas publicaciones.", toneNoLabelsWithError: "El análisis de tono no devolvió etiquetas: {{error}}", toneNoLabels: "El análisis de tono se ejecutó, pero no devolvió etiquetas.", toneComplete: "Análisis de tono completado para {{count}} publicaciones.", toneFailed: "Falló el análisis de tono. Revisa el servicio de IA y /api/tone.", noInsights: "No se generaron insights.", recommendationsUpdated: "Recomendaciones actualizadas en la vista previa del PDF.", recommendationsFailed: "No se pudieron generar recomendaciones. Revisa el endpoint de chat." } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_REPORT_STATUS).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_SAVED_STATUS = {
+  en: { savedPosts: { confirmDeleteAll: "Are you sure you want to delete all {{count}} saved posts? This cannot be undone." } },
+  ja: { savedPosts: { confirmDeleteAll: "保存済み投稿 {{count}} 件をすべて削除してもよろしいですか？この操作は取り消せません。" } },
+  fr: { savedPosts: { confirmDeleteAll: "Voulez-vous vraiment supprimer les {{count}} publications enregistrées ? Cette action est irréversible." } },
+  de: { savedPosts: { confirmDeleteAll: "Möchten Sie wirklich alle {{count}} gespeicherten Beiträge löschen? Dies kann nicht rückgängig gemacht werden." } },
+  es: { savedPosts: { confirmDeleteAll: "¿Seguro que quieres eliminar las {{count}} publicaciones guardadas? Esta acción no se puede deshacer." } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_SAVED_STATUS).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_MISC_LABELS = {
+  en: { common: { viewRawData: "View raw data", sortPosts: "Sort posts", downloadJson: "Download JSON", downloadTxt: "Download TXT", downloadCsv: "Download CSV" }, competitorLookup: { companyPosts: "Company posts", postDetail: "Post Detail", tiktokPost: "TikTok Post", redditPremium: "Reddit Premium", moderator: "Moderator", redditMediaPreview: "Reddit media preview", ad: "Ad", userProfile: "User Profile", postMetrics: "Post Metrics", saveAllPosts: "Save All Posts" }, watchlist: { bannerAlt: "banner", linkedinPostPreview: "LinkedIn post preview", linkedinVideo: "LinkedIn video", profile: "Profile", noLinkedinPosts: "No LinkedIn posts returned.", instagramPostPreview: "Instagram post preview", instagramVideo: "Instagram video", tiktokVideoPreview: "TikTok video preview", tiktokVideo: "TikTok video" } },
+  ja: { common: { viewRawData: "生データを表示", sortPosts: "投稿を並べ替え", downloadJson: "JSONをダウンロード", downloadTxt: "TXTをダウンロード", downloadCsv: "CSVをダウンロード" }, competitorLookup: { companyPosts: "会社投稿", postDetail: "投稿詳細", tiktokPost: "TikTok投稿", redditPremium: "Reddit Premium", moderator: "モデレーター", redditMediaPreview: "Redditメディアプレビュー", ad: "広告", userProfile: "ユーザープロフィール", postMetrics: "投稿指標", saveAllPosts: "すべての投稿を保存" }, watchlist: { bannerAlt: "バナー", linkedinPostPreview: "LinkedIn投稿プレビュー", linkedinVideo: "LinkedIn動画", profile: "プロフィール", noLinkedinPosts: "LinkedIn投稿は返されませんでした。", instagramPostPreview: "Instagram投稿プレビュー", instagramVideo: "Instagram動画", tiktokVideoPreview: "TikTok動画プレビュー", tiktokVideo: "TikTok動画" } },
+  fr: { common: { viewRawData: "Voir les données brutes", sortPosts: "Trier les publications", downloadJson: "Télécharger JSON", downloadTxt: "Télécharger TXT", downloadCsv: "Télécharger CSV" }, competitorLookup: { companyPosts: "Publications d'entreprise", postDetail: "Détail de la publication", tiktokPost: "Publication TikTok", redditPremium: "Reddit Premium", moderator: "Modérateur", redditMediaPreview: "Aperçu média Reddit", ad: "Annonce", userProfile: "Profil utilisateur", postMetrics: "Métriques de publication", saveAllPosts: "Enregistrer toutes les publications" }, watchlist: { bannerAlt: "bannière", linkedinPostPreview: "Aperçu de publication LinkedIn", linkedinVideo: "Vidéo LinkedIn", profile: "Profil", noLinkedinPosts: "Aucune publication LinkedIn renvoyée.", instagramPostPreview: "Aperçu de publication Instagram", instagramVideo: "Vidéo Instagram", tiktokVideoPreview: "Aperçu de vidéo TikTok", tiktokVideo: "Vidéo TikTok" } },
+  de: { common: { viewRawData: "Rohdaten anzeigen", sortPosts: "Beiträge sortieren", downloadJson: "JSON herunterladen", downloadTxt: "TXT herunterladen", downloadCsv: "CSV herunterladen" }, competitorLookup: { companyPosts: "Unternehmensbeiträge", postDetail: "Beitragsdetails", tiktokPost: "TikTok-Beitrag", redditPremium: "Reddit Premium", moderator: "Moderator", redditMediaPreview: "Reddit-Medienvorschau", ad: "Anzeige", userProfile: "Benutzerprofil", postMetrics: "Beitragsmetriken", saveAllPosts: "Alle Beiträge speichern" }, watchlist: { bannerAlt: "Banner", linkedinPostPreview: "LinkedIn-Beitragsvorschau", linkedinVideo: "LinkedIn-Video", profile: "Profil", noLinkedinPosts: "Keine LinkedIn-Beiträge zurückgegeben.", instagramPostPreview: "Instagram-Beitragsvorschau", instagramVideo: "Instagram-Video", tiktokVideoPreview: "TikTok-Video-Vorschau", tiktokVideo: "TikTok-Video" } },
+  es: { common: { viewRawData: "Ver datos sin procesar", sortPosts: "Ordenar publicaciones", downloadJson: "Descargar JSON", downloadTxt: "Descargar TXT", downloadCsv: "Descargar CSV" }, competitorLookup: { companyPosts: "Publicaciones de empresa", postDetail: "Detalle de publicación", tiktokPost: "Publicación de TikTok", redditPremium: "Reddit Premium", moderator: "Moderador", redditMediaPreview: "Vista previa de medios de Reddit", ad: "Anuncio", userProfile: "Perfil de usuario", postMetrics: "Métricas de publicación", saveAllPosts: "Guardar todas las publicaciones" }, watchlist: { bannerAlt: "banner", linkedinPostPreview: "Vista previa de publicación de LinkedIn", linkedinVideo: "Video de LinkedIn", profile: "Perfil", noLinkedinPosts: "No se devolvieron publicaciones de LinkedIn.", instagramPostPreview: "Vista previa de publicación de Instagram", instagramVideo: "Video de Instagram", tiktokVideoPreview: "Vista previa de video de TikTok", tiktokVideo: "Video de TikTok" } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_MISC_LABELS).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_SORT_AND_MEDIA = {
+  en: { common: { newestFirst: "Newest first", oldestFirst: "Oldest first", mostEngagement: "Most engagement", highestTotalMetrics: "Highest total metrics", mostLikes: "Most likes", mostComments: "Most comments", mostShares: "Most shares", verified: "Verified", video: "Video" }, competitorLookup: { searchResults: "Search results" } },
+  ja: { common: { newestFirst: "新しい順", oldestFirst: "古い順", mostEngagement: "エンゲージメント順", highestTotalMetrics: "合計指標順", mostLikes: "いいね順", mostComments: "コメント順", mostShares: "シェア順", verified: "認証済み", video: "動画" }, competitorLookup: { searchResults: "検索結果" } },
+  fr: { common: { newestFirst: "Plus récent d’abord", oldestFirst: "Plus ancien d’abord", mostEngagement: "Plus d’engagement", highestTotalMetrics: "Total de métriques le plus élevé", mostLikes: "Plus de mentions J’aime", mostComments: "Plus de commentaires", mostShares: "Plus de partages", verified: "Vérifié", video: "Vidéo" }, competitorLookup: { searchResults: "Résultats de recherche" } },
+  de: { common: { newestFirst: "Neueste zuerst", oldestFirst: "Älteste zuerst", mostEngagement: "Meiste Interaktionen", highestTotalMetrics: "Höchste Gesamtwerte", mostLikes: "Meiste Likes", mostComments: "Meiste Kommentare", mostShares: "Meiste Shares", verified: "Verifiziert", video: "Video" }, competitorLookup: { searchResults: "Suchergebnisse" } },
+  es: { common: { newestFirst: "Más recientes primero", oldestFirst: "Más antiguas primero", mostEngagement: "Más interacción", highestTotalMetrics: "Métricas totales más altas", mostLikes: "Más me gusta", mostComments: "Más comentarios", mostShares: "Más compartidos", verified: "Verificado", video: "Video" }, competitorLookup: { searchResults: "Resultados de búsqueda" } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_SORT_AND_MEDIA).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+const EXTRA_TRANSLATIONS_UI_POLISH = {
+  en: {
+    common: { more: "More", less: "Less", showMore: "Show more", showLess: "Show less", search: "Search", unknown: "unknown" },
+    dashboard: { kpiTotalLikes: "Total likes", kpiTotalShares: "Total shares", scaleRaw: "Raw", scaleRelative: "Relative", startToneAnalysis: "Start tone analysis", refreshToneAnalysis: "Refresh tone analysis" },
+    competitorLookup: {
+      openVideoOnX: "Open video on X", postedBy: "Posted by {{name}}", xPost: "X post", unknownChannel: "Unknown Channel", untitledVideo: "Untitled Video", savedCheck: "Saved ✓", errorRetry: "Error – Retry",
+      channel: "Channel", subscribers: "Subscribers", videos: "Videos", countryJoined: "Country: {{country}} · Joined {{date}}", likes: "Likes", comments: "Comments", likesAndComments: "likes and comments", hiddenByCreator: "Note: {{label}} count is hidden by the creator.",
+      viewPost: "View Post", channelDetails: "Channel Details", channelVideosCount: "Channel Videos ({{count}})", instagramPreviewUnavailable: "Instagram photos/videos are not available from the API for inline preview.", viewInstagramMedia: "View the post on Instagram to see the media →", someInstagramMediaMayNotPreview: "Some Instagram media, especially videos/carousels, may not preview here.", viewPostArrow: "View post →",
+      viewProfile: "View Profile", totalKarma: "Total Karma", postKarma: "Post Karma", commentKarma: "Comment Karma", awardeeKarma: "Awardee Karma", createdDate: "Created {{date}}", endpointCostsPrefix: "Select the data you want to fetch. Each endpoint costs", oneCredit: "1 credit", username: "Username", backend: "Backend", posts: "Posts", convertedData: "Converted Data", nameSource: "Name/Source", engagement: "Engagement", message: "Message", metricsUnavailable: "Metrics unavailable", saveTranscript: "Save Transcript"
+    },
+    savedPosts: { openVideoOnX: "Open video on X", instagramPreviewUnavailable: "Instagram photos/videos are not available from the API for inline preview.", viewInstagramMedia: "View the post on Instagram to see the media →", someInstagramMediaMayNotPreview: "Some Instagram media may not preview here.", viewPostArrow: "View post →", openYoutube: "Open YouTube", play: "Play", playInApp: "Play in app", openOriginal: "Open original", deleteAll: "Delete All", xVideoThumbnailOnly: "X videos may only show as thumbnails here. Open the post on X to watch the video.", viewPost: "View Post" },
+    watchlist: { autoSearch: "Auto search", placeholders: { xSearch: "@openai or AI agents", youtubeSearch: "channel, video URL, or search term", redditSearch: "r/artificial or search term", linkedinSearch: "profile/company/post URL or keyword", instagramSearch: "@natgeo, profile URL, post URL, or keyword", tiktokSearch: "@tiktok, profile URL, or keyword" } }
+  },
+  ja: {
+    common: { more: "もっと見る", less: "少なく表示", showMore: "もっと見る", showLess: "少なく表示", search: "検索", unknown: "不明" },
+    dashboard: { kpiTotalLikes: "いいね合計", kpiTotalShares: "シェア合計", scaleRaw: "実数", scaleRelative: "相対", startToneAnalysis: "トーン分析を開始", refreshToneAnalysis: "トーン分析を更新" },
+    competitorLookup: {
+      openVideoOnX: "Xで動画を開く", postedBy: "投稿者: {{name}}", xPost: "X投稿", unknownChannel: "不明なチャンネル", untitledVideo: "無題の動画", savedCheck: "保存済み ✓", errorRetry: "エラー – 再試行",
+      channel: "チャンネル", subscribers: "登録者", videos: "動画", countryJoined: "国: {{country}} · 参加日 {{date}}", likes: "いいね", comments: "コメント", likesAndComments: "いいねとコメント", hiddenByCreator: "注: {{label}} 数は作成者により非表示です。",
+      viewPost: "投稿を表示", channelDetails: "チャンネル詳細", channelVideosCount: "チャンネル動画 ({{count}})", instagramPreviewUnavailable: "Instagramの写真/動画はAPIからインライン表示できません。", viewInstagramMedia: "Instagramでメディアを見る →", someInstagramMediaMayNotPreview: "一部のInstagramメディア、特に動画/カルーセルはここでプレビューできない場合があります。", viewPostArrow: "投稿を見る →",
+      viewProfile: "プロフィールを見る", totalKarma: "合計カルマ", postKarma: "投稿カルマ", commentKarma: "コメントカルマ", awardeeKarma: "受賞カルマ", createdDate: "作成日 {{date}}", endpointCostsPrefix: "取得するデータを選択してください。各エンドポイントのコストは", oneCredit: "1クレジット", username: "ユーザー名", backend: "バックエンド", posts: "投稿", convertedData: "変換済みデータ", nameSource: "名前/ソース", engagement: "エンゲージメント", message: "メッセージ", metricsUnavailable: "指標は利用不可", saveTranscript: "文字起こしを保存"
+    },
+    savedPosts: { openVideoOnX: "Xで動画を開く", instagramPreviewUnavailable: "Instagramの写真/動画はAPIからインライン表示できません。", viewInstagramMedia: "Instagramでメディアを見る →", someInstagramMediaMayNotPreview: "一部のInstagramメディアはここでプレビューできない場合があります。", viewPostArrow: "投稿を見る →", openYoutube: "YouTubeを開く", play: "再生", playInApp: "アプリ内で再生", openOriginal: "元を開く", deleteAll: "すべて削除", xVideoThumbnailOnly: "X動画はここではサムネイルのみ表示される場合があります。動画を見るにはXで投稿を開いてください。", viewPost: "投稿を表示" },
+    watchlist: { autoSearch: "自動検索", placeholders: { xSearch: "@openai または AI agents", youtubeSearch: "チャンネル、動画URL、検索語", redditSearch: "r/artificial または検索語", linkedinSearch: "プロフィール/会社/投稿URLまたはキーワード", instagramSearch: "@natgeo、プロフィールURL、投稿URL、キーワード", tiktokSearch: "@tiktok、プロフィールURL、キーワード" } }
+  },
+  fr: {
+    common: { more: "Plus", less: "Moins", showMore: "Afficher plus", showLess: "Afficher moins", search: "Rechercher", unknown: "inconnu" },
+    dashboard: { kpiTotalLikes: "Total des mentions J’aime", kpiTotalShares: "Total des partages", scaleRaw: "Brut", scaleRelative: "Relatif", startToneAnalysis: "Lancer l’analyse du ton", refreshToneAnalysis: "Actualiser l’analyse du ton" },
+    competitorLookup: {
+      openVideoOnX: "Ouvrir la vidéo sur X", postedBy: "Publié par {{name}}", xPost: "Publication X", unknownChannel: "Chaîne inconnue", untitledVideo: "Vidéo sans titre", savedCheck: "Enregistré ✓", errorRetry: "Erreur – Réessayer",
+      channel: "Chaîne", subscribers: "Abonnés", videos: "Vidéos", countryJoined: "Pays : {{country}} · Inscrit le {{date}}", likes: "J’aime", comments: "Commentaires", likesAndComments: "mentions J’aime et commentaires", hiddenByCreator: "Note : le nombre de {{label}} est masqué par le créateur.",
+      viewPost: "Voir la publication", channelDetails: "Détails de la chaîne", channelVideosCount: "Vidéos de la chaîne ({{count}})", instagramPreviewUnavailable: "Les photos/vidéos Instagram ne sont pas disponibles via l’API pour l’aperçu intégré.", viewInstagramMedia: "Voir le média sur Instagram →", someInstagramMediaMayNotPreview: "Certains médias Instagram, surtout les vidéos/carrousels, peuvent ne pas s’afficher ici.", viewPostArrow: "Voir la publication →",
+      viewProfile: "Voir le profil", totalKarma: "Karma total", postKarma: "Karma des publications", commentKarma: "Karma des commentaires", awardeeKarma: "Karma de récompense", createdDate: "Créé le {{date}}", endpointCostsPrefix: "Sélectionnez les données à récupérer. Chaque endpoint coûte", oneCredit: "1 crédit", username: "Nom d’utilisateur", backend: "Backend", posts: "Publications", convertedData: "Données converties", nameSource: "Nom/Source", engagement: "Engagement", message: "Message", metricsUnavailable: "Métriques indisponibles", saveTranscript: "Enregistrer la transcription"
+    },
+    savedPosts: { openVideoOnX: "Ouvrir la vidéo sur X", instagramPreviewUnavailable: "Les photos/vidéos Instagram ne sont pas disponibles via l’API pour l’aperçu intégré.", viewInstagramMedia: "Voir le média sur Instagram →", someInstagramMediaMayNotPreview: "Certains médias Instagram peuvent ne pas s’afficher ici.", viewPostArrow: "Voir la publication →", openYoutube: "Ouvrir YouTube", play: "Lire", playInApp: "Lire dans l’app", openOriginal: "Ouvrir l’original", deleteAll: "Tout supprimer", xVideoThumbnailOnly: "Les vidéos X peuvent n’apparaître ici qu’en miniature. Ouvrez la publication sur X pour regarder la vidéo.", viewPost: "Voir la publication" },
+    watchlist: { autoSearch: "Recherche automatique", placeholders: { xSearch: "@openai ou AI agents", youtubeSearch: "chaîne, URL vidéo ou terme de recherche", redditSearch: "r/artificial ou terme de recherche", linkedinSearch: "URL profil/entreprise/publication ou mot-clé", instagramSearch: "@natgeo, URL profil, URL publication ou mot-clé", tiktokSearch: "@tiktok, URL profil ou mot-clé" } }
+  },
+  de: {
+    common: { more: "Mehr", less: "Weniger", showMore: "Mehr anzeigen", showLess: "Weniger anzeigen", search: "Suchen", unknown: "unbekannt" },
+    dashboard: { kpiTotalLikes: "Likes gesamt", kpiTotalShares: "Shares gesamt", scaleRaw: "Roh", scaleRelative: "Relativ", startToneAnalysis: "Tonalitätsanalyse starten", refreshToneAnalysis: "Tonalitätsanalyse aktualisieren" },
+    competitorLookup: {
+      openVideoOnX: "Video auf X öffnen", postedBy: "Gepostet von {{name}}", xPost: "X-Beitrag", unknownChannel: "Unbekannter Kanal", untitledVideo: "Unbenanntes Video", savedCheck: "Gespeichert ✓", errorRetry: "Fehler – Erneut versuchen",
+      channel: "Kanal", subscribers: "Abonnenten", videos: "Videos", countryJoined: "Land: {{country}} · Beigetreten {{date}}", likes: "Likes", comments: "Kommentare", likesAndComments: "Likes und Kommentare", hiddenByCreator: "Hinweis: {{label}} werden vom Creator ausgeblendet.",
+      viewPost: "Beitrag anzeigen", channelDetails: "Kanaldetails", channelVideosCount: "Kanalvideos ({{count}})", instagramPreviewUnavailable: "Instagram-Fotos/-Videos sind über die API nicht für die Inline-Vorschau verfügbar.", viewInstagramMedia: "Medien auf Instagram ansehen →", someInstagramMediaMayNotPreview: "Einige Instagram-Medien, besonders Videos/Karussells, werden hier eventuell nicht angezeigt.", viewPostArrow: "Beitrag ansehen →",
+      viewProfile: "Profil anzeigen", totalKarma: "Gesamt-Karma", postKarma: "Beitrags-Karma", commentKarma: "Kommentar-Karma", awardeeKarma: "Awardee-Karma", createdDate: "Erstellt {{date}}", endpointCostsPrefix: "Wählen Sie die Daten aus. Jeder Endpoint kostet", oneCredit: "1 Credit", username: "Benutzername", backend: "Backend", posts: "Beiträge", convertedData: "Konvertierte Daten", nameSource: "Name/Quelle", engagement: "Interaktion", message: "Nachricht", metricsUnavailable: "Metriken nicht verfügbar", saveTranscript: "Transkript speichern"
+    },
+    savedPosts: { openVideoOnX: "Video auf X öffnen", instagramPreviewUnavailable: "Instagram-Fotos/-Videos sind über die API nicht für die Inline-Vorschau verfügbar.", viewInstagramMedia: "Medien auf Instagram ansehen →", someInstagramMediaMayNotPreview: "Einige Instagram-Medien werden hier eventuell nicht angezeigt.", viewPostArrow: "Beitrag ansehen →", openYoutube: "YouTube öffnen", play: "Abspielen", playInApp: "In der App abspielen", openOriginal: "Original öffnen", deleteAll: "Alle löschen", xVideoThumbnailOnly: "X-Videos werden hier möglicherweise nur als Miniatur angezeigt. Öffnen Sie den Beitrag auf X, um das Video anzusehen.", viewPost: "Beitrag anzeigen" },
+    watchlist: { autoSearch: "Automatische Suche", placeholders: { xSearch: "@openai oder AI agents", youtubeSearch: "Kanal, Video-URL oder Suchbegriff", redditSearch: "r/artificial oder Suchbegriff", linkedinSearch: "Profil-/Unternehmens-/Beitrags-URL oder Keyword", instagramSearch: "@natgeo, Profil-URL, Beitrags-URL oder Keyword", tiktokSearch: "@tiktok, Profil-URL oder Keyword" } }
+  },
+  es: {
+    common: { more: "Más", less: "Menos", showMore: "Mostrar más", showLess: "Mostrar menos", search: "Buscar", unknown: "desconocido" },
+    dashboard: { kpiTotalLikes: "Me gusta totales", kpiTotalShares: "Compartidos totales", scaleRaw: "Real", scaleRelative: "Relativo", startToneAnalysis: "Iniciar análisis de tono", refreshToneAnalysis: "Actualizar análisis de tono" },
+    competitorLookup: {
+      openVideoOnX: "Abrir video en X", postedBy: "Publicado por {{name}}", xPost: "Publicación de X", unknownChannel: "Canal desconocido", untitledVideo: "Video sin título", savedCheck: "Guardado ✓", errorRetry: "Error – Reintentar",
+      channel: "Canal", subscribers: "Suscriptores", videos: "Videos", countryJoined: "País: {{country}} · Se unió {{date}}", likes: "Me gusta", comments: "Comentarios", likesAndComments: "me gusta y comentarios", hiddenByCreator: "Nota: el conteo de {{label}} está oculto por el creador.",
+      viewPost: "Ver publicación", channelDetails: "Detalles del canal", channelVideosCount: "Videos del canal ({{count}})", instagramPreviewUnavailable: "Las fotos/videos de Instagram no están disponibles desde la API para vista previa en línea.", viewInstagramMedia: "Ver el contenido en Instagram →", someInstagramMediaMayNotPreview: "Algunos medios de Instagram, especialmente videos/carruseles, pueden no previsualizarse aquí.", viewPostArrow: "Ver publicación →",
+      viewProfile: "Ver perfil", totalKarma: "Karma total", postKarma: "Karma de publicaciones", commentKarma: "Karma de comentarios", awardeeKarma: "Karma de premios", createdDate: "Creado {{date}}", endpointCostsPrefix: "Selecciona los datos que quieres obtener. Cada endpoint cuesta", oneCredit: "1 crédito", username: "Usuario", backend: "Backend", posts: "Publicaciones", convertedData: "Datos convertidos", nameSource: "Nombre/Fuente", engagement: "Interacción", message: "Mensaje", metricsUnavailable: "Métricas no disponibles", saveTranscript: "Guardar transcripción"
+    },
+    savedPosts: { openVideoOnX: "Abrir video en X", instagramPreviewUnavailable: "Las fotos/videos de Instagram no están disponibles desde la API para vista previa en línea.", viewInstagramMedia: "Ver el contenido en Instagram →", someInstagramMediaMayNotPreview: "Algunos medios de Instagram pueden no previsualizarse aquí.", viewPostArrow: "Ver publicación →", openYoutube: "Abrir YouTube", play: "Reproducir", playInApp: "Reproducir en la app", openOriginal: "Abrir original", deleteAll: "Eliminar todo", xVideoThumbnailOnly: "Los videos de X pueden aparecer aquí solo como miniaturas. Abre la publicación en X para ver el video.", viewPost: "Ver publicación" },
+    watchlist: { autoSearch: "Búsqueda automática", placeholders: { xSearch: "@openai o AI agents", youtubeSearch: "canal, URL de video o término de búsqueda", redditSearch: "r/artificial o término de búsqueda", linkedinSearch: "URL de perfil/empresa/publicación o palabra clave", instagramSearch: "@natgeo, URL de perfil, URL de publicación o palabra clave", tiktokSearch: "@tiktok, URL de perfil o palabra clave" } }
+  }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_UI_POLISH).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+const EXTRA_TRANSLATIONS_WATCHLIST_LINKEDIN = {
+  en: { watchlist: { viewOnLinkedIn: "View on LinkedIn", linkedinProfile: "LinkedIn profile", linkedinCompany: "LinkedIn company" } },
+  ja: { watchlist: { viewOnLinkedIn: "LinkedInで見る", linkedinProfile: "LinkedInプロフィール", linkedinCompany: "LinkedIn会社" } },
+  fr: { watchlist: { viewOnLinkedIn: "Voir sur LinkedIn", linkedinProfile: "Profil LinkedIn", linkedinCompany: "Entreprise LinkedIn" } },
+  de: { watchlist: { viewOnLinkedIn: "Auf LinkedIn ansehen", linkedinProfile: "LinkedIn-Profil", linkedinCompany: "LinkedIn-Unternehmen" } },
+  es: { watchlist: { viewOnLinkedIn: "Ver en LinkedIn", linkedinProfile: "Perfil de LinkedIn", linkedinCompany: "Empresa de LinkedIn" } }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_WATCHLIST_LINKEDIN).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
+
+const EXTRA_TRANSLATIONS_FINAL_FIXES = {
+  en: {
+    languages: { en: "English", ja: "日本語", fr: "Français", de: "Deutsch", es: "Español" },
+    dashboard: { viewPost: "View post", stable: "stable", trendRising: "rising", trendFalling: "falling" },
+    savedPosts: {
+      sortOptions: {
+        date_desc: "Newest first",
+        date_asc: "Oldest first",
+        metrics_desc: "Highest total metrics",
+        likes_desc: "Most likes",
+        comments_desc: "Most comments",
+        shares_desc: "Most shares"
+      }
+    }
+  },
+  ja: {
+    languages: { en: "English", ja: "日本語", fr: "Français", de: "Deutsch", es: "Español" },
+    dashboard: { viewPost: "投稿を見る", stable: "安定", trendRising: "上昇", trendFalling: "下降" },
+    savedPosts: {
+      sortOptions: {
+        date_desc: "新しい順",
+        date_asc: "古い順",
+        metrics_desc: "合計指標が高い順",
+        likes_desc: "いいねが多い順",
+        comments_desc: "コメントが多い順",
+        shares_desc: "シェアが多い順"
+      }
+    }
+  },
+  fr: {
+    languages: { en: "English", ja: "日本語", fr: "Français", de: "Deutsch", es: "Español" },
+    dashboard: { viewPost: "Voir la publication", stable: "stable", trendRising: "en hausse", trendFalling: "en baisse" },
+    savedPosts: {
+      sortOptions: {
+        date_desc: "Plus récent d'abord",
+        date_asc: "Plus ancien d'abord",
+        metrics_desc: "Meilleures métriques totales",
+        likes_desc: "Plus de J'aime",
+        comments_desc: "Plus de commentaires",
+        shares_desc: "Plus de partages"
+      }
+    }
+  },
+  de: {
+    languages: { en: "English", ja: "日本語", fr: "Français", de: "Deutsch", es: "Español" },
+    dashboard: { viewPost: "Beitrag anzeigen", stable: "stabil", trendRising: "steigend", trendFalling: "fallend" },
+    savedPosts: {
+      sortOptions: {
+        date_desc: "Neueste zuerst",
+        date_asc: "Älteste zuerst",
+        metrics_desc: "Höchste Gesamtmetriken",
+        likes_desc: "Meiste Likes",
+        comments_desc: "Meiste Kommentare",
+        shares_desc: "Meiste Shares"
+      }
+    }
+  },
+  es: {
+    languages: { en: "English", ja: "日本語", fr: "Français", de: "Deutsch", es: "Español" },
+    dashboard: { viewPost: "Ver publicación", stable: "estable", trendRising: "subiendo", trendFalling: "bajando" },
+    savedPosts: {
+      sortOptions: {
+        date_desc: "Más recientes primero",
+        date_asc: "Más antiguas primero",
+        metrics_desc: "Métricas totales más altas",
+        likes_desc: "Más me gusta",
+        comments_desc: "Más comentarios",
+        shares_desc: "Más compartidos"
+      }
+    }
+  }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_FINAL_FIXES).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
 export default resources;

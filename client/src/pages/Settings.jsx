@@ -36,6 +36,17 @@ import {
 import classes from "./Settings.module.css";
 import "../utils/ui.css";
 
+const NATIVE_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "ja", label: "日本語" },
+  { value: "fr", label: "Français" },
+  { value: "de", label: "Deutsch" },
+  { value: "es", label: "Español" },
+];
+
+const getNativeLanguageName = (code) =>
+  NATIVE_LANGUAGE_OPTIONS.find((item) => item.value === code)?.label || "English";
+
 function SettingsCard({ label, title, description, children, className = "" }) {
   return (
     <Paper withBorder radius="lg" p="md" className={`${classes.card} ${className}`.trim()}>
@@ -82,15 +93,15 @@ export default function Settings() {
   const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
 
   const languageLabel = useMemo(
-    () => t(`languages.${language}`),
-    [language, t]
+    () => getNativeLanguageName(language),
+    [language]
   );
 
   const roleLabel = (role) => {
     const normalized = String(role || "user").trim().toLowerCase();
-    if (normalized === "owner") return "Owner";
-    if (normalized === "admin") return "Admin";
-    return "User";
+    if (normalized === "owner") return t("settings.ownerLabel");
+    if (normalized === "admin") return t("settings.adminLabel");
+    return t("settings.usersTitle");
   };
 
   const roleBadgeColor = (role) => {
@@ -429,7 +440,7 @@ export default function Settings() {
       setAdminBanner({ color: "green", message: `Deleted user ${normalized}.` });
       await loadAdminLists();
     } catch (err) {
-      setAdminBanner({ color: "red", message: err?.message || "Failed to delete user." });
+      setAdminBanner({ color: "red", message: err?.message || t("settings.deleteUserFailed") });
     } finally {
       setDeletingEmail("");
     }
@@ -440,20 +451,20 @@ export default function Settings() {
     const targetEmail = String(selectedOwnerEmail || "").trim().toLowerCase();
 
     if (!targetEmail || !/^\S+@\S+\.\S+$/.test(targetEmail)) {
-      setAdminBanner({ color: "red", message: "Please choose the new owner." });
+      setAdminBanner({ color: "red", message: t("settings.chooseNewOwner") });
       return;
     }
 
     if (ownerTransferConfirm.trim() !== ownershipConfirmPhrase) {
       setAdminBanner({
         color: "red",
-        message: `Type ${ownershipConfirmPhrase} to confirm the transfer.`,
+        message: t("settings.transferConfirmType", { phrase: ownershipConfirmPhrase }),
       });
       return;
     }
 
     const confirmed = window.confirm(
-      `Transfer ownership to ${targetEmail}? Your account will become an admin after this change.`
+      t("settings.transferConfirmPrompt", { email: targetEmail })
     );
     if (!confirmed) return;
 
@@ -475,7 +486,7 @@ export default function Settings() {
 
       const payload = await readResponsePayload(response);
       if (!response.ok) {
-        throw new Error(payload?.error || "Failed to transfer ownership.");
+        throw new Error(payload?.error || t("settings.transferOwnershipFailed"));
       }
 
       setSelectedOwnerEmail("");
@@ -485,11 +496,11 @@ export default function Settings() {
       setCanManageRegularUsers(true);
       setAdminBanner({
         color: "green",
-        message: `Ownership transferred to ${payload?.owner?.email || targetEmail}. Your account is now an admin.`,
+        message: t("settings.ownershipTransferred", { email: payload?.owner?.email || targetEmail }),
       });
       await loadAdminLists();
     } catch (err) {
-      setAdminBanner({ color: "red", message: err?.message || "Failed to transfer ownership." });
+      setAdminBanner({ color: "red", message: err?.message || t("settings.transferOwnershipFailed") });
     } finally {
       setTransferringOwnership(false);
     }
@@ -544,13 +555,7 @@ export default function Settings() {
             <Select
               value={language}
               onChange={(v) => v && setLanguage(v)}
-              data={[
-                { value: "en", label: t("languages.en") },
-                { value: "ja", label: t("languages.ja") },
-                { value: "fr", label: t("languages.fr") },
-                { value: "de", label: t("languages.de") },
-                { value: "es", label: t("languages.es") },
-              ]}
+              data={NATIVE_LANGUAGE_OPTIONS}
               placeholder={t("common.chooseLanguage")}
               radius="md"
               size="md"
@@ -580,9 +585,9 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
-            label="APPEARANCE"
-            title="Theme"
-            description="Choose light, dark, or match your system."
+            label={t("settings.appearanceLabel")}
+            title={t("settings.themeTitle")}
+            description={t("settings.themeDesc")}
           >
             <SegmentedControl
               value={colorScheme}
@@ -595,7 +600,7 @@ export default function Settings() {
                   label: (
                     <Center gap={6}>
                       <IconSun size={14} />
-                      <span>Light</span>
+                      <span>{t("settings.light")}</span>
                     </Center>
                   ),
                 },
@@ -604,7 +609,7 @@ export default function Settings() {
                   label: (
                     <Center gap={6}>
                       <IconMoon size={14} />
-                      <span>Dark</span>
+                      <span>{t("settings.dark")}</span>
                     </Center>
                   ),
                 },
@@ -613,7 +618,7 @@ export default function Settings() {
                   label: (
                     <Center gap={6}>
                       <IconDeviceDesktop size={14} />
-                      <span>System</span>
+                      <span>{t("settings.system")}</span>
                     </Center>
                   ),
                 },
@@ -640,15 +645,15 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
-            label="AI"
-            title="Chat Model"
-            description="Choose a model from one shared list. This setting is synced with Chat."
+            label={t("settings.aiLabel")}
+            title={t("settings.chatModelTitle")}
+            description={t("settings.chatModelDesc")}
           >
             <Select
               value={aiModelChoice}
               onChange={(value) => value && setAiModelChoice(value)}
               data={AI_MODEL_OPTIONS}
-              placeholder="Choose AI model"
+              placeholder={t("settings.chooseAiModel")}
               radius="md"
               size="md"
               searchable
@@ -664,12 +669,12 @@ export default function Settings() {
                 shadow: "md",
                 radius: "md",
               }}
-              aria-label="Chat model"
+              aria-label={t("settings.chatModelTitle")}
             />
 
             <Group gap={8}>
               <Text size="sm" c="dimmed">
-                Current:
+                {t("common.current")}
               </Text>
               <Text size="sm" fw={700}>
                 {getModelMeta(aiModelChoice)?.label || aiModelChoice}
@@ -679,9 +684,9 @@ export default function Settings() {
 
           {loadingAdmin ? (
             <SettingsCard
-              label="ADMIN"
-              title="Admin Console"
-              description="Loading admin controls..."
+              label={t("settings.adminLabel")}
+              title={t("settings.adminConsoleTitle")}
+              description={t("settings.loadingAdminControls")}
             >
               <Loader size="sm" />
             </SettingsCard>
@@ -690,12 +695,12 @@ export default function Settings() {
           {!loadingAdmin && canManageRegularUsers ? (
             <SettingsCard
               className={classes.adminCard}
-              label={accessRole === "owner" ? "OWNER" : "ADMIN"}
-              title={accessRole === "owner" ? "Users, Admins & Owners" : "Users"}
+              label={accessRole === "owner" ? t("settings.ownerLabel") : t("settings.adminLabel")}
+              title={accessRole === "owner" ? t("settings.usersAdminsOwners") : t("settings.usersTitle")}
               description={
                 canManageAdmins
-                  ? "Owners can manage regular users and admin users."
-                  : "Admins can manage regular users only."
+                  ? t("settings.ownerAdminDesc")
+                  : t("settings.adminUserDesc")
               }
             >
               <Stack w="100%" gap="md" className={classes.adminPanel}>
@@ -708,38 +713,38 @@ export default function Settings() {
                 <Group align="start" grow className={classes.adminForms}>
                   <form onSubmit={handleCreateUser} className={classes.inlineForm}>
                     <Stack gap="xs">
-                      <Text fw={700}>Add User</Text>
+                      <Text fw={700}>{t("settings.addUser")}</Text>
                       <TextInput
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.currentTarget.value)}
                         placeholder="new.user@example.com"
-                        label="User email"
+                        label={t("settings.userEmail")}
                       />
                       <TextInput
                         value={newUserName}
                         onChange={(e) => setNewUserName(e.currentTarget.value)}
-                        placeholder="Full name (optional)"
-                        label="Name"
+                        placeholder={t("settings.fullNameOptional")}
+                        label={t("settings.name")}
                       />
-                      <Button type="submit" loading={savingUser}>Add User</Button>
+                      <Button type="submit" loading={savingUser}>{t("settings.addUser")}</Button>
                     </Stack>
                   </form>
 
                   {canManageAdmins ? (
                     <form onSubmit={handleCreateAdmin} className={classes.inlineForm}>
                       <Stack gap="xs">
-                        <Text fw={700}>Add Admin</Text>
+                        <Text fw={700}>{t("settings.addAdmin")}</Text>
                         <Select
                           value={selectedAdminEmail}
                           onChange={(value) => setSelectedAdminEmail(value || "")}
                           data={adminCandidateOptions}
-                          label="Select user"
-                          placeholder={adminCandidateOptions.length ? "Choose user" : "No eligible users"}
+                          label={t("settings.selectUser")}
+                          placeholder={adminCandidateOptions.length ? t("settings.chooseUser") : t("settings.noEligibleUsers")}
                           searchable
                           clearable
-                          nothingFoundMessage="No matching users"
+                          nothingFoundMessage={t("settings.noMatchingUsers")}
                         />
-                        <Button type="submit" loading={savingAdmin} disabled={!selectedAdminEmail}>Add Admin</Button>
+                        <Button type="submit" loading={savingAdmin} disabled={!selectedAdminEmail}>{t("settings.addAdmin")}</Button>
                       </Stack>
                     </form>
                   ) : null}
@@ -748,11 +753,11 @@ export default function Settings() {
                     <form onSubmit={handleTransferOwnership} className={`${classes.inlineForm} ${classes.ownerTransferForm}`}>
                       <Stack gap="xs">
                         <Group justify="space-between" gap="xs">
-                          <Text fw={700}>Transfer Ownership</Text>
-                          <Badge color="violet" variant="light">Owner only</Badge>
+                          <Text fw={700}>{t("settings.transferOwnership")}</Text>
+                          <Badge color="violet" variant="light">{t("settings.ownerOnly")}</Badge>
                         </Group>
                         <Text size="sm" c="dimmed">
-                          Pick the new owner. Your account will automatically become an admin after transfer.
+                          {t("settings.transferOwnershipDesc")}
                         </Text>
                         <Select
                           value={selectedOwnerEmail}
@@ -761,22 +766,22 @@ export default function Settings() {
                             setOwnerTransferConfirm("");
                           }}
                           data={ownershipTransferOptions}
-                          label="New owner"
-                          placeholder={ownershipTransferOptions.length ? "Choose user" : "No eligible users"}
+                          label={t("settings.newOwner")}
+                          placeholder={ownershipTransferOptions.length ? t("settings.chooseUser") : t("settings.noEligibleUsers")}
                           searchable
                           clearable
-                          nothingFoundMessage="No matching users"
+                          nothingFoundMessage={t("settings.noMatchingUsers")}
                         />
                         <TextInput
                           value={ownerTransferConfirm}
                           onChange={(e) => setOwnerTransferConfirm(e.currentTarget.value)}
-                          label="Confirmation"
-                          placeholder={ownershipConfirmPhrase || "Select a user first"}
+                          label={t("settings.confirmation")}
+                          placeholder={ownershipConfirmPhrase || t("settings.selectUserFirst")}
                           disabled={!selectedOwnerEmail}
                           description={
                             selectedOwnerEmail
-                              ? `Type ${ownershipConfirmPhrase} to confirm.`
-                              : "Select a new owner to generate the confirmation phrase."
+                              ? t("settings.typeToConfirm", { phrase: ownershipConfirmPhrase })
+                              : t("settings.selectOwnerToConfirm")
                           }
                         />
                         <Button
@@ -785,7 +790,7 @@ export default function Settings() {
                           loading={transferringOwnership}
                           disabled={!ownershipConfirmMatches}
                         >
-                          Transfer Ownership
+                          {t("settings.transferOwnership")}
                         </Button>
                       </Stack>
                     </form>
@@ -803,8 +808,8 @@ export default function Settings() {
                     <Box>
                       <Group justify="space-between" mb={8} align="end" className={classes.listToolbar}>
                         <Box>
-                          <Text fw={700}>Users</Text>
-                          <Text size="sm" c="dimmed">Search and filter instead of scanning the full email list.</Text>
+                          <Text fw={700}>{t("settings.usersTitle")}</Text>
+                          <Text size="sm" c="dimmed">{t("settings.usersListDesc")}</Text>
                         </Box>
                         <Badge variant="light">{filteredUsers.length} of {users.length}</Badge>
                       </Group>
@@ -813,7 +818,7 @@ export default function Settings() {
                         <TextInput
                           value={userSearch}
                           onChange={(e) => setUserSearch(e.currentTarget.value)}
-                          placeholder="Search email, name, provider, or role"
+                          placeholder={t("settings.searchUsersPlaceholder")}
                           leftSection={<IconSearch size={16} />}
                           className={classes.userSearch}
                         />
@@ -821,20 +826,20 @@ export default function Settings() {
                           value={roleFilter}
                           onChange={setRoleFilter}
                           data={[
-                            { value: "all", label: `All (${userRoleCounts.all})` },
-                            { value: "owner", label: `Owners (${userRoleCounts.owner})` },
-                            { value: "admin", label: `Admins (${userRoleCounts.admin})` },
-                            { value: "user", label: `Users (${userRoleCounts.user})` },
+                            { value: "all", label: t("settings.allCount", { count: userRoleCounts.all }) },
+                            { value: "owner", label: t("settings.ownersCount", { count: userRoleCounts.owner }) },
+                            { value: "admin", label: t("settings.adminsCount", { count: userRoleCounts.admin }) },
+                            { value: "user", label: t("settings.usersCount", { count: userRoleCounts.user }) },
                           ]}
                         />
                       </Group>
 
                       <Box className={`${classes.listWrap} ${classes.scrollList}`}>
                         <Box className={classes.userListHead}>
-                          <Text className={classes.colEmail}>Email</Text>
-                          <Text className={classes.colName}>Name</Text>
-                          <Text className={classes.colMeta}>Role</Text>
-                          <Text className={classes.colAction}>Action</Text>
+                          <Text className={classes.colEmail}>{t("settings.email")}</Text>
+                          <Text className={classes.colName}>{t("settings.name")}</Text>
+                          <Text className={classes.colMeta}>{t("settings.role")}</Text>
+                          <Text className={classes.colAction}>{t("settings.action")}</Text>
                         </Box>
                         {filteredUsers.length ? filteredUsers.map((user) => {
                           const normalizedRole = String(user.role || "user").toLowerCase();
@@ -850,7 +855,7 @@ export default function Settings() {
                               </Box>
                               <Box className={classes.colAction}>
                                 {normalizedRole === "owner" || normalizedRole === "admin" ? (
-                                  <Text size="sm" c="dimmed">Protected</Text>
+                                  <Text size="sm" c="dimmed">{t("settings.protected")}</Text>
                                 ) : (
                                   <Button
                                     color="red"
@@ -860,28 +865,28 @@ export default function Settings() {
                                     loading={deletingEmail === normalizedEmail}
                                     onClick={() => handleDeleteUser(user.email)}
                                   >
-                                    Delete
+                                    {t("common.delete")}
                                   </Button>
                                 )}
                               </Box>
                             </Box>
                           );
                         }) : (
-                          <Text size="sm" c="dimmed" p="sm">No users match the current filter.</Text>
+                          <Text size="sm" c="dimmed" p="sm">{t("settings.noUsersMatch")}</Text>
                         )}
                       </Box>
                     </Box>
 
                     <Box>
                       <Group justify="space-between" mb={6}>
-                        <Text fw={700}>Admins & Owners</Text>
+                        <Text fw={700}>{t("settings.adminsOwners")}</Text>
                         <Badge variant="light">{admins.length}</Badge>
                       </Group>
                       <Box className={`${classes.listWrap} ${classes.compactList}`}>
                         <Box className={classes.listHead}>
-                          <Text className={classes.colEmail}>Email</Text>
-                          <Text className={classes.colMeta}>Status</Text>
-                          <Text className={classes.colAction}>Action</Text>
+                          <Text className={classes.colEmail}>{t("settings.email")}</Text>
+                          <Text className={classes.colMeta}>{t("settings.status")}</Text>
+                          <Text className={classes.colAction}>{t("settings.action")}</Text>
                         </Box>
                         {admins.length ? admins.map((admin) => {
                           const adminRole = String(admin.role || "").toLowerCase();
@@ -904,7 +909,7 @@ export default function Settings() {
                                     loading={deletingAdminEmail === adminEmail}
                                     onClick={() => handleDeleteAdmin(admin.email)}
                                   >
-                                    Remove Admin
+                                    {t("settings.removeAdmin")}
                                   </Button>
                                 </Box>
                               ) : (
@@ -913,7 +918,7 @@ export default function Settings() {
                             </Box>
                           );
                         }) : (
-                          <Text size="sm" c="dimmed" p="sm">No admins found.</Text>
+                          <Text size="sm" c="dimmed" p="sm">{t("settings.noAdminsFound")}</Text>
                         )}
                       </Box>
                     </Box>

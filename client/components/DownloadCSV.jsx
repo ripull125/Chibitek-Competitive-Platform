@@ -1,7 +1,9 @@
 import { Button } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { downloadFile } from "./downloadFile";
 
 const DownloadCSV = ({ data }) => {
+  const { t } = useTranslation();
   const handleDownload = () => {
     const escapeCsv = (value) => {
       if (value == null) return "";
@@ -30,7 +32,7 @@ const DownloadCSV = ({ data }) => {
     downloadFile(csvContent, "scraped-data.csv", "text/csv");
   };
 
-  return <Button color="teal" onClick={handleDownload}>Download CSV</Button>;
+  return <Button color="teal" onClick={handleDownload}>{t("common.downloadCsv")}</Button>;
 };
 
 export default DownloadCSV;

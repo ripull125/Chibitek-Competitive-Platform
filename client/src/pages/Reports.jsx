@@ -53,6 +53,7 @@ import {
 } from "recharts";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
+import { useTranslation } from "react-i18next";
 import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
 import { analyzeUniversalPosts, convertSavedPosts } from "./DataConverter";
 import "../utils/ui.css";
@@ -78,15 +79,15 @@ const PLATFORM_COLORS = {
 };
 
 const SECTION_DEFS = [
-  { id: "summary", label: "Smart takeaways", type: "Insight", icon: IconSparkles },
-  { id: "kpis", label: "Scorecard", type: "Dashboard", icon: IconLayoutDashboard },
-  { id: "timeline", label: "Performance trend", type: "Chart", icon: IconChartLine },
-  { id: "platforms", label: "Platform performance", type: "Chart", icon: IconChartBar },
-  { id: "tone", label: "Tone analysis", type: "Tone", icon: IconMoodSmile },
-  { id: "topPosts", label: "Top posts", type: "Table", icon: IconChartDots },
-  { id: "competitors", label: "Competitors", type: "Table", icon: IconUsers },
-  { id: "keywords", label: "Keywords", type: "Table", icon: IconTargetArrow },
-  { id: "toneEngagement", label: "Tone performance", type: "Chart", icon: IconMoodSmile, hidden: true },
+  { id: "summary", label: "Smart takeaways", labelKey: "reports.smartTakeaways", type: "Insight", typeKey: "reports.typeInsight", icon: IconSparkles },
+  { id: "kpis", label: "Scorecard", labelKey: "reports.scorecard", type: "Dashboard", typeKey: "reports.typeDashboard", icon: IconLayoutDashboard },
+  { id: "timeline", label: "Performance trend", labelKey: "reports.performanceTrend", type: "Chart", typeKey: "reports.typeChart", icon: IconChartLine },
+  { id: "platforms", label: "Platform performance", labelKey: "reports.platformPerformance", type: "Chart", typeKey: "reports.typeChart", icon: IconChartBar },
+  { id: "tone", label: "Tone analysis", labelKey: "reports.toneAnalysis", type: "Tone", typeKey: "reports.typeTone", icon: IconMoodSmile },
+  { id: "topPosts", label: "Top posts", labelKey: "reports.topPosts", type: "Table", typeKey: "reports.typeTable", icon: IconChartDots },
+  { id: "competitors", label: "Competitors", labelKey: "reports.competitors", type: "Table", typeKey: "reports.typeTable", icon: IconUsers },
+  { id: "keywords", label: "Keywords", labelKey: "reports.keywords", type: "Table", typeKey: "reports.typeTable", icon: IconTargetArrow },
+  { id: "toneEngagement", label: "Tone performance", labelKey: "reports.tonePerformance", type: "Chart", typeKey: "reports.typeChart", icon: IconMoodSmile, hidden: true },
 ];
 
 const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter((s) => !s.hidden);
@@ -108,19 +109,25 @@ const REPORT_PRESETS = [
   {
     id: "executive",
     label: "Executive",
+    labelKey: "reports.presetExecutive",
     description: "KPIs, trends, competitors, keywords.",
+    descriptionKey: "reports.presetExecutiveDesc",
     sections: ["kpis", "summary", "timeline", "platforms", "competitors", "keywords"],
   },
   {
     id: "visual",
     label: "Visual",
+    labelKey: "reports.presetVisual",
     description: "Charts and tone, fewer tables.",
+    descriptionKey: "reports.presetVisualDesc",
     sections: ["kpis", "summary", "timeline", "platforms", "tone"],
   },
   {
     id: "data",
     label: "Data",
+    labelKey: "reports.presetData",
     description: "Tables and rankings.",
+    descriptionKey: "reports.presetDataDesc",
     sections: ["kpis", "summary", "topPosts", "competitors", "keywords"],
   },
 ];
@@ -421,7 +428,7 @@ function cleanInsightLines(summary) {
     .slice(0, 3);
 }
 
-function buildAutoTakeaways(analytics) {
+function buildAutoTakeaways(analytics, t) {
   if (!analytics) return [];
   const lines = [];
   const topPlatform = analytics.platformBreakdown?.[0];
@@ -430,29 +437,29 @@ function buildAutoTakeaways(analytics) {
   const topKeyword = analytics.topKeywords?.[0];
 
   if (topPlatform) {
-    lines.push(`${titleCasePlatform(topPlatform.platform)} leads with ${fmtK(topPlatform.engagement)} engagement.`);
+    lines.push(t("reports.leadPlatform", { platform: titleCasePlatform(topPlatform.platform), engagement: fmtK(topPlatform.engagement) }));
   }
   if (topPost) {
-    lines.push(`Reuse themes from “${shortenText(getPostTitle(topPost), 34)}”.`);
+    lines.push(t("reports.reuseThemes", { title: shortenText(getPostTitle(topPost), 34) }));
   }
   if (topCompetitor) {
-    lines.push(`Watch @${shortenText(topCompetitor.name, 28)} for competitor signals.`);
+    lines.push(t("reports.watchCompetitor", { name: shortenText(topCompetitor.name, 28) }));
   }
   if (topKeyword) {
-    lines.push(`Test “${shortenText(topKeyword.term, 22)}” in upcoming content.`);
+    lines.push(t("reports.testKeyword", { keyword: shortenText(topKeyword.term, 22) }));
   }
-  if (!lines.length) lines.push("Save more posts to unlock report takeaways.");
+  if (!lines.length) lines.push(t("reports.saveMorePosts"));
   return lines.slice(0, 3);
 }
 
-function KpiReport({ analytics }) {
+function KpiReport({ analytics, t }) {
   const items = [
-    ["Posts", analytics.totalPosts],
-    ["Engagement", fmtK(analytics.totalEngagement)],
-    ["Likes", fmtK(analytics.totalLikes)],
-    ["Comments", fmtK(analytics.totalComments)],
-    ["Shares", fmtK(analytics.totalShares)],
-    ["Avg.", fmtK(analytics.avgEngagement)],
+    [t("reports.kpiPosts"), analytics.totalPosts],
+    [t("reports.kpiEngagement"), fmtK(analytics.totalEngagement)],
+    [t("reports.kpiLikes"), fmtK(analytics.totalLikes)],
+    [t("reports.kpiComments"), fmtK(analytics.totalComments)],
+    [t("reports.kpiShares"), fmtK(analytics.totalShares)],
+    [t("reports.kpiAvg"), fmtK(analytics.avgEngagement)],
   ];
   return (
     <SimpleGrid cols={3} spacing={6}>
@@ -466,8 +473,8 @@ function KpiReport({ analytics }) {
   );
 }
 
-function TimelineReport({ data }) {
-  if (!data.length) return <EmptyReportState>No timeline data yet.</EmptyReportState>;
+function TimelineReport({ data, t }) {
+  if (!data.length) return <EmptyReportState>{t("reports.noTimeline")}</EmptyReportState>;
   return (
     <div style={{ height: 156 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -482,17 +489,17 @@ function TimelineReport({ data }) {
           <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} width={38} />
           <RechartsTooltip labelFormatter={fmtDate} formatter={(v) => fmtK(v)} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Area isAnimationActive={false} type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#reportLikes)" strokeWidth={2} name="Likes" />
-          <Area isAnimationActive={false} type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#reportComments)" strokeWidth={2} name="Comments" />
-          <Area isAnimationActive={false} type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#reportShares)" strokeWidth={2} name="Shares" />
+          <Area isAnimationActive={false} type="monotone" dataKey="likes" stroke="#339AF0" fill="url(#reportLikes)" strokeWidth={2} name={t("reports.kpiLikes")} />
+          <Area isAnimationActive={false} type="monotone" dataKey="comments" stroke="#51CF66" fill="url(#reportComments)" strokeWidth={2} name={t("reports.kpiComments")} />
+          <Area isAnimationActive={false} type="monotone" dataKey="shares" stroke="#FF6B6B" fill="url(#reportShares)" strokeWidth={2} name={t("reports.kpiShares")} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function PlatformReport({ data }) {
-  if (!data.length) return <EmptyReportState>No platform data yet.</EmptyReportState>;
+function PlatformReport({ data, t }) {
+  if (!data.length) return <EmptyReportState>{t("reports.noPlatform")}</EmptyReportState>;
   return (
     <div style={{ height: 156 }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -502,17 +509,17 @@ function PlatformReport({ data }) {
           <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} width={38} />
           <RechartsTooltip formatter={(v) => fmtK(v)} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar isAnimationActive={false} dataKey="likes" fill="#339AF0" name="Likes" radius={[4, 4, 0, 0]} />
-          <Bar isAnimationActive={false} dataKey="comments" fill="#51CF66" name="Comments" radius={[4, 4, 0, 0]} />
-          <Bar isAnimationActive={false} dataKey="shares" fill="#FF6B6B" name="Shares" radius={[4, 4, 0, 0]} />
+          <Bar isAnimationActive={false} dataKey="likes" fill="#339AF0" name={t("reports.kpiLikes")} radius={[4, 4, 0, 0]} />
+          <Bar isAnimationActive={false} dataKey="comments" fill="#51CF66" name={t("reports.kpiComments")} radius={[4, 4, 0, 0]} />
+          <Bar isAnimationActive={false} dataKey="shares" fill="#FF6B6B" name={t("reports.kpiShares")} radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ToneReport({ data, engagementData }) {
-  if (!data.length) return <EmptyReportState>No tone data yet. Click Analyze Tone.</EmptyReportState>;
+function ToneReport({ data, engagementData, t }) {
+  if (!data.length) return <EmptyReportState>{t("reports.noTone")}</EmptyReportState>;
 
   const tonePerformance = {};
   (engagementData || []).forEach((item) => {
@@ -541,21 +548,21 @@ function ToneReport({ data, engagementData }) {
       <Stack gap={7} style={{ flex: 1, minWidth: 0 }}>
         <SimpleGrid cols={2} spacing={6}>
           <Paper p={7} radius="md" withBorder>
-            <Text size="9px" c="dimmed" fw={800} tt="uppercase">Most Used</Text>
+            <Text size="9px" c="dimmed" fw={800} tt="uppercase">{t("reports.mostUsed")}</Text>
             <Text size="xs" fw={800} lineClamp={1}>{mostUsed?.name || "N/A"}</Text>
-            <Text size="9px" c="dimmed">{mostUsed?.value || 0} posts</Text>
+            <Text size="9px" c="dimmed">{t("common.postsCount", { count: mostUsed?.value || 0 })}</Text>
           </Paper>
           <Paper p={7} radius="md" withBorder>
-            <Text size="9px" c="dimmed" fw={800} tt="uppercase">Best Result</Text>
+            <Text size="9px" c="dimmed" fw={800} tt="uppercase">{t("reports.bestResult")}</Text>
             <Text size="xs" fw={800} lineClamp={1}>{bestTone?.tone || "N/A"}</Text>
-            <Text size="9px" c="dimmed">{bestTone ? `${fmtK(bestTone.avg)} avg.` : "Run analysis"}</Text>
+            <Text size="9px" c="dimmed">{bestTone ? `${fmtK(bestTone.avg)} ${t("dashboard.avgShort")}` : t("reports.runAnalysis")}</Text>
           </Paper>
         </SimpleGrid>
         {data.slice(0, 5).map((item, index) => (
           <Group key={item.name} gap={6} wrap="nowrap">
             <div style={{ width: 9, height: 9, borderRadius: 3, background: PIE_COLORS[index % PIE_COLORS.length], flex: "0 0 auto" }} />
             <Text size="xs" fw={700} lineClamp={1}>{item.name}</Text>
-            <Text size="9px" c="dimmed" style={{ whiteSpace: "nowrap" }}>{item.value} post{item.value === 1 ? "" : "s"}</Text>
+            <Text size="9px" c="dimmed" style={{ whiteSpace: "nowrap" }}>{t("common.postsCount", { count: item.value })}</Text>
           </Group>
         ))}
       </Stack>
@@ -563,9 +570,9 @@ function ToneReport({ data, engagementData }) {
   );
 }
 
-function TopPostsReport({ posts, start = 0, limit = 5 }) {
+function TopPostsReport({ posts, start = 0, limit = 5, t }) {
   const visible = posts.slice(start, start + limit);
-  if (!visible.length) return <EmptyReportState>No posts collected yet.</EmptyReportState>;
+  if (!visible.length) return <EmptyReportState>{t("reports.noPosts")}</EmptyReportState>;
   return (
     <Stack gap={6}>
       {visible.map((post, index) => (
@@ -594,13 +601,13 @@ function TopPostsReport({ posts, start = 0, limit = 5 }) {
   );
 }
 
-function CompetitorReport({ competitors, start = 0, limit = 7 }) {
+function CompetitorReport({ competitors, start = 0, limit = 7, t }) {
   const visible = competitors.slice(start, start + limit);
-  if (!visible.length) return <EmptyReportState>No competitor data yet.</EmptyReportState>;
+  if (!visible.length) return <EmptyReportState>{t("reports.noCompetitors")}</EmptyReportState>;
   return (
     <Table striped withTableBorder withColumnBorders verticalSpacing={2} fz="10px" style={{ tableLayout: "fixed" }}>
       <Table.Thead>
-        <Table.Tr><Table.Th>Competitor</Table.Th><Table.Th style={{ width: 42 }}>Posts</Table.Th><Table.Th style={{ width: 58 }}>Likes</Table.Th><Table.Th style={{ width: 58 }}>Com.</Table.Th><Table.Th style={{ width: 58 }}>Eng.</Table.Th></Table.Tr>
+        <Table.Tr><Table.Th>{t("reports.tableCompetitor")}</Table.Th><Table.Th style={{ width: 42 }}>{t("reports.kpiPosts")}</Table.Th><Table.Th style={{ width: 58 }}>{t("reports.kpiLikes")}</Table.Th><Table.Th style={{ width: 58 }}>{t("reports.tableCom")}</Table.Th><Table.Th style={{ width: 58 }}>{t("reports.tableEng")}</Table.Th></Table.Tr>
       </Table.Thead>
       <Table.Tbody>
         {visible.map((c) => (
@@ -617,20 +624,20 @@ function CompetitorReport({ competitors, start = 0, limit = 7 }) {
   );
 }
 
-function KeywordReport({ keywords, meta, start = 0, limit = 7 }) {
+function KeywordReport({ keywords, meta, start = 0, limit = 7, t }) {
   const visible = keywords.slice(start, start + limit);
   if (!visible.length) {
-    return <EmptyReportState>Keyword rankings appear after saved posts are collected.</EmptyReportState>;
+    return <EmptyReportState>{t("reports.keywordAfterSaved")}</EmptyReportState>;
   }
   return (
     <Stack gap={6}>
       <Group gap={5}>
-        <Badge size="xs" variant="light" color="blue">{keywords.length} ranked</Badge>
-        {meta?.totalPosts != null && <Badge size="xs" variant="light" color="gray">{meta.totalPosts} posts</Badge>}
+        <Badge size="xs" variant="light" color="blue">{t("reports.rankedCount", { count: keywords.length })}</Badge>
+        {meta?.totalPosts != null && <Badge size="xs" variant="light" color="gray">{t("common.postsCount", { count: meta.totalPosts })}</Badge>}
       </Group>
       <Table striped withTableBorder withColumnBorders verticalSpacing={2} fz="10px" style={{ tableLayout: "fixed" }}>
         <Table.Thead>
-          <Table.Tr><Table.Th style={{ width: 28 }}>#</Table.Th><Table.Th>Keyword</Table.Th><Table.Th style={{ width: 44 }}>KPI</Table.Th><Table.Th style={{ width: 64 }}>Avg.</Table.Th><Table.Th style={{ width: 48 }}>Posts</Table.Th></Table.Tr>
+          <Table.Tr><Table.Th style={{ width: 28 }}>#</Table.Th><Table.Th>{t("reports.tableKeyword")}</Table.Th><Table.Th style={{ width: 44 }}>{t("reports.tableKpi")}</Table.Th><Table.Th style={{ width: 64 }}>{t("reports.kpiAvg")}</Table.Th><Table.Th style={{ width: 48 }}>{t("reports.kpiPosts")}</Table.Th></Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {visible.map((kw, index) => (
@@ -648,9 +655,9 @@ function KeywordReport({ keywords, meta, start = 0, limit = 7 }) {
   );
 }
 
-function ToneEngagementReport({ data, view }) {
+function ToneEngagementReport({ data, view, t }) {
   const chartData = data.filter((d) => d.engagement >= 0);
-  if (!chartData.length) return <EmptyReportState>No tone engagement data yet.</EmptyReportState>;
+  if (!chartData.length) return <EmptyReportState>{t("reports.noToneEngagement")}</EmptyReportState>;
 
   const toneCounts = {};
   chartData.forEach((d) => {
@@ -673,8 +680,8 @@ function ToneEngagementReport({ data, view }) {
             <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} width={38} />
             <RechartsTooltip formatter={(v) => fmtK(v)} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar isAnimationActive={false} dataKey="avgEngagement" name="Avg Engagement" fill="#339AF0" radius={[4, 4, 0, 0]} />
-            <Bar isAnimationActive={false} dataKey="count" name="Post Count" fill="#868E96" radius={[4, 4, 0, 0]} />
+            <Bar isAnimationActive={false} dataKey="avgEngagement" name={t("reports.kpiEngagement")} fill="#339AF0" radius={[4, 4, 0, 0]} />
+            <Bar isAnimationActive={false} dataKey="count" name={t("reports.kpiPosts")} fill="#868E96" radius={[4, 4, 0, 0]} />
           </BarChart>
         ) : (
           <ScatterChart margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
@@ -693,9 +700,9 @@ function ToneEngagementReport({ data, view }) {
   );
 }
 
-function InsightReport({ summary, analytics }) {
+function InsightReport({ summary, analytics, t }) {
   const lines = cleanInsightLines(summary);
-  const takeaways = lines.length ? lines : buildAutoTakeaways(analytics);
+  const takeaways = lines.length ? lines : buildAutoTakeaways(analytics, t);
 
   return (
     <SimpleGrid cols={1} spacing={5}>
@@ -712,6 +719,7 @@ function InsightReport({ summary, analytics }) {
 }
 
 export default function Reports() {
+  const { t } = useTranslation();
   const pageRefs = useRef([]);
   const [posts, setPosts] = useState([]);
   const [keywords, setKeywords] = useState([]);
@@ -725,7 +733,7 @@ export default function Reports() {
   const [aiBuildLoading, setAiBuildLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
   const [reportPrompt, setReportPrompt] = useState("");
-  const [reportTitle, setReportTitle] = useState("Chibitek Analytics Report");
+  const [reportTitle, setReportTitle] = useState(() => t("reports.defaultTitle"));
   const [postLimit, setPostLimit] = useState(10);
   const [toneChartView, setToneChartView] = useState("scatter");
   const [selectedSections, setSelectedSections] = useState(REPORT_PRESETS[0].sections);
@@ -844,7 +852,7 @@ export default function Reports() {
     setSectionOrder([...preset.sections, ...DEFAULT_ORDER.filter((id) => !preset.sections.includes(id))]);
     if (preset.id === "visual") setToneChartView("bar");
     if (preset.id === "executive") setToneChartView("scatter");
-    setStatusMessage(`${preset.label} layout applied.`);
+    setStatusMessage(t("reports.layoutApplied", { layout: t(preset.labelKey) }));
   };
 
   const toggleSection = (id) => {
@@ -881,7 +889,7 @@ export default function Reports() {
 
       if (!candidates.length) {
         setSelectedSections((prev) => prev.includes("tone") ? prev : [...prev, "tone"]);
-        setStatusMessage("Tone analysis is already available for these posts.");
+        setStatusMessage(t("reports.toneAlreadyAvailable"));
         return;
       }
 
@@ -893,17 +901,17 @@ export default function Reports() {
 
       if (!toneById.size) {
         const firstError = analyzed.find((post) => post._toneError)?._toneError;
-        setStatusMessage(firstError ? `Tone analysis did not return labels: ${firstError}` : "Tone analysis ran, but no tone labels came back.");
+        setStatusMessage(firstError ? t("reports.toneNoLabelsWithError", { error: firstError }) : t("reports.toneNoLabels"));
         return;
       }
 
       setPosts((prev) => prev.map((post) => toneById.has(post.id) ? { ...post, tone: toneById.get(post.id) } : post));
       setSelectedSections((prev) => prev.includes("tone") ? prev : [...prev, "tone"]);
       setSectionOrder((prev) => prev.includes("tone") ? prev : [...prev, "tone"]);
-      setStatusMessage(`Tone analysis complete for ${toneById.size} post${toneById.size === 1 ? "" : "s"}.`);
+      setStatusMessage(t("reports.toneComplete", { count: toneById.size }));
     } catch (error) {
       console.error("Tone analysis failed:", error);
-      setStatusMessage("Tone analysis failed. Check the AI service and /api/tone endpoint.");
+      setStatusMessage(t("reports.toneFailed"));
     } finally {
       setToneLoading(false);
     }
@@ -932,7 +940,7 @@ export default function Reports() {
       });
       if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
       const json = await res.json();
-      setAiSummary(json.reply || json.message || "No insights generated.");
+      setAiSummary(json.reply || json.message || t("reports.noInsights"));
       setSelectedSections((prev) => prev.includes("summary") ? prev : [...prev, "summary"]);
       setSectionOrder((prev) => {
         const withoutSummary = prev.filter((id) => id !== "summary");
@@ -946,10 +954,10 @@ export default function Reports() {
         }
         return ["summary", ...withoutSummary];
       });
-      setStatusMessage("Recommendations updated in the PDF preview.");
+      setStatusMessage(t("reports.recommendationsUpdated"));
     } catch (error) {
       console.error("Summary failed:", error);
-      setStatusMessage("Could not generate recommendations. Check that the chat endpoint is working.");
+      setStatusMessage(t("reports.recommendationsFailed"));
     } finally {
       setSummaryLoading(false);
     }
@@ -960,7 +968,7 @@ export default function Reports() {
     setAiBuildLoading(true);
     setStatusMessage("");
     try {
-      const availableSections = VISIBLE_SECTION_DEFS.map((s) => `${s.id}: ${s.label} (${s.type})`).join("\n");
+      const availableSections = VISIBLE_SECTION_DEFS.map((s) => `${s.id}: ${t(s.labelKey)} (${t(s.typeKey)})`).join("\n");
       const dataSnapshot = {
         totalPosts: analytics.totalPosts,
         totalEngagement: analytics.totalEngagement,
@@ -988,16 +996,16 @@ export default function Reports() {
       const plan = safeParseJson(json.reply || json.message || "") || {};
       const sections = cleanSectionList(plan.sections, REPORT_PRESETS[0].sections);
 
-      setReportTitle(String(plan.title || "Chibitek Analytics Report").slice(0, 80));
+      setReportTitle(String(plan.title || t("reports.defaultTitle")).slice(0, 80));
       setAiSummary(String(plan.summary || plan.notes || "").trim());
       setSelectedSections(sections);
       setSectionOrder([...sections, ...DEFAULT_ORDER.filter((id) => !sections.includes(id))]);
       if (["scatter", "bar"].includes(plan.toneChartView)) setToneChartView(plan.toneChartView);
-      setStatusMessage(download ? "AI built the report. Downloading the PDF now." : "AI built the report preview below.");
+      setStatusMessage(download ? t("reports.aiBuiltDownloading") : t("reports.aiBuiltPreview"));
       if (download) setPendingAutoDownload(true);
     } catch (error) {
       console.error("AI report builder failed:", error);
-      setStatusMessage("AI report builder failed. The quick layouts still work, so you can use those and download.");
+      setStatusMessage(t("reports.aiBuilderFailed"));
     } finally {
       setAiBuildLoading(false);
     }
@@ -1007,22 +1015,22 @@ export default function Reports() {
     if (!analytics) return null;
     const id = typeof block === "string" ? block : block.id;
     const def = SECTION_DEFS.find((section) => section.id === id);
-    const panelSubtitle = block?.rangeLabel ? `Rows ${block.rangeLabel}` : "";
+    const panelSubtitle = block?.rangeLabel ? t("reports.rows", { range: block.rangeLabel }) : "";
     const body = {
-      summary: <InsightReport summary={aiSummary} analytics={analytics} />,
-      kpis: <KpiReport analytics={analytics} />,
-      timeline: <TimelineReport data={analytics.engagementOverTime} />,
-      platforms: <PlatformReport data={analytics.platformBreakdown} />,
-      tone: <ToneReport data={analytics.toneDistribution} engagementData={analytics.toneEngagementData} />,
-      toneEngagement: <ToneEngagementReport data={analytics.toneEngagementData} view={toneChartView} />,
-      topPosts: <TopPostsReport posts={analytics.topPosts} start={block?.start || 0} limit={block?.limit || 5} />,
-      competitors: <CompetitorReport competitors={analytics.competitors} start={block?.start || 0} limit={block?.limit || 7} />,
-      keywords: <KeywordReport keywords={analytics.topKeywords} meta={keywordMeta} start={block?.start || 0} limit={block?.limit || 7} />,
+      summary: <InsightReport summary={aiSummary} analytics={analytics} t={t} />,
+      kpis: <KpiReport analytics={analytics} t={t} />,
+      timeline: <TimelineReport data={analytics.engagementOverTime} t={t} />,
+      platforms: <PlatformReport data={analytics.platformBreakdown} t={t} />,
+      tone: <ToneReport data={analytics.toneDistribution} engagementData={analytics.toneEngagementData} t={t} />,
+      toneEngagement: <ToneEngagementReport data={analytics.toneEngagementData} view={toneChartView} t={t} />,
+      topPosts: <TopPostsReport posts={analytics.topPosts} start={block?.start || 0} limit={block?.limit || 5} t={t} />,
+      competitors: <CompetitorReport competitors={analytics.competitors} start={block?.start || 0} limit={block?.limit || 7} t={t} />,
+      keywords: <KeywordReport keywords={analytics.topKeywords} meta={keywordMeta} start={block?.start || 0} limit={block?.limit || 7} t={t} />,
     }[id];
 
     return (
       <Card key={block?.key || id} withBorder radius="lg" p="xs" style={{ height: "100%", overflow: "hidden", boxShadow: "0 6px 14px rgba(15,23,42,0.03)" }}>
-        <SectionTitle icon={def?.icon} title={def?.label || id} subtitle={panelSubtitle} />
+        <SectionTitle icon={def?.icon} title={def?.labelKey ? t(def.labelKey) : def?.label || id} subtitle={panelSubtitle} />
         {body}
       </Card>
     );
@@ -1030,10 +1038,10 @@ export default function Reports() {
 
   const keywordStatus = keywordMeta?.debug
     ? keywordMeta.debug
-    : `${keywords.length} keywords from ${keywordMeta?.totalPosts || 0} saved posts`;
+    : t("reports.keywordStatus", { count: keywords.length, posts: keywordMeta?.totalPosts || 0 });
   const keywordHelp = (keywordMeta?.totalPosts || 0) >= 10
-    ? "Filtering one-off words"
-    : "More saved posts = cleaner rankings";
+    ? t("reports.filteringOneOff")
+    : t("reports.morePostsCleaner");
 
   const renderReportPage = (pageRows, pageIndex) => {
     const isFirstPage = pageIndex === 0;
@@ -1059,24 +1067,24 @@ export default function Reports() {
           <Group justify="space-between" align="flex-start" mb={8} style={{ height: FIRST_PAGE_HEADER_HEIGHT - 8 }}>
             <div>
               <Text fw={900} size="lg" lineClamp={1}>{reportTitle}</Text>
-              <Text size="10px" c="dimmed">Generated {new Date().toLocaleString()}</Text>
+              <Text size="10px" c="dimmed">{t("reports.generatedOn", { date: new Date().toLocaleString() })}</Text>
             </div>
             <Group gap="xs">
-              <Badge variant="light" color="blue">{analytics ? `${analytics.totalPosts} posts` : "No data"}</Badge>
-              <Badge variant="light" color="gray">Page {pageIndex + 1}</Badge>
+              <Badge variant="light" color="blue">{analytics ? t("common.postsCount", { count: analytics.totalPosts }) : t("common.noData")}</Badge>
+              <Badge variant="light" color="gray">{t("common.page")} {pageIndex + 1}</Badge>
             </Group>
           </Group>
         ) : (
           <Group justify="space-between" mb="sm" style={{ height: CONTINUED_HEADER_HEIGHT - 6 }}>
             <Text fw={800} size="sm" c="dimmed">{reportTitle}</Text>
-            <Badge variant="light" color="gray">Page {pageIndex + 1}</Badge>
+            <Badge variant="light" color="gray">{t("common.page")} {pageIndex + 1}</Badge>
           </Group>
         )}
 
         {!analytics ? (
-          <EmptyReportState>No report data yet. Collect posts first, then refresh this page.</EmptyReportState>
+          <EmptyReportState>{t("reports.noReportData")}</EmptyReportState>
         ) : selectedOrderedSections.length === 0 ? (
-          <EmptyReportState>Select at least one report panel.</EmptyReportState>
+          <EmptyReportState>{t("reports.selectPanel")}</EmptyReportState>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: PAGE_GAP }}>
             {pageRows.map((row, rowIndex) => row.items.map((block) => (
@@ -1096,7 +1104,7 @@ export default function Reports() {
         )}
 
         <Text size="9px" c="dimmed" style={{ position: "absolute", bottom: 14, left: REPORT_PAGE_PADDING, right: REPORT_PAGE_PADDING, textAlign: "center" }}>
-          Chibitek Competitive Platform
+          {t("reports.footer")}
         </Text>
       </div>
     );
@@ -1114,11 +1122,11 @@ export default function Reports() {
         <Group gap="xs" align="flex-start">
           <ThemeIcon radius="lg" size={42} variant="light"><IconFileAnalytics size={22} /></ThemeIcon>
           <div>
-            <Title order={1}>Reports</Title>
-            <Text size="sm" c="dimmed">Build a clean PDF from your saved social data.</Text>
+            <Title order={1}>{t("reports.title")}</Title>
+            <Text size="sm" c="dimmed">{t("reports.subtitle")}</Text>
           </div>
         </Group>
-        <Badge variant="light" color="blue">{analytics ? `${analytics.totalPosts} saved posts` : "Loading"}</Badge>
+        <Badge variant="light" color="blue">{analytics ? t("common.savedPostsCount", { count: analytics.totalPosts }) : t("common.loading")}</Badge>
       </Group>
 
       {statusMessage && (
@@ -1128,11 +1136,11 @@ export default function Reports() {
       )}
 
       <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md" mb="lg">
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-ai">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
-              <Title order={2} size="h4">Ask AI</Title>
-              <Badge variant="light" color="blue">Best option</Badge>
+              <Title order={2} size="h4">{t("reports.askAi")}</Title>
+              <Badge variant="light" color="blue">{t("reports.bestOption")}</Badge>
             </Group>
             <Textarea
               autosize
@@ -1140,87 +1148,87 @@ export default function Reports() {
               maxRows={3}
               value={reportPrompt}
               onChange={(event) => setReportPrompt(event.currentTarget.value)}
-              placeholder="Example: Make a clean PDF with KPIs, platforms, competitors, keywords, and next steps."
+              placeholder={t("reports.promptPlaceholder")}
             />
             <Group gap="xs" grow>
               <Button size="sm" leftSection={<IconSparkles size={15} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()}>
-                Build
+                {t("reports.build")}
               </Button>
               <Button size="sm" variant="light" leftSection={<IconDownload size={15} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()}>
-                Download
+                {t("common.download")}
               </Button>
             </Group>
           </Stack>
         </Card>
 
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-layout">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
-              <Title order={2} size="h4">Quick Layout</Title>
-              <Badge variant="light" color="gray">{reportPages.length} page{reportPages.length === 1 ? "" : "s"}</Badge>
+              <Title order={2} size="h4">{t("reports.quickLayout")}</Title>
+              <Badge variant="light" color="gray">{t("common.pagesCount", { count: reportPages.length })}</Badge>
             </Group>
             <SimpleGrid cols={1} spacing={6}>
               {REPORT_PRESETS.map((preset) => (
                 <Button key={preset.id} variant={activePresetId === preset.id ? "filled" : "light"} size="xs" radius="xl" onClick={() => applyPreset(preset)} justify="space-between">
-                  {preset.label}
+                  {t(preset.labelKey)}
                 </Button>
               ))}
             </SimpleGrid>
-            <TextInput size="xs" label="PDF title" value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
+            <TextInput size="xs" label={t("reports.pdfTitle")} value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
             <Button size="sm" leftSection={<IconDownload size={15} />} onClick={generatePDF} loading={generatingPdf} disabled={!analytics || selectedOrderedSections.length === 0}>
-              Download PDF
+              {t("reports.downloadPdf")}
             </Button>
           </Stack>
         </Card>
 
-        <Card withBorder shadow="sm" radius="xl" p="md">
+        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-tools">
           <Stack gap="xs">
             <Group justify="space-between" align="center">
-              <Title order={2} size="h4">Data Tools</Title>
-              <Badge variant="light" color="gray">{analytics ? `${analytics.totalPosts} posts` : "Loading"}</Badge>
+              <Title order={2} size="h4">{t("reports.dataTools")}</Title>
+              <Badge variant="light" color="gray">{analytics ? t("common.postsCount", { count: analytics.totalPosts }) : t("common.loading")}</Badge>
             </Group>
             <SimpleGrid cols={2} spacing={6}>
               <Button size="xs" variant="light" leftSection={<IconSparkles size={14} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
-                Improve Takeaways
+                {t("reports.improveTakeaways")}
               </Button>
               <Button size="xs" variant="light" leftSection={<IconMoodSmile size={14} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
-                Analyze Tone
+                {t("reports.analyzeTone")}
               </Button>
             </SimpleGrid>
-            <NumberInput size="xs" label="Tone post sample" value={postLimit} min={1} max={100} onChange={(value) => setPostLimit(Number(value) || 10)} />
+            <NumberInput size="xs" label={t("reports.tonePostSample")} value={postLimit} min={1} max={100} onChange={(value) => setPostLimit(Number(value) || 10)} />
             <Group gap={5} wrap="wrap">
               {VISIBLE_SECTION_DEFS.map((section) => {
                 const Icon = section.icon;
                 const active = selectedSections.includes(section.id);
                 return (
                   <Button key={section.id} size="xs" radius="xl" variant={active ? "filled" : "light"} leftSection={<Icon size={11} />} onClick={() => toggleSection(section.id)}>
-                    {section.label}
+                    {t(section.labelKey)}
                   </Button>
                 );
               })}
             </Group>
             <Group gap={5}>
-              <Badge size="xs" variant="light" color="gray">{keywords.length} keywords</Badge>
-              <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>Refresh</Button>
+              <Badge size="xs" variant="light" color="gray">{t("reports.keywordStatus", { count: keywords.length, posts: keywordMeta?.totalPosts || 0 })}</Badge>
+              <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>{t("common.refresh")}</Button>
             </Group>
           </Stack>
         </Card>
       </SimpleGrid>
 
-      <Card withBorder shadow="sm" radius="xl" p="lg">
+      <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-preview">
         <Group justify="space-between" mb="md" align="flex-start">
           <div>
-            <Title order={2} size="h3">Live Report Preview</Title>
-            <Text size="sm" c="dimmed">What the PDF will look like.</Text>
+            <Title order={2} size="h3">{t("reports.livePreview")}</Title>
+            <Text size="sm" c="dimmed">{t("reports.livePreviewDesc")}</Text>
           </div>
           <Group gap="xs">
-            <Badge variant="light" color="blue">{PDF_EXPORT_SCALE}x export</Badge>
-            <Badge variant="light" color="gray">{reportPages.length} page{reportPages.length === 1 ? "" : "s"}</Badge>
+            <Badge variant="light" color="blue">{t("common.exportScale", { scale: PDF_EXPORT_SCALE })}</Badge>
+            <Badge variant="light" color="gray">{t("common.pagesCount", { count: reportPages.length })}</Badge>
           </Group>
         </Group>
 
         <ScrollArea h={1120} offsetScrollbars type="auto">
-          <Stack align="center" gap="lg" style={{ minWidth: REPORT_PAGE_WIDTH + 40, background: "#f8f9fa", padding: 20, borderRadius: 18 }}>
+          <Stack align="center" gap="lg" style={{ minWidth: REPORT_PAGE_WIDTH + 40, background: "var(--surface-2)", padding: 20, borderRadius: 18 }}>
             {reportPages.map(renderReportPage)}
           </Stack>
         </ScrollArea>
