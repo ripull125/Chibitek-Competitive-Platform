@@ -63,6 +63,7 @@ function LabelWithInfo({ label, info }) {
 }
 
 function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3, threshold = 180 }) {
+  const { t } = useTranslation();
   const value = String(text || "");
   const [expanded, setExpanded] = useState(false);
   const isLong = value.length > threshold;
@@ -93,7 +94,7 @@ function ExpandableText({ text, size = "sm", dimmed = false, collapsedLines = 3,
           }}
           style={{ alignSelf: "flex-start" }}
         >
-          {expanded ? "Less" : "More"}
+          {expanded ? t("common.less") : t("common.more")}
         </Button>
       )}
     </Stack>
@@ -117,31 +118,32 @@ function formatCount(value) {
 }
 
 function HiddenCountNote({ likes, comments }) {
+  const { t } = useTranslation();
   const likesHidden = isHiddenCount(likes);
   const commentsHidden = isHiddenCount(comments);
   if (!likesHidden && !commentsHidden) return null;
 
   const hiddenLabel = likesHidden && commentsHidden
-    ? "likes and comments"
+    ? t("competitorLookup.likesAndComments")
     : likesHidden
-      ? "likes"
-      : "comments";
+      ? t("competitorLookup.likes")
+      : t("competitorLookup.comments");
 
   return (
     <Text size="xs" c="dimmed">
-      Note: {hiddenLabel} count is hidden by the creator.
+      {t("competitorLookup.hiddenByCreator", { label: hiddenLabel })}
     </Text>
   );
 }
 
 const DEFAULT_SORT_MODE = "date_desc";
 const SORT_OPTIONS = [
-  { value: "date_desc", label: "Newest first" },
-  { value: "date_asc", label: "Oldest first" },
-  { value: "metrics_desc", label: "Highest total metrics" },
-  { value: "likes_desc", label: "Most likes" },
-  { value: "comments_desc", label: "Most comments" },
-  { value: "shares_desc", label: "Most shares" },
+  { value: "date_desc", labelKey: "common.newestFirst" },
+  { value: "date_asc", labelKey: "common.oldestFirst" },
+  { value: "metrics_desc", labelKey: "common.highestTotalMetrics" },
+  { value: "likes_desc", labelKey: "common.mostLikes" },
+  { value: "comments_desc", labelKey: "common.mostComments" },
+  { value: "shares_desc", labelKey: "common.mostShares" },
 ];
 
 function parseMetricValue(value) {
@@ -294,14 +296,16 @@ function sortPostsForDisplay(posts = [], sortMode = DEFAULT_SORT_MODE) {
 }
 
 function SortSelect({ value, onChange, compact = false }) {
+  const { t } = useTranslation();
+  const options = SORT_OPTIONS.map((option) => ({ ...option, label: t(option.labelKey) }));
   return (
     <Select
-      label={compact ? undefined : "Sort posts"}
-      aria-label="Sort posts"
+      label={compact ? undefined : t("common.sortPosts")}
+      aria-label={t("common.sortPosts")}
       size="xs"
       value={value}
       onChange={(next) => onChange(next || DEFAULT_SORT_MODE)}
-      data={SORT_OPTIONS}
+      data={options}
       checkIconPosition="right"
       allowDeselect={false}
       w={compact ? 190 : 210}
@@ -1095,7 +1099,7 @@ function XMediaPreview({ media, postUrl = null }) {
                       fontWeight: 700,
                     }}
                   >
-                    Open video on X
+                    {t("competitorLookup.openVideoOnX")}
                   </span>
                 </a>
               );
@@ -1321,11 +1325,11 @@ function XTweetCard({ tweet, authorUsername, onSave }) {
             <Stack gap={0}>
               {authorLabel ? (
                 <Text size="sm" fw={600}>
-                  Posted by {authorLabel}
+                  {t("competitorLookup.postedBy", { name: authorLabel })}
                 </Text>
               ) : (
                 <Text size="sm" fw={600}>
-                  X post
+                  {t("competitorLookup.xPost")}
                 </Text>
               )}
 
@@ -1627,14 +1631,14 @@ function LinkedinResults({ data, onSave, sortMode = DEFAULT_SORT_MODE }) {
         <LinkedinProfileCard key={`profile-${i}`} profile={profile} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Recent posts" posts={profilePosts} onSave={onSave} sortMode={sortMode} />
+      <LinkedinPostList title={t("competitorLookup.recentPosts")} posts={profilePosts} onSave={onSave} sortMode={sortMode} />
 
       {companyResults.map((company, i) => (
         <LinkedinCompanyCard key={`company-${i}`} company={company} onSave={onSave} />
       ))}
 
-      <LinkedinPostList title="Company posts" posts={companyPosts} onSave={onSave} sortMode={sortMode} />
-      <LinkedinPostList title="Search results" posts={searchPosts} onSave={onSave} sortMode={sortMode} />
+      <LinkedinPostList title={t("competitorLookup.companyPosts")} posts={companyPosts} onSave={onSave} sortMode={sortMode} />
+      <LinkedinPostList title={t("competitorLookup.searchResults")} posts={searchPosts} onSave={onSave} sortMode={sortMode} />
 
       {sortedPostResults.map((post, i) => (
         <LinkedinPostCard key={`post-${i}`} post={post} onSave={onSave} />
@@ -2986,14 +2990,14 @@ async function handleLoadMoreX() {
                 <IconBrandYoutube size={22} color="#ff0000" />
               </div>
               <div style={{ minWidth: 0 }}>
-                <Text fw={700} size="sm" lh={1.3} truncate>{data.video?.channelTitle || "Unknown Channel"}</Text>
+                <Text fw={700} size="sm" lh={1.3} truncate>{data.video?.channelTitle || t("competitorLookup.unknownChannel")}</Text>
                 {date && <Text size="xs" c="dimmed" lh={1.2}>{date}</Text>}
               </div>
             </Group>
           </Group>
 
           {/* title */}
-          <Text fw={600} size="md" lh={1.3}>{data.video?.title || "Untitled Video"}</Text>
+          <Text fw={600} size="md" lh={1.3}>{data.video?.title || t("competitorLookup.untitledVideo")}</Text>
 
           <YoutubeThumbnailPreview video={{ ...data.video, videoId }} postUrl={postUrl} />
 
@@ -3008,7 +3012,7 @@ async function handleLoadMoreX() {
                   leftSection={showDesc ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
                   onClick={() => setShowDesc(!showDesc)}
                 >
-                  {showDesc ? "Show less" : "Show more"}
+                  {showDesc ? t("common.showLess") : t("common.showMore")}
                 </Button>
               )}
             </div>
@@ -3027,7 +3031,7 @@ async function handleLoadMoreX() {
               disabled={saveStatus === 'saved'}
               onClick={handleSave}
             >
-              {saveStatus === 'saved' ? 'Saved ✓' : saveStatus === 'error' ? 'Error – Retry' : 'Save Video'}
+              {saveStatus === 'saved' ? t("competitorLookup.savedCheck") : saveStatus === 'error' ? t("competitorLookup.errorRetry") : t("competitorLookup.saveVideo")}
             </Button>
           </Group>
         </Stack>
@@ -3196,14 +3200,14 @@ async function handleLoadMoreX() {
               </div>
             </Group>
             <Badge variant="light" color="red">
-              <IconBrandYoutube size={14} style={{ marginRight: 4 }} /> Channel
+              <IconBrandYoutube size={14} style={{ marginRight: 4 }} /> {t("competitorLookup.channel")}
             </Badge>
           </Group>
 
           <Group gap="lg" justify="center">
             {[
-              { label: "Subscribers", value: fmtNum(data.subscribers) },
-              { label: "Videos", value: fmtNum(data.videoCount) },
+              { label: t("competitorLookup.subscribers"), value: fmtNum(data.subscribers) },
+              { label: t("competitorLookup.videos"), value: fmtNum(data.videoCount) },
             ].map(({ label, value }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="lg">{value}</Text>
@@ -3219,7 +3223,7 @@ async function handleLoadMoreX() {
           )}
 
           {data.country && (
-            <Text size="xs" c="dimmed">Country: {data.country} · Joined {new Date(data.publishedAt).toLocaleDateString()}</Text>
+            <Text size="xs" c="dimmed">{t("competitorLookup.countryJoined", { country: data.country, date: new Date(data.publishedAt).toLocaleDateString() })}</Text>
           )}
 
           {data.keywords && (
@@ -3256,11 +3260,11 @@ async function handleLoadMoreX() {
               threshold={compact ? 110 : 180}
             />
           )}
-          {video.channelTitle && <Text size="xs" c="dimmed">Posted by {video.channelTitle}</Text>}
+          {video.channelTitle && <Text size="xs" c="dimmed">{t("competitorLookup.postedBy", { name: video.channelTitle })}</Text>}
           <Group gap="xs">
             {[
-              { label: "Likes", val: video.likes },
-              { label: "Comments", val: video.comments },
+              { label: t("competitorLookup.likes"), val: video.likes },
+              { label: t("competitorLookup.comments"), val: video.comments },
             ].map(({ label, val }) => (
               <Badge key={label} variant="light" size="xs">{label}: {formatCount(val)}</Badge>
             ))}
@@ -3270,10 +3274,10 @@ async function handleLoadMoreX() {
             <Group justify="flex-end">
               {postUrl && (
                 <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                  View Post
+                  {t("competitorLookup.viewPost")}
                 </Button>
               )}
-              <SaveButton label="Save Video" onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
+              <SaveButton label={t("competitorLookup.saveVideo")} onSave={() => onSave("video", { ...video, channelId: video.channelId || "" })} />
             </Group>
           )}
         </Stack>
@@ -3295,7 +3299,7 @@ async function handleLoadMoreX() {
     return (
       <Stack gap="md">
         <Group justify="space-between">
-          <Text fw={600}>YouTube Results</Text>
+          <Text fw={600}>{t("competitorLookup.youtubeResults")}</Text>
           <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
         </Group>
 
@@ -3309,7 +3313,7 @@ async function handleLoadMoreX() {
 
         {results.channelDetails && (
           <>
-            <Divider label="Channel Details" labelPosition="center" />
+            <Divider label={t("competitorLookup.channelDetails")} labelPosition="center" />
             <YTChannelCard data={results.channelDetails} />
           </>
         )}
@@ -3317,7 +3321,7 @@ async function handleLoadMoreX() {
         {sortedChannelVideos.length > 0 && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label={`Channel Videos (${sortedChannelVideos.length})`} labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.channelVideosCount", { count: sortedChannelVideos.length })} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={sortedChannelVideos.map(v => ({ ...v, channelId: v.channelId || "" }))} onSave={onSave} type="video" />
             </Group>
             <Stack gap="xs">
@@ -3514,10 +3518,10 @@ async function handleLoadMoreX() {
         <Card withBorder radius="md" p="sm" bg="gray.0" style={{ maxWidth: 520 }}>
           <Stack gap={4}>
             <Text size="xs" c="dimmed">
-              Instagram photos/videos are not available from the API for inline preview.
+              {t("competitorLookup.instagramPreviewUnavailable")}
             </Text>
             <Text size="xs" c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-              View the post on Instagram to see the media →
+              {t("competitorLookup.viewInstagramMedia")}
             </Text>
           </Stack>
         </Card>
@@ -3551,9 +3555,9 @@ async function handleLoadMoreX() {
 
         {showUnavailableNote && (
           <Text size="xs" c="dimmed">
-            Some Instagram media, especially videos/carousels, may not preview here. {postUrl && (
+            {t("competitorLookup.someInstagramMediaMayNotPreview")} {postUrl && (
               <Text span c="blue" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                View post →
+                {t("competitorLookup.viewPostArrow")}
               </Text>
             )}
           </Text>
@@ -4001,7 +4005,7 @@ async function handleLoadMoreX() {
     return (
       <Stack gap="md">
         <Group justify="space-between">
-          <Text fw={600}>Instagram Results</Text>
+          <Text fw={600}>{t("competitorLookup.instagramResults")}</Text>
           <Badge variant="light">{count} item{count !== 1 ? "s" : ""}</Badge>
         </Group>
 
@@ -4034,7 +4038,7 @@ async function handleLoadMoreX() {
 
         {results.singlePost && (
           <>
-            <Divider label="Post Detail" labelPosition="center" />
+            <Divider label={t("competitorLookup.postDetail")} labelPosition="center" />
             <IgPostCard post={results.singlePost?.data?.xdt_shortcode_media || results.singlePost?.data || results.singlePost} onSave={onSave} />
           </>
         )}
@@ -4233,7 +4237,7 @@ async function handleLoadMoreX() {
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <ExpandableText text={desc} size={compact ? "xs" : "sm"} collapsedLines={compact ? 2 : 4} threshold={compact ? 90 : 180} />
           <Text size="xs" c="dimmed">
-            Posted by {author.uniqueId || author.unique_id || author.nickname || "unknown"}
+            {t("competitorLookup.postedBy", { name: author.uniqueId || author.unique_id || author.nickname || t("common.unknown") })}
             {created ? ` · ${created}` : ""}
           </Text>
           <Group gap="xs">
@@ -4250,7 +4254,7 @@ async function handleLoadMoreX() {
             <Group justify="flex-end">
               {postUrl && (
                 <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                  View Post
+                  {t("competitorLookup.viewPost")}
                 </Button>
               )}
               <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", { ...v, author, stats: { ...stats, diggCount: likeCount ?? 0, commentCount: commentCount ?? 0, shareCount: shareCount ?? 0 }, url: postUrl, share_url: postUrl })} />
@@ -4391,7 +4395,7 @@ async function handleLoadMoreX() {
         {singleVideo && (
           <>
             <Group justify="space-between" align="center">
-              <Divider label="TikTok Post" labelPosition="center" style={{ flex: 1 }} />
+              <Divider label={t("competitorLookup.tiktokPost")} labelPosition="center" style={{ flex: 1 }} />
               <SaveAllButton items={[singleVideo]} onSave={onSave} type="post" />
             </Group>
             <TkVideoCard video={singleVideo} onSave={onSave} compact />
@@ -4511,16 +4515,16 @@ async function handleLoadMoreX() {
               </div>
             </Group>
             <Button size="xs" variant="subtle" component="a" href={profileUrl} target="_blank" rel="noopener noreferrer">
-              View Profile
+              {t("competitorLookup.viewProfile")}
             </Button>
           </Group>
 
           <Group gap="lg" justify="center">
             {[
-              { label: "Total Karma", raw: profile.total_karma },
-              { label: "Post Karma", raw: profile.link_karma },
-              { label: "Comment Karma", raw: profile.comment_karma },
-              { label: "Awardee Karma", raw: profile.awardee_karma },
+              { label: t("competitorLookup.totalKarma"), raw: profile.total_karma },
+              { label: t("competitorLookup.postKarma"), raw: profile.link_karma },
+              { label: t("competitorLookup.commentKarma"), raw: profile.comment_karma },
+              { label: t("competitorLookup.awardeeKarma"), raw: profile.awardee_karma },
             ].filter(x => x.raw != null).map(({ label, raw }) => (
               <Stack key={label} align="center" gap={0}>
                 <Text fw={700} size="lg">{fmtNum(raw)}</Text>
@@ -4530,10 +4534,10 @@ async function handleLoadMoreX() {
           </Group>
 
           <Group gap="xs">
-            {created && <Badge variant="light" size="xs">Created {created}</Badge>}
-            {profile.is_gold === true && <Badge variant="outline" size="xs">Reddit Premium</Badge>}
-            {profile.is_mod === true && <Badge variant="outline" size="xs">Moderator</Badge>}
-            {profile.verified === true && <Badge variant="outline" size="xs">Verified</Badge>}
+            {created && <Badge variant="light" size="xs">{t("competitorLookup.createdDate", { date: created })}</Badge>}
+            {profile.is_gold === true && <Badge variant="outline" size="xs">{t("competitorLookup.redditPremium")}</Badge>}
+            {profile.is_mod === true && <Badge variant="outline" size="xs">{t("competitorLookup.moderator")}</Badge>}
+            {profile.verified === true && <Badge variant="outline" size="xs">{t("common.verified")}</Badge>}
           </Group>
         </Stack>
       </Card>
@@ -4643,19 +4647,19 @@ async function handleLoadMoreX() {
             >
               {isVideo && redditLooksLikeVideo(src) ? (
                 <Group justify="center" align="center" style={{ width: "100%", height: "100%" }}>
-                  <Badge size="sm" variant="light">Video</Badge>
+                  <Badge size="sm" variant="light">{t("common.video")}</Badge>
                 </Group>
               ) : (
                 <img
                   src={src}
-                  alt="Reddit media preview"
+                  alt={t("competitorLookup.redditMediaPreview")}
                   loading="lazy"
                   style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                 />
               )}
               {isVideo && (
                 <Badge size="xs" variant="filled" style={{ position: "absolute", left: 6, bottom: 6 }}>
-                  Video
+                  {t("common.video")}
                 </Badge>
               )}
             </a>
@@ -4678,7 +4682,7 @@ async function handleLoadMoreX() {
         <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
           <Text size={compact ? "sm" : "md"} fw={600} lineClamp={2}>{title || <i>{t("competitorLookup.noTitle")}</i>}</Text>
           <Text size="xs" c="dimmed">
-            {post.author ? `Posted by u/${post.author}` : ""}
+            {post.author ? t("competitorLookup.postedBy", { name: `u/${post.author}` }) : ""}
             {post.subreddit ? ` · r/${post.subreddit}` : ""}
             {created ? ` · ${created}` : ""}
           </Text>
@@ -4698,7 +4702,7 @@ async function handleLoadMoreX() {
             <Group justify="flex-end">
               {postUrl && (
                 <Button size="xs" variant="subtle" component="a" href={postUrl} target="_blank" rel="noopener noreferrer">
-                  View Post
+                  {t("competitorLookup.viewPost")}
                 </Button>
               )}
               <SaveButton label={t("competitorLookup.savePost")} onSave={() => onSave("post", post)} />
@@ -4808,7 +4812,7 @@ async function handleLoadMoreX() {
 
         {profileData && (
           <>
-            <Divider label="User Profile" labelPosition="center" />
+            <Divider label={t("competitorLookup.userProfile")} labelPosition="center" />
             <RedditUserCard profile={profileData} />
           </>
         )}
@@ -4822,7 +4826,7 @@ async function handleLoadMoreX() {
 
         {singlePost && (
           <>
-            <Divider label="Post Metrics" labelPosition="center" />
+            <Divider label={t("competitorLookup.postMetrics")} labelPosition="center" />
             <RedditPostCard post={singlePost} onSave={onSave} compact />
           </>
         )}
@@ -4940,6 +4944,7 @@ async function handleLoadMoreX() {
 
         {Object.values(connectedPlatforms).some(Boolean) && (
           <Tabs
+            data-tour="competitor-lookup-search"
             defaultValue={Object.keys(connectedPlatforms).find((k) => connectedPlatforms[k]) || "x"}
             keepMounted={false}
           >
@@ -4956,27 +4961,27 @@ async function handleLoadMoreX() {
             {connectedPlatforms.x && (
               <Tabs.Panel value="x" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username or a profile URL to fetch an account's recent posts, paste a tweet URL for single-tweet metrics, or enter keywords to search.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.xSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="X Search"
-                      placeholder="@username, x.com/username, tweet URL, or keyword"
+                      label={t("competitorLookup.searchX")}
+                      placeholder={t("competitorLookup.xSimplePlaceholder")}
                       value={simpleQueries.x}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, x: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleXSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>Search X</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={xLoading} onClick={handleSimpleXSubmit}>{t("competitorLookup.searchX")}</Button>
                   </Group>
                   <Alert variant="light" color="blue" radius="md" icon={<IconInfoCircle size={16} />}>
-                    X videos may only show as thumbnails here. Open the post on X to watch the video.
+                    {t("competitorLookup.xVideoFallback")}
                   </Alert>
                   {xError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{xError}</Alert>}
                   {xResult && <XResults data={xResult} onSave={handleXSave} sortMode={sortMode} />}
                   {getXNextToken(xResult) && (
                     <Group justify="center">
                       <Button variant="light" loading={xLoadingMore} onClick={handleLoadMoreX}>
-                        {xResult?.mode === "account" ? "Load next 10 posts" : "Load next 10 results"}
+                        {xResult?.mode === "account" ? t("competitorLookup.loadNextPosts") : t("competitorLookup.loadNextResults")}
                       </Button>
                     </Group>
                   )}
@@ -4987,17 +4992,17 @@ async function handleLoadMoreX() {
             {connectedPlatforms.youtube && (
               <Tabs.Panel value="youtube" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">One bar lookup for channel URL, video URL, or keyword.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.youtubeSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="YouTube Search"
-                      placeholder="Channel URL, video URL, or keyword"
+                      label={t("competitorLookup.searchYouTube")}
+                      placeholder={t("competitorLookup.youtubeSimplePlaceholder")}
                       value={simpleQueries.youtube}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, youtube: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleYoutubeSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={youtubeLoading} onClick={handleSimpleYoutubeSubmit}>Search YouTube</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={youtubeLoading} onClick={handleSimpleYoutubeSubmit}>{t("competitorLookup.searchYouTube")}</Button>
                   </Group>
                   {youtubeError && <Alert color="red" title={t("competitorLookup.youtubeError")}>{youtubeError}</Alert>}
                   {youtubeResult && <YoutubeResults data={youtubeResult} onSave={handleYoutubeSave} t={t} sortMode={sortMode} />}
@@ -5008,17 +5013,17 @@ async function handleLoadMoreX() {
             {connectedPlatforms.linkedin && (
               <Tabs.Panel value="linkedin" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username for a creator profile, paste a LinkedIn profile/company/post URL, or enter keywords to search recent LinkedIn posts.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.linkedinSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="LinkedIn Search"
-                      placeholder="@username, linkedin.com/in/..., linkedin.com/company/..., post URL, or keywords"
+                      label={t("competitorLookup.linkedinSearch")}
+                      placeholder={t("competitorLookup.linkedinSimplePlaceholder")}
                       value={simpleQueries.linkedin}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, linkedin: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleLinkedinSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={linkedinLoading} onClick={handleSimpleLinkedinSubmit}>Search LinkedIn</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={linkedinLoading} onClick={handleSimpleLinkedinSubmit}>{t("competitorLookup.searchLinkedin")}</Button>
                   </Group>
                   {linkedinError && <Alert variant="light" color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{linkedinError}</Alert>}
                   {linkedinResult && <LinkedinResults data={linkedinResult} onSave={handleLinkedinSave} sortMode={sortMode} />}
@@ -5029,17 +5034,17 @@ async function handleLoadMoreX() {
             {connectedPlatforms.instagram && (
               <Tabs.Panel value="instagram" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username to see an account's recent posts and metrics, paste a post/profile URL, or enter keywords to search.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.instagramSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="Instagram Search"
-                      placeholder="@username, instagram.com URL, or keyword"
+                      label={t("competitorLookup.instagramSearch")}
+                      placeholder={t("competitorLookup.instagramSimplePlaceholder")}
                       value={simpleQueries.instagram}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, instagram: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleInstagramSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={instagramLoading} onClick={handleSimpleInstagramSubmit}>Search Instagram</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={instagramLoading} onClick={handleSimpleInstagramSubmit}>{t("competitorLookup.searchInstagram")}</Button>
                   </Group>
                   {instagramError && <Alert color="red" title={t("competitorLookup.instagramError")}>{instagramError}</Alert>}
                   {instagramResult && <InstagramResults data={instagramResult} onSave={handleInstagramSave} sortMode={sortMode} />}
@@ -5050,17 +5055,17 @@ async function handleLoadMoreX() {
             {connectedPlatforms.tiktok && (
               <Tabs.Panel value="tiktok" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use @username to fetch an account's recent videos and metrics, paste a video URL for its stats, use #hashtag, or enter keywords to search.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.tiktokSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="TikTok Search"
-                      placeholder="@username, tiktok.com/video URL, #hashtag, or keyword"
+                      label={t("competitorLookup.tiktokSearch")}
+                      placeholder={t("competitorLookup.tiktokSimplePlaceholder")}
                       value={simpleQueries.tiktok}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, tiktok: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleTiktokSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={tiktokLoading} onClick={handleSimpleTiktokSubmit}>Search TikTok</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={tiktokLoading} onClick={handleSimpleTiktokSubmit}>{t("competitorLookup.searchTikTok")}</Button>
                   </Group>
                   {tiktokError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{tiktokError}</Alert>}
                   {tiktokResult && <TiktokResults data={tiktokResult} onSave={handleTiktokSave} sortMode={sortMode} />}
@@ -5071,17 +5076,17 @@ async function handleLoadMoreX() {
             {connectedPlatforms.reddit && (
               <Tabs.Panel value="reddit" pt="md">
                 <Stack gap="md">
-                  <Text size="sm" c="dimmed">Use u/username or @username for a user, r/subreddit for one community, keywords for posts across Reddit, or paste a Reddit post URL to show the post plus comments.</Text>
+                  <Text size="sm" c="dimmed">{t("competitorLookup.redditSimpleDesc")}</Text>
                   <Group align="end">
                     <TextInput
-                      label="Reddit Search"
-                      placeholder="u/spez, r/startups, Reddit post URL, or keyword"
+                      label={t("competitorLookup.redditSearch")}
+                      placeholder={t("competitorLookup.redditSimplePlaceholder")}
                       value={simpleQueries.reddit}
                       onChange={(e) => setSimpleQueries((p) => ({ ...p, reddit: e.target.value }))}
                       style={{ flex: 1 }}
                       onKeyDown={(e) => e.key === "Enter" && handleSimpleRedditSubmit()}
                     />
-                    <Button leftSection={<IconSearch size={16} />} loading={redditLoading} onClick={handleSimpleRedditSubmit}>Search Reddit</Button>
+                    <Button leftSection={<IconSearch size={16} />} loading={redditLoading} onClick={handleSimpleRedditSubmit}>{t("competitorLookup.searchReddit")}</Button>
                   </Group>
                   {redditError && <Alert color="red" title={t("competitorLookup.error")} icon={<IconAlertCircle />}>{redditError}</Alert>}
                   {redditResult && <RedditResults data={redditResult} onSave={handleRedditSave} sortMode={sortMode} />}
@@ -5097,11 +5102,11 @@ async function handleLoadMoreX() {
               <Stack gap="sm">
                 <Group justify="space-between" align="center">
                   <div>
-                    <Text fw={700}>Quick Lookup</Text>
-                    <Text size="xs" c="dimmed">Use a URL for direct lookup, use @handle for account lookup, or type a phrase for regular search.</Text>
+                    <Text fw={700}>{t("competitorLookup.quickLookup")}</Text>
+                    <Text size="xs" c="dimmed">{t("competitorLookup.quickLookupDesc")}</Text>
                   </div>
                   {quickLookupResult?.callsUsed != null && (
-                    <Badge variant="light" color="teal">Calls used: {quickLookupResult.callsUsed}</Badge>
+                    <Badge variant="light" color="teal">{t("competitorLookup.callsUsed", { count: quickLookupResult.callsUsed })}</Badge>
                   )}
                 </Group>
 
@@ -5121,12 +5126,12 @@ async function handleLoadMoreX() {
                     loading={quickLookupLoading}
                     onClick={handleQuickLookupSubmit}
                   >
-                    Search
+                    {t("common.search")}
                   </Button>
                 </Group>
 
                 {quickLookupError && (
-                  <Alert variant="light" color="red" title="Quick lookup error" icon={<IconAlertCircle />}>
+                  <Alert variant="light" color="red" title={t("competitorLookup.quickLookupError")} icon={<IconAlertCircle />}>
                     {quickLookupError}
                   </Alert>
                 )}
@@ -5134,12 +5139,12 @@ async function handleLoadMoreX() {
                 {quickLookupResult?.results?.length > 0 && (
                   <Stack gap="xs">
                     <Group gap="xs" wrap="wrap">
-                      <Badge variant="light" color="blue">Results: {quickLookupResult.total || quickLookupResult.results.length}</Badge>
+                      <Badge variant="light" color="blue">{t("competitorLookup.resultsCount", { count: quickLookupResult.total || quickLookupResult.results.length })}</Badge>
                       {quickLookupResult.intent && (
-                        <Badge variant="light" color="grape">Intent: {quickLookupResult.intent}</Badge>
+                        <Badge variant="light" color="grape">{t("competitorLookup.intent", { intent: quickLookupResult.intent })}</Badge>
                       )}
                       {quickLookupResult.routeUsed && (
-                        <Badge variant="outline" color="teal">Route: {quickLookupResult.routeUsed}</Badge>
+                        <Badge variant="outline" color="teal">{t("competitorLookup.route", { route: quickLookupResult.routeUsed })}</Badge>
                       )}
                       {Object.entries(quickLookupResult.bySource || {}).map(([source, items]) => (
                         <Badge key={source} variant="outline" color="gray">
@@ -5154,7 +5159,7 @@ async function handleLoadMoreX() {
                           <Stack gap={4}>
                             <Group justify="space-between" align="start" wrap="nowrap">
                               <Text fw={600} size="sm" lineClamp={2} style={{ flex: 1 }}>
-                                {item.title || item.url || "Untitled result"}
+                                {item.title || item.url || t("competitorLookup.untitledResult")}
                               </Text>
                               <Badge size="xs" variant="light">{item.source}</Badge>
                             </Group>
@@ -5440,7 +5445,7 @@ async function handleLoadMoreX() {
                       <Title order={4}>{t("competitorLookup.linkedinLookup")}</Title>
 
                       <Text size="sm" c="dimmed">
-                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                        {t("competitorLookup.endpointCostsPrefix")} <b>{t("competitorLookup.oneCredit")}</b>.
                       </Text>
 
                       {/* PROFILE & COMPANY */}
@@ -5520,7 +5525,7 @@ async function handleLoadMoreX() {
                       <Title order={4}>{t("competitorLookup.instagramLookup")}</Title>
 
                       <Text size="sm" c="dimmed">
-                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                        {t("competitorLookup.endpointCostsPrefix")} <b>{t("competitorLookup.oneCredit")}</b>.
                       </Text>
 
                       {/* PROFILE SECTION */}
@@ -5647,7 +5652,7 @@ async function handleLoadMoreX() {
                       <Title order={4}>{t("competitorLookup.tiktokLookup")}</Title>
 
                       <Text size="sm" c="dimmed">
-                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                        {t("competitorLookup.endpointCostsPrefix")} <b>{t("competitorLookup.oneCredit")}</b>.
                       </Text>
 
                       {/* PROFILE & ACCOUNT */}
@@ -5778,7 +5783,7 @@ async function handleLoadMoreX() {
                       <Title order={4}>{t("competitorLookup.redditLookup")}</Title>
 
                       <Text size="sm" c="dimmed">
-                        Select the data you want to fetch. Each endpoint costs <b>1 credit</b>.
+                        {t("competitorLookup.endpointCostsPrefix")} <b>{t("competitorLookup.oneCredit")}</b>.
                       </Text>
 
                       {/* SUBREDDIT */}
@@ -5920,22 +5925,22 @@ async function handleLoadMoreX() {
         )}
 
         {result && (
-          <Stack gap="lg">
+          <Stack gap="lg" data-tour="competitor-results">
             <Card withBorder radius="md">
               <Stack gap="xs">
                 <Title order={4}>{t("competitorLookup.summary")}</Title>
                 <Group gap="md" wrap="wrap">
                   <Group gap="xs">
-                    <Text fw={500}>Username:</Text>
+                    <Text fw={500}>{t("competitorLookup.username")}:</Text>
                     <Code>{result.username || "—"}</Code>
                   </Group>
                   <Copyable value={result.userId} label="User ID" />
                   <Group gap="xs">
-                    <Text fw={500}>Backend:</Text>
+                    <Text fw={500}>{t("competitorLookup.backend")}:</Text>
                     <BackendBadge base={result._usedBackend} />
                   </Group>
                   <Group gap="xs">
-                    <Text fw={500}>Posts:</Text>
+                    <Text fw={500}>{t("competitorLookup.posts")}:</Text>
                     <Badge variant="light" radius="sm">
                       {posts.length}
                     </Badge>
@@ -5946,7 +5951,7 @@ async function handleLoadMoreX() {
 
             {convertedData && convertedData.length > 0 && (
               <>
-                <Divider label="Converted Data" />
+                <Divider label={t("competitorLookup.convertedData")} />
                 <Card withBorder radius="md">
                   <Stack gap="md">
                     <Title order={5}>{t("competitorLookup.universalDataFormat")}</Title>
@@ -5954,16 +5959,16 @@ async function handleLoadMoreX() {
                       <Card key={idx} withBorder radius="sm" p="sm">
                         <Group gap="md" wrap="wrap">
                           <Group gap="xs">
-                            <Text fw={500}>Name/Source:</Text>
+                            <Text fw={500}>{t("competitorLookup.nameSource")}:</Text>
                             <Badge variant="light">{item["Name/Source"]}</Badge>
                           </Group>
                           <Group gap="xs">
-                            <Text fw={500}>Engagement:</Text>
+                            <Text fw={500}>{t("competitorLookup.engagement")}:</Text>
                             <Badge variant="light" color="green">{item.Engagement}</Badge>
                           </Group>
                         </Group>
                         <Text size="sm" mt="xs" style={{ whiteSpace: "pre-wrap" }}>
-                          <Text fw={500} span>Message:</Text> {item.Message.substring(0, 150)}
+                          <Text fw={500} span>{t("competitorLookup.message")}:</Text> {item.Message.substring(0, 150)}
                           {item.Message.length > 150 ? "..." : ""}
                         </Text>
                       </Card>
@@ -5991,7 +5996,7 @@ async function handleLoadMoreX() {
                       comments: m.reply_count ?? 0,
                     });
                   }}
-                  label="Save All Posts"
+                  label={t("competitorLookup.saveAllPosts")}
                 />
               )}
             </Group>

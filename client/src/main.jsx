@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { I18nextProvider } from "react-i18next";
+import { I18nextProvider, useTranslation } from "react-i18next";
 import i18n from "./i18n/i18n";
 import AppTourProvider from "./tour/AppTourProvider.jsx";
 import { Notifications } from "@mantine/notifications";
@@ -16,7 +16,7 @@ const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
 import RequireAuth from "./auth/RequireAuth.jsx";
 import Login from "./pages/Login.jsx";
@@ -36,6 +36,35 @@ import Watchlist from "./pages/Watchlist.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
 import "./index.css";
+
+
+const PAGE_TITLE_MAP = [
+  { match: (path) => path === "/", key: "appTitle.dashboard" },
+  { match: (path) => path.startsWith("/competitor-lookup"), key: "appTitle.competitorLookup" },
+  { match: (path) => path.startsWith("/savedPosts"), key: "appTitle.savedPosts" },
+  { match: (path) => path.startsWith("/watchlist"), key: "appTitle.watchlist" },
+  { match: (path) => path.startsWith("/keywords"), key: "appTitle.keywordTracking" },
+  { match: (path) => path.startsWith("/reports"), key: "appTitle.reports" },
+  { match: (path) => path.startsWith("/chat"), key: "appTitle.chat" },
+  { match: (path) => path.startsWith("/settings"), key: "appTitle.settings" },
+  { match: (path) => path.startsWith("/profile"), key: "appTitle.profile" },
+  { match: (path) => path.startsWith("/connected-integrations"), key: "appTitle.connectedIntegrations" },
+  { match: (path) => path.startsWith("/login"), key: "appTitle.login" },
+];
+
+function DocumentTitle() {
+  const location = useLocation();
+  const { t } = useTranslation();
+
+  React.useEffect(() => {
+    const page = PAGE_TITLE_MAP.find((item) => item.match(location.pathname));
+    const pageTitle = page ? t(page.key) : t("appTitle.default");
+    document.title = pageTitle === t("appTitle.default") ? "Chibitek" : `Chibitek | ${pageTitle}`;
+  }, [location.pathname, t]);
+
+  return null;
+}
+
 
 function AppLayout() {
   return (
@@ -68,11 +97,12 @@ function AppLayout() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ColorSchemeScript defaultColorScheme="light" colorSchemeManager={colorSchemeManager} />
+    <ColorSchemeScript defaultColorScheme="light" />
     <I18nextProvider i18n={i18n}>
       <MantineProvider defaultColorScheme="light" colorSchemeManager={colorSchemeManager}>
         <Notifications position="top-right" zIndex={10000} />
         <BrowserRouter>
+          <DocumentTitle />
           {/* IMPORTANT: provider must wrap BOTH login and app */}
           <AppTourProvider>
             <Routes>
