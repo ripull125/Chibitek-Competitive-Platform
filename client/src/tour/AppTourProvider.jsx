@@ -11,9 +11,9 @@ export function useAppTour() {
   return ctx;
 }
 
-// Tutorial flow is deliberately screen based.
-// Each screen can contain multiple "tips". The Next button advances tips.
-// The arrow button advances to the next screen.
+const target = (...items) => items.filter(Boolean);
+
+// Plain-language walkthrough. Each tip points to a real screen element.
 const getTourFlow = (t) => [
   {
     key: "dashboard",
@@ -21,19 +21,23 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.dashboard.title", { defaultValue: "Dashboard" }),
-        body: t("tutorial.dashboard.body", { defaultValue: "Your high level snapshot. Scan performance, spot changes, then decide where to dig deeper." }),
+        body: t("tutorial.dashboard.body", { defaultValue: "Start with the main numbers. They summarize the posts saved in the app." }),
+        target: target("dashboard-kpis"),
       },
       {
-        title: t("tutorial.engagementSnapshot.title", { defaultValue: "Engagement snapshot" }),
-        body: t("tutorial.engagementSnapshot.body", { defaultValue: "Top tiles summarize what is happening right now so you can orient yourself in seconds." }),
+        title: t("tutorial.topPosts.title", { defaultValue: "Top posts" }),
+        body: t("tutorial.topPosts.body", { defaultValue: "This shows the posts with the most engagement. Open a post when you want to see the original." }),
+        target: target("dashboard-top-posts"),
       },
       {
-        title: t("tutorial.opportunityAlerts.title", { defaultValue: "Opportunity alerts" }),
-        body: t("tutorial.opportunityAlerts.body", { defaultValue: "Watchouts and fast movers that are worth acting on early." }),
+        title: t("tutorial.platformCharts.title", { defaultValue: "Platform performance" }),
+        body: t("tutorial.platformCharts.body", { defaultValue: "Use this chart to see which platform is performing best." }),
+        target: target("dashboard-platforms", "dashboard-timeline"),
       },
       {
-        title: t("tutorial.whatWorksNow.title", { defaultValue: "What works now" }),
-        body: t("tutorial.whatWorksNow.body", { defaultValue: "Charts and tables highlight the topics driving the strongest engagement at the moment." }),
+        title: t("tutorial.keywordRankings.title", { defaultValue: "Keywords" }),
+        body: t("tutorial.keywordRankings.body", { defaultValue: "These topics come from saved posts. They help show what people are talking about." }),
+        target: target("dashboard-keywords"),
       },
     ],
   },
@@ -43,15 +47,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.competitorLookup.title", { defaultValue: "Competitor Lookup" }),
-        body: t("tutorial.competitorLookup.body", { defaultValue: "Search any competitor and pull recent posts so you can compare positioning and momentum." }),
+        body: t("tutorial.competitorLookup.body", { defaultValue: "Choose a platform, then search by username, URL, or keyword." }),
+        target: target("competitor-lookup-search"),
       },
       {
-        title: t("tutorial.searchAndFilters.title", { defaultValue: "Search and filters" }),
-        body: t("tutorial.searchAndFilters.body", { defaultValue: "Use the search bar and filters to narrow results by platform, time window, or topic." }),
-      },
-      {
-        title: t("tutorial.postFeed.title", { defaultValue: "Post feed" }),
-        body: t("tutorial.postFeed.body", { defaultValue: "Open items for detail, then save the best examples for later." }),
+        title: t("tutorial.results.title", { defaultValue: "Results" }),
+        body: t("tutorial.results.body", { defaultValue: "Review the posts, open the original, or save useful examples." }),
+        target: target("competitor-results", "competitor-lookup-search"),
       },
     ],
   },
@@ -61,15 +63,8 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.savedPosts.title", { defaultValue: "Saved Posts" }),
-        body: t("tutorial.savedPosts.body", { defaultValue: "Everything you saved lives here so you can reference it later and build your evidence library." }),
-      },
-      {
-        title: t("tutorial.taggingAndNotes.title", { defaultValue: "Tagging and notes" }),
-        body: t("tutorial.taggingAndNotes.body", { defaultValue: "Add tags or quick notes so you can find examples by theme, competitor, or campaign style." }),
-      },
-      {
-        title: t("tutorial.export.title", { defaultValue: "Export" }),
-        body: t("tutorial.export.body", { defaultValue: "Download your saved set when you need to share findings or move work into a deck." }),
+        body: t("tutorial.savedPosts.body", { defaultValue: "Saved posts are the source for reports, keywords, and chat answers." }),
+        target: target("saved-posts-list"),
       },
     ],
   },
@@ -79,13 +74,9 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.keywordTracking.title", { defaultValue: "Keyword Tracking" }),
-        body: t("tutorial.keywordTracking.body", { defaultValue: "Track what topics are rising and cooling off, then connect them to performance." }),
+        body: t("tutorial.keywordTracking.body", { defaultValue: "This page ranks repeated topics from saved posts." }),
+        target: target("keyword-tracking-root"),
       },
-      {
-        title: t("tutorial.trendingKeywords.title", { defaultValue: "Trending keywords" }),
-        body: t("tutorial.trendingKeywords.body", { defaultValue: "This table shows what is trending right now, including volume and rank movement." }),
-      },
-      
     ],
   },
   {
@@ -93,12 +84,9 @@ const getTourFlow = (t) => [
     path: "/watchlist",
     tips: [
       {
-        title: t("tutorial.autoscraper.title", { defaultValue: "Autoscraper" }),
-        body: t("tutorial.autoscraper.body", { defaultValue: "Automatically pull posts from your watchlist so you can focus on analysis." }),
-      },
-      {
-        title: t("tutorial.configureAndRun.title", { defaultValue: "Configure and run" }),
-        body: t("tutorial.configureAndRun.body", { defaultValue: "Add targets, set schedules, and execute scrapes with a click to keep data fresh." }),
+        title: t("tutorial.autoscraper.title", { defaultValue: "Auto Scraper" }),
+        body: t("tutorial.autoscraper.body", { defaultValue: "Add searches here so the app can pull new posts for you." }),
+        target: target("autoscraper-root"),
       },
     ],
   },
@@ -108,11 +96,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.reports.title", { defaultValue: "Reports" }),
-        body: t("tutorial.reports.body", { defaultValue: "Generate shareable summaries so your insights can travel beyond the dashboard." }),
+        body: t("tutorial.reports.body", { defaultValue: "Tell AI what kind of PDF you want, then build the preview." }),
+        target: target("reports-ai", "reports-builder"),
       },
       {
-        title: t("tutorial.buildAndDownload.title", { defaultValue: "Build and download" }),
-        body: t("tutorial.buildAndDownload.body", { defaultValue: "Create a report, review it quickly, then download for distribution or archiving." }),
+        title: t("tutorial.reportPreview.title", { defaultValue: "Report preview" }),
+        body: t("tutorial.reportPreview.body", { defaultValue: "Check the layout here before downloading the PDF." }),
+        target: target("reports-preview"),
       },
     ],
   },
@@ -121,12 +111,14 @@ const getTourFlow = (t) => [
     path: "/chat",
     tips: [
       {
-        title: t("tutorial.chibitekChat.title", { defaultValue: "ChibitekAI Chat" }),
-        body: t("tutorial.chibitekChat.body", { defaultValue: "Ask questions, attach files, and save conversations so research stays organized." }),
+        title: t("tutorial.chat.title", { defaultValue: "Chat" }),
+        body: t("tutorial.chat.body", { defaultValue: "Ask questions about saved posts, reports, or uploaded files." }),
+        target: target("chat-composer", "chat-root"),
       },
       {
-        title: t("tutorial.saveYourWork.title", { defaultValue: "Save your work" }),
-        body: t("tutorial.saveYourWork.body", { defaultValue: "Keep threads you want to reuse, and return to them when you build reports or briefs." }),
+        title: t("tutorial.chatHistory.title", { defaultValue: "Chat history" }),
+        body: t("tutorial.chatHistory.body", { defaultValue: "Past chats stay on the left so you can reopen them later." }),
+        target: target("chat-history", "chat-root"),
       },
     ],
   },
@@ -136,23 +128,181 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.settings.title", { defaultValue: "Settings" }),
-        body: t("tutorial.settings.body", { defaultValue: "Manage your account preferences and integrations. You can restart this tutorial any time." }),
+        body: t("tutorial.settings.body", { defaultValue: "Change language, theme, model, and account settings here." }),
+        target: target("settings-language", "settings-tutorial-card"),
       },
       {
-        title: t("tutorial.language.title", { defaultValue: "Language" }),
-        body: t("tutorial.language.body", { defaultValue: "Switch the app language here. Changes apply instantly across the interface." }),
+        title: t("tutorial.appearance.title", { defaultValue: "Appearance" }),
+        body: t("tutorial.appearance.body", { defaultValue: "Switch light or dark mode and choose the app color." }),
+        target: target("settings-appearance", "settings-tutorial-card"),
       },
       {
-        title: t("tutorial.integrations.title", { defaultValue: "Integrations" }),
-        body: t("tutorial.integrations.body", { defaultValue: "Connect data sources so Chibitek can pull competitive content and updates automatically." }),
+        title: t("tutorial.restartTutorial.title", { defaultValue: "Tutorial" }),
+        body: t("tutorial.restartTutorial.body", { defaultValue: "Use this button to start the walkthrough again." }),
+        target: target("settings-tutorial-card"),
+      },
+    ],
+  },
+  {
+    key: "profile",
+    path: "/profile",
+    tips: [
+      {
+        title: t("tutorial.profile.title", { defaultValue: "Profile" }),
+        body: t("tutorial.profile.body", { defaultValue: "Update your name, username, email, and picture here." }),
+        target: target("profile-summary", "profile-form"),
       },
       {
-        title: t("tutorial.tutorial.title", { defaultValue: "Tutorial" }),
-        body: t("tutorial.tutorial.body", { defaultValue: "Press Start whenever you want a quick refresher of the key screens." }),
+        title: t("tutorial.profileForm.title", { defaultValue: "Profile details" }),
+        body: t("tutorial.profileForm.body", { defaultValue: "Edit the fields, then save your changes." }),
+        target: target("profile-form", "profile-summary"),
+      },
+    ],
+  },
+  {
+    key: "connected-integrations",
+    path: "/connected-integrations",
+    tips: [
+      {
+        title: t("tutorial.connectedIntegrations.title", { defaultValue: "Connected Integrations" }),
+        body: t("tutorial.connectedIntegrations.body", { defaultValue: "All supported platforms are available by default." }),
+        target: target("integrations-grid", "integrations-search"),
+      },
+      {
+        title: t("tutorial.integrationSearch.title", { defaultValue: "Find a platform" }),
+        body: t("tutorial.integrationSearch.body", { defaultValue: "Use search to find a platform quickly." }),
+        target: target("integrations-search", "integrations-grid"),
       },
     ],
   },
 ];
+
+function getTargetElement(targets) {
+  const list = Array.isArray(targets) ? targets : [targets].filter(Boolean);
+  for (const item of list) {
+    if (!item) continue;
+    const selector = String(item).startsWith("[") || String(item).startsWith(".") || String(item).startsWith("#")
+      ? String(item)
+      : `[data-tour="${item}"]`;
+    const el = document.querySelector(selector);
+    if (el) return el;
+  }
+  return null;
+}
+
+function getStableRect(el) {
+  const raw = el.getBoundingClientRect();
+  const pad = 10;
+  const top = Math.max(12, Math.round(raw.top - pad));
+  const left = Math.max(12, Math.round(raw.left - pad));
+  const right = Math.min(window.innerWidth - 12, Math.round(raw.right + pad));
+  const bottom = Math.min(window.innerHeight - 12, Math.round(raw.bottom + pad));
+  return {
+    top,
+    left,
+    width: Math.max(44, right - left),
+    height: Math.max(44, bottom - top),
+  };
+}
+
+function rectChanged(a, b) {
+  if (!a || !b) return true;
+  return (
+    Math.abs(a.top - b.top) > 3 ||
+    Math.abs(a.left - b.left) > 3 ||
+    Math.abs(a.width - b.width) > 3 ||
+    Math.abs(a.height - b.height) > 3
+  );
+}
+
+function TourSpotlight({ targets, fadeState }) {
+  const [rect, setRect] = React.useState(null);
+  const lastRectRef = React.useRef(null);
+  const rafRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!targets || typeof document === "undefined") {
+      setRect(null);
+      return undefined;
+    }
+
+    let disposed = false;
+    let retryTimer = null;
+    let measureTimer = null;
+
+    const measure = () => {
+      if (disposed) return;
+      const el = getTargetElement(targets);
+      if (!el) {
+        setRect(null);
+        retryTimer = window.setTimeout(measure, 160);
+        return;
+      }
+
+      const raw = el.getBoundingClientRect();
+      const mostlyVisible = raw.top >= 90 && raw.bottom <= window.innerHeight - 100;
+      if (!mostlyVisible) {
+        el.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
+      }
+
+      const next = getStableRect(el);
+      if (rectChanged(lastRectRef.current, next)) {
+        lastRectRef.current = next;
+        setRect(next);
+      }
+    };
+
+    const scheduleMeasure = () => {
+      if (disposed) return;
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = window.requestAnimationFrame(measure);
+    };
+
+    // Wait for routed screens and async cards to paint, then lock onto the target.
+    measureTimer = window.setTimeout(scheduleMeasure, 120);
+    const secondPass = window.setTimeout(scheduleMeasure, 360);
+
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, true);
+    window.addEventListener("chibitek:pageReady", scheduleMeasure);
+
+    return () => {
+      disposed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      if (measureTimer) window.clearTimeout(measureTimer);
+      window.clearTimeout(secondPass);
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure, true);
+      window.removeEventListener("chibitek:pageReady", scheduleMeasure);
+    };
+  }, [JSON.stringify(targets)]);
+
+  if (!rect) return null;
+
+  const isOut = fadeState === "out";
+  return (
+    <div aria-hidden="true" style={{ pointerEvents: "none" }}>
+      <div
+        style={{
+          position: "fixed",
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+          borderRadius: 18,
+          zIndex: 11990,
+          opacity: isOut ? 0 : 1,
+          transition: "opacity 160ms ease",
+          boxShadow:
+            "0 0 0 9999px rgba(15, 23, 42, 0.54), 0 0 0 4px rgba(28, 126, 214, 0.98), 0 0 0 9px rgba(255, 255, 255, 0.88), 0 18px 60px rgba(28, 126, 214, 0.42)",
+          outline: "2px solid rgba(255,255,255,0.95)",
+          background: "rgba(28, 126, 214, 0.08)",
+        }}
+      />
+    </div>
+  );
+}
 
 function TourBox({
   title,
@@ -165,6 +315,7 @@ function TourBox({
   onNextScreen,
   onExit,
   fadeState,
+  targets,
 }) {
   const { t } = useTranslation();
   const isOut = fadeState === "out";
@@ -178,6 +329,7 @@ function TourBox({
 
   return (
     <>
+      <TourSpotlight targets={targets} fadeState={fadeState} />
       <div
         style={{
           position: "fixed",
@@ -192,14 +344,13 @@ function TourBox({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
           <div
             style={{
-              background:
-                "linear-gradient(135deg, rgba(29,78,216,0.98) 0%, rgba(37,99,235,0.98) 55%, rgba(59,130,246,0.98) 100%)",
-              borderRadius: 20,
+              background: "var(--surface-1, #ffffff)",
+              borderRadius: 16,
               padding: "16px 16px 18px",
               boxShadow: "0 18px 52px rgba(0,0,0,0.22), 0 4px 14px rgba(0,0,0,0.14)",
               backdropFilter: "blur(10px)",
               WebkitBackdropFilter: "blur(10px)",
-              border: "1px solid rgba(255,255,255,0.18)",
+              border: "1px solid var(--border-color, rgba(15,23,42,0.12))",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -208,7 +359,7 @@ function TourBox({
                   fontSize: 12,
                   fontWeight: 900,
                   letterSpacing: "0.05em",
-                  color: "rgba(255,255,255,0.92)",
+                  color: "var(--text-secondary, #64748b)",
                   textTransform: "uppercase",
                 }}
               >
@@ -221,8 +372,8 @@ function TourBox({
                 aria-label={t("tutorial.exit", { defaultValue: "Exit tutorial" })}
                 style={{
                   appearance: "none",
-                  border: "1px solid rgba(255,255,255,0.28)",
-                  background: "rgba(255,255,255,0.16)",
+                  border: "1px solid var(--border-color, rgba(15,23,42,0.12))",
+                  background: "var(--surface-2, #f8fafc)",
                   borderRadius: 999,
                   width: 34,
                   height: 34,
@@ -232,7 +383,7 @@ function TourBox({
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "rgba(255,255,255,0.96)",
+                  color: "var(--text-secondary, #64748b)",
                   boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
                 }}
               >
@@ -240,14 +391,14 @@ function TourBox({
               </button>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 900, color: "#ffffff" }}>{title}</div>
+            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 900, color: "var(--text-primary, #111827)" }}>{title}</div>
             <div
               style={{
                 marginTop: 6,
                 fontSize: 14,
                 fontWeight: 650,
-                color: "rgba(255,255,255,0.92)",
-                lineHeight: 1.35,
+                color: "var(--text-secondary, #64748b)",
+                lineHeight: 1.4,
               }}
             >
               {body}
@@ -262,7 +413,7 @@ function TourBox({
                 gap: 12,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 850, color: "rgba(255,255,255,0.86)" }}>
+              <div style={{ fontSize: 12, fontWeight: 850, color: "var(--text-secondary, #64748b)" }}>
                 {t("tutorial.tipOf", { current: Math.min(tipIndex + 1, tipCount), total: tipCount, defaultValue: "Tip {{current}} of {{total}}" })}
               </div>
 
@@ -274,8 +425,8 @@ function TourBox({
                   : t("tutorial.nextScreen", { defaultValue: "Next screen" })}
                 style={{
                   appearance: "none",
-                  border: "1px solid rgba(255,255,255,0.50)",
-                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(28, 126, 214, 0.35)",
+                  background: "var(--accent-color, #1c7ed6)",
                   borderRadius: 999,
                   width: 44,
                   height: 44,
@@ -285,8 +436,8 @@ function TourBox({
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  color: "#1d4ed8",
-                  boxShadow: "0 18px 44px rgba(0,0,0,0.22)",
+                  color: "#ffffff",
+                  boxShadow: "0 12px 28px rgba(28, 126, 214, 0.25)",
                   userSelect: "none",
                 }}
               >
@@ -304,15 +455,15 @@ function TourBox({
                     type="button"
                     style={{
                       appearance: "none",
-                      border: "1px solid rgba(255,255,255,0.45)",
-                      background: "rgba(255,255,255,0.92)",
+                      border: "1px solid rgba(28, 126, 214, 0.35)",
+                      background: "var(--accent-soft, #e7f5ff)",
                       borderRadius: 12,
                       padding: "0 14px",
                       height: 36,
                       fontWeight: 950,
                       fontSize: 13,
                       cursor: "pointer",
-                      color: "#1d4ed8",
+                      color: "var(--accent-color, #1c7ed6)",
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
@@ -395,11 +546,7 @@ export default function AppTourProvider({ children }) {
     timersRef.current = [];
   }, []);
 
-  React.useEffect(() => {
-    return () => {
-      clearTimers();
-    };
-  }, [clearTimers]);
+  React.useEffect(() => () => clearTimers(), [clearTimers]);
 
   const screen = TOUR_FLOW[screenIndex];
   const tips = screen?.tips ?? [];
@@ -428,7 +575,7 @@ export default function AppTourProvider({ children }) {
         transitioningRef.current = false;
       }, ANIM_MS);
     },
-    [clearTimers, schedule]
+    [ANIM_MS, clearTimers, schedule]
   );
 
   const fadeSwap = React.useCallback(
@@ -447,7 +594,7 @@ export default function AppTourProvider({ children }) {
         }, ANIM_MS);
       }, ANIM_MS);
     },
-    [clearTimers, schedule]
+    [ANIM_MS, clearTimers, schedule]
   );
 
   const api = React.useMemo(
@@ -463,7 +610,6 @@ export default function AppTourProvider({ children }) {
         setTipIndex(0);
         navigate(TOUR_FLOW[0].path);
 
-        // Let it mount at opacity 0, then fade in.
         schedule(() => {
           setFadeState("in");
           schedule(() => {
@@ -530,6 +676,7 @@ export default function AppTourProvider({ children }) {
           onNextScreen={onNextScreen}
           onExit={api.stop}
           fadeState={fadeState}
+          targets={tip.target}
         />
       ) : null}
     </TourContext.Provider>

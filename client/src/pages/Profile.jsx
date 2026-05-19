@@ -10,6 +10,8 @@ import {
   Container,
   FileButton,
   Grid,
+  Badge,
+  SimpleGrid,
   Group,
   Loader,
   Paper,
@@ -179,6 +181,10 @@ export default function Profile() {
     validateField("firstName", values.firstName, t) == null &&
     validateField("lastName", values.lastName, t) == null &&
     validateField("username", values.username, t) == null;
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "profile" } }));
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -352,15 +358,24 @@ export default function Profile() {
     }
   }
 
+  const displayName = values.firstName || values.lastName
+    ? `${values.firstName} ${values.lastName}`.trim()
+    : t("profile.yourProfile");
+
   return (
-    <Container size="md" py="md">
+    <Container size="lg" py="md">
       <Card withBorder shadow="xs" radius="lg" p="xl">
-        <Stack gap="xs" mb="md">
-          <Title order={2} className="pageTitle">
-            {t("profile.title")}
-          </Title>
-          <Text c="dimmed">{t("profile.subtitle")}</Text>
-        </Stack>
+        <Group justify="space-between" align="flex-start" mb="lg">
+          <Stack gap={4}>
+            <Title order={2} className="pageTitle">
+              {t("profile.title")}
+            </Title>
+            <Text c="dimmed">{t("profile.subtitle")}</Text>
+          </Stack>
+          <Badge variant={dirty ? "light" : "outline"} color={dirty ? "yellow" : "green"}>
+            {dirty ? t("profile.unsavedChanges", { defaultValue: "Unsaved changes" }) : t("profile.upToDate", { defaultValue: "Up to date" })}
+          </Badge>
+        </Group>
 
         {banner && (
           <Alert
@@ -374,20 +389,22 @@ export default function Profile() {
           </Alert>
         )}
 
-        <Paper withBorder radius="md" p="lg">
-          {loading ? (
+        {loading ? (
+          <Paper withBorder radius="md" p="xl">
             <Group justify="center" py="xl">
               <Loader size="sm" />
             </Group>
-          ) : (
-            <Stack gap="lg">
-              <Group align="center" gap="lg">
+          </Paper>
+        ) : (
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+            <Paper withBorder radius="lg" p="xl" data-tour="profile-summary">
+              <Stack gap="lg" align="center" ta="center">
                 <Box pos="relative">
                   <Avatar
                     src={avatarPreview || remoteAvatarUrl || undefined}
                     alt={t("profile.profilePictureAlt")}
-                    size={108}
-                    radius={108}
+                    size={132}
+                    radius={132}
                   />
                   <FileButton
                     onChange={(f) => {
@@ -403,8 +420,8 @@ export default function Profile() {
                         radius="xl"
                         size="lg"
                         pos="absolute"
-                        bottom={-6}
-                        right={-6}
+                        bottom={0}
+                        right={0}
                         aria-label={t("profile.uploadNewAvatar")}
                         title={t("profile.uploadNewAvatar")}
                       >
@@ -414,23 +431,33 @@ export default function Profile() {
                   </FileButton>
                 </Box>
 
-                <Stack gap={2}>
-                  <Group gap={8}>
+                <Stack gap={4} align="center">
+                  <Group gap={8} justify="center">
                     <IconUser size={18} />
-                    <Text fw={600}>
-                      {values.firstName || values.lastName
-                        ? `${values.firstName} ${values.lastName}`.trim()
-                        : t("profile.yourProfile")}
-                    </Text>
+                    <Text fw={800} size="lg">{displayName}</Text>
                   </Group>
-                  <Text c="dimmed" size="sm">
+                  <Text c="dimmed" size="sm">@{values.username || "user"}</Text>
+                  <Text c="dimmed" size="sm">{values.email}</Text>
+                </Stack>
+
+                <Paper withBorder radius="md" p="md" w="100%" bg="var(--surface-2, #f8fafc)">
+                  <Text size="sm" c="dimmed">
                     {t("profile.updateDetailsPrompt")}
                   </Text>
-                </Stack>
-              </Group>
+                </Paper>
+              </Stack>
+            </Paper>
 
+            <Paper withBorder radius="lg" p="xl" data-tour="profile-form">
               <form onSubmit={handleSubmit}>
                 <Stack gap="md">
+                  <Group justify="space-between" align="center">
+                    <Text fw={800}>{t("profile.profileDetails", { defaultValue: "Profile details" })}</Text>
+                    <Badge variant="light" color={isValidNow ? "blue" : "red"}>
+                      {isValidNow ? t("profile.readyToSave", { defaultValue: "Ready" }) : t("profile.checkFields", { defaultValue: "Check fields" })}
+                    </Badge>
+                  </Group>
+
                   <TextInput
                     label={t("profile.emailAddress")}
                     placeholder={t("profile.emailPlaceholder")}
@@ -489,9 +516,9 @@ export default function Profile() {
                   </Group>
                 </Stack>
               </form>
-            </Stack>
-          )}
-        </Paper>
+            </Paper>
+          </SimpleGrid>
+        )}
       </Card>
     </Container>
   );

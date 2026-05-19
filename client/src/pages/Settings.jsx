@@ -71,9 +71,9 @@ function applyAccentTheme(value) {
 const getNativeLanguageName = (code) =>
   NATIVE_LANGUAGE_OPTIONS.find((item) => item.value === code)?.label || "English";
 
-function SettingsCard({ label, title, description, children, className = "" }) {
+function SettingsCard({ label, title, description, children, className = "", tourId = null }) {
   return (
-    <Paper withBorder radius="lg" p="md" className={`${classes.card} ${className}`.trim()}>
+    <Paper withBorder radius="lg" p="md" className={`${classes.card} ${className}`.trim()} data-tour={tourId || undefined}>
       <Stack gap={12} className={classes.cardInner}>
         <Text className={classes.sectionLabel}>{label}</Text>
         <Text className={classes.rowTitle}>{title}</Text>
@@ -546,6 +546,7 @@ export default function Settings() {
 
         <Box className={classes.grid}>
           <SettingsCard
+            tourId="settings-profile"
             label={t("settings.accountLabel")}
             title={t("settings.profileTitle")}
             description={t("settings.profileDesc")}
@@ -562,6 +563,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-integrations"
             label={t("settings.dataSourcesLabel")}
             title={t("settings.integrationsTitle")}
             description={t("settings.integrationsDesc")}
@@ -578,6 +580,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-language"
             label={t("settings.languageLabel")}
             title={t("settings.languageTitle")}
           >
@@ -614,6 +617,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-appearance"
             label={t("settings.appearanceLabel")}
             title={t("settings.themeTitle")}
             description={t("settings.themeDesc")}
@@ -694,6 +698,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-tutorial-card"
             label={t("settings.tutorialLabel")}
             title={t("settings.tutorialTitle")}
             description={t("settings.tutorialDesc")}
@@ -712,6 +717,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-ai"
             label={t("settings.aiLabel")}
             title={t("settings.chatModelTitle")}
             description={t("settings.chatModelDesc")}
@@ -751,6 +757,7 @@ export default function Settings() {
 
           {loadingAdmin ? (
             <SettingsCard
+              tourId="settings-admin"
               label={t("settings.adminLabel")}
               title={t("settings.adminConsoleTitle")}
               description={t("settings.loadingAdminControls")}
@@ -761,6 +768,7 @@ export default function Settings() {
 
           {!loadingAdmin && canManageRegularUsers ? (
             <SettingsCard
+              tourId="settings-admin"
               className={classes.adminCard}
               label={accessRole === "owner" ? t("settings.ownerLabel") : t("settings.adminLabel")}
               title={accessRole === "owner" ? t("settings.usersAdminsOwners") : t("settings.usersTitle")}
