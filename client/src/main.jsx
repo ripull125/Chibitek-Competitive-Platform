@@ -13,6 +13,13 @@ import {
 } from "@mantine/core";
 
 const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color-scheme" });
+const ACCENT_THEME_STORAGE_KEY = "chibitek-accent-theme";
+
+function applyStoredAccentTheme() {
+  if (typeof document === "undefined") return;
+  const stored = window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "blue";
+  document.documentElement.setAttribute("data-chibitek-theme", stored);
+}
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
@@ -35,6 +42,7 @@ import SavedPosts from "./pages/SavedPosts.jsx";
 import Watchlist from "./pages/Watchlist.jsx";
 
 import { NavbarSimple } from "../components/NavbarSimple.jsx";
+import { theme } from "./theme";
 import "./index.css";
 
 
@@ -65,6 +73,21 @@ function DocumentTitle() {
   return null;
 }
 
+
+function AppThemeSync() {
+  React.useEffect(() => {
+    applyStoredAccentTheme();
+    const handleThemeChange = () => applyStoredAccentTheme();
+    window.addEventListener("storage", handleThemeChange);
+    window.addEventListener("chibitek:accentTheme", handleThemeChange);
+    return () => {
+      window.removeEventListener("storage", handleThemeChange);
+      window.removeEventListener("chibitek:accentTheme", handleThemeChange);
+    };
+  }, []);
+
+  return null;
+}
 
 function AppLayout() {
   return (
@@ -99,8 +122,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ColorSchemeScript defaultColorScheme="light" />
     <I18nextProvider i18n={i18n}>
-      <MantineProvider defaultColorScheme="light" colorSchemeManager={colorSchemeManager}>
+      <MantineProvider theme={theme} defaultColorScheme="light" colorSchemeManager={colorSchemeManager}>
         <Notifications position="top-right" zIndex={10000} />
+        <AppThemeSync />
         <BrowserRouter>
           <DocumentTitle />
           {/* IMPORTANT: provider must wrap BOTH login and app */}

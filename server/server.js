@@ -1067,6 +1067,10 @@ const requireUserId = (req, res) => {
   return String(userId);
 };
 
+const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY || '';
+const VOYAGE_RERANK_MODEL = process.env.VOYAGE_RERANK_MODEL || 'rerank-2.5-lite';
+const VOYAGE_RERANK_ENABLED = String(process.env.VOYAGE_RERANK_ENABLED || 'true').toLowerCase() !== 'false';
+
 async function fetchLatestPostsContext(userId) {
   try {
     let query = supabase
@@ -1086,6 +1090,72 @@ async function fetchLatestPostsContext(userId) {
   } catch (err) {
     console.error('Failed to load posts for LLM context:', err);
     return [];
+  }
+}
+
+function buildPostContextDocument(post) {
+  return [
+    `Platform: ${post.platform_id ?? 'unknown'}`,
+    `Competitor: ${post.competitor_id ?? 'unknown'}`,
+    post.platform_post_id ? `Post ID: ${post.platform_post_id}` : null,
+    post.url ? `URL: ${post.url}` : null,
+    post.published_at ? `Published: ${post.published_at}` : null,
+    `Content: ${String(post.content || '').slice(0, 800)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function getLatestUserQuery(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  const latest = [...list].reverse().find((item) => item?.role === 'user' && String(item.content || '').trim());
+  return String(latest?.content || '').trim() || 'Summarize and analyze the latest saved competitor posts.';
+}
+
+async function selectRelevantPostsForChat(posts, userMessages) {
+  if (!Array.isArray(posts) || !posts.length) {
+    return { posts: [], retrieval: 'none' };
+  }
+
+  const fallback = { posts: posts.slice(0, 20), retrieval: 'recent' };
+  if (!VOYAGE_RERANK_ENABLED || !VOYAGE_API_KEY || posts.length <= 8) {
+    return fallback;
+  }
+
+  const documents = posts.map(buildPostContextDocument);
+  const topK = Math.min(12, documents.length);
+
+  try {
+    const response = await fetch('https://api.voyageai.com/v1/rerank', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${VOYAGE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        query: getLatestUserQuery(userMessages),
+        documents,
+        model: VOYAGE_RERANK_MODEL,
+        top_k: topK,
+        truncation: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Voyage rerank failed (${response.status}) ${body.slice(0, 200)}`);
+    }
+
+    const data = await response.json();
+    const rankedPosts = (data?.results || [])
+      .map((result) => posts[result.index])
+      .filter(Boolean);
+
+    if (!rankedPosts.length) return fallback;
+    return { posts: rankedPosts, retrieval: 'voyage-rerank' };
+  } catch (err) {
+    console.warn('Voyage rerank skipped; using recent posts instead:', err?.message || err);
+    return fallback;
   }
 }
 
@@ -1249,14 +1319,19 @@ app.post('/api/chat', async (req, res) => {
       .join('\n\n');
 
     const userMessages = attachmentContext
-      ? [...sanitizedMessages, { role: 'user', content: `Attachment context:\n${attachmentContext}` }]
+      ? [...sanitizedMessages, { role: 'user', content: `Attachment context:
+${attachmentContext}` }]
       : sanitizedMessages;
 
-    const postsContext = latestPosts.length
+    const { posts: selectedPosts, retrieval: postRetrieval } = await selectRelevantPostsForChat(latestPosts, userMessages);
+
+    const postsContext = selectedPosts.length
       ? [
-        'Latest posts from Supabase (most recent first):',
+        postRetrieval === 'voyage-rerank'
+          ? `Relevant saved posts selected by Voyage AI reranking (${selectedPosts.length} of ${latestPosts.length} candidates):`
+          : `Latest saved posts from Supabase (${selectedPosts.length} of ${latestPosts.length} candidates):`,
         JSON.stringify(
-          latestPosts.slice(0, 20).map((post) => ({
+          selectedPosts.slice(0, 20).map((post) => ({
             platform_id: post.platform_id,
             competitor_id: post.competitor_id,
             platform_post_id: post.platform_post_id,
@@ -1268,8 +1343,7 @@ app.post('/api/chat', async (req, res) => {
           null,
           2
         ),
-      ].join('\n')
-      : null;
+      ].join('') : null;
 
     const systemMessages = [
       {
@@ -1381,6 +1455,11 @@ app.post('/api/chat', async (req, res) => {
       reply,
       provider: chatConfig.provider,
       model: chatConfig.model,
+      retrieval: postsContext ? postRetrieval : 'none',
+      context_posts: postsContext ? selectedPosts.length : 0,
+      available_posts: latestPosts.length,
+      voyage_enabled: Boolean(VOYAGE_RERANK_ENABLED && VOYAGE_API_KEY),
+      voyage_model: VOYAGE_RERANK_ENABLED && VOYAGE_API_KEY ? VOYAGE_RERANK_MODEL : null,
     });
   } catch (error) {
     const providerLabel = chatConfig.provider;
@@ -1423,6 +1502,8 @@ app.get('/api/chat/health', (req, res) => {
       cerebras: Boolean(CEREBRAS_KEYS.length),
       openai: Boolean(OPENAI_API_KEY),
     },
+    voyage_enabled: Boolean(VOYAGE_RERANK_ENABLED && VOYAGE_API_KEY),
+    voyage_model: VOYAGE_RERANK_ENABLED && VOYAGE_API_KEY ? VOYAGE_RERANK_MODEL : null,
   });
 });
 
@@ -1520,6 +1601,62 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
     return res.status(500).json({ error: 'Failed to load conversation.' });
   }
 });
+
+
+const updateConversationById = async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: 'Missing conversation id.' });
+
+  let userId;
+  try {
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+  } catch (authErr) {
+    return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+  }
+
+  const { title, conversation } = req.body || {};
+  const update = {};
+
+  if (typeof title === 'string') {
+    const trimmedTitle = title.trim();
+    if (trimmedTitle) update.title = trimmedTitle;
+  }
+
+  if (conversation !== undefined) {
+    if (!Array.isArray(conversation) || !conversation.length) {
+      return res.status(400).json({ error: 'conversation must be a non-empty array when provided.' });
+    }
+    update.conversation = conversation;
+  }
+
+  if (!Object.keys(update).length) {
+    return res.status(400).json({ error: 'No conversation updates provided.' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .update(update)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Update conversation error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    if (!data) return res.status(404).json({ error: 'Conversation not found.' });
+
+    return res.json({ conversation: data });
+  } catch (err) {
+    console.error('Update conversation failed:', err);
+    return res.status(500).json({ error: 'Failed to update conversation.' });
+  }
+};
+
+app.patch('/api/chat/conversations/:id', updateConversationById);
+app.put('/api/chat/conversations/:id', updateConversationById);
 
 app.delete('/api/chat/conversations/:id', async (req, res) => {
   const { id } = req.params;

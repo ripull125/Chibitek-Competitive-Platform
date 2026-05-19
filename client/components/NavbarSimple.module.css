@@ -143,11 +143,11 @@
   transform: translateY(1px);
 }
 
-/* active item teal gradient */
+/* active item follows selected Chibitek color theme */
 .link[data-active] {
-  background: linear-gradient(135deg, #027e7f 0%, #02afb0 55%, #38d6d4 100%);
+  background: var(--accent-gradient, linear-gradient(135deg, #1971c2 0%, #228be6 58%, #74c0fc 100%));
   color: #ffffff;
-  box-shadow: 0 10px 24px rgba(2, 175, 176, 0.25);
+  box-shadow: 0 10px 24px var(--accent-shadow, rgba(34, 139, 230, 0.24));
 }
 
 .link[data-active] .linkIcon {
@@ -170,6 +170,29 @@
 
 /* keyboard focus */
 .link:focus-visible {
-  outline: 2px solid rgba(2, 175, 176, 0.6);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+/* Keep the custom nav buttons from inheriting Vite's global button background. */
+.link {
+  background: transparent !important;
+  color: var(--nav-text) !important;
+}
+
+.link:hover {
+  background: var(--nav-hover) !important;
+}
+
+.link[data-active] {
+  background: var(--accent-gradient, linear-gradient(135deg, #1971c2 0%, #228be6 58%, #74c0fc 100%)) !important;
+  color: #ffffff !important;
+}
+
+.linkIcon {
+  color: var(--nav-muted, var(--text-secondary)) !important;
+}
+
+.link[data-active] .linkIcon,
+.link[data-active] .linkLabel {
+  color: #ffffff !important;
 }

@@ -150,33 +150,6 @@
   background: #fff;
 }
 
-.scrollList {
-  max-height: 420px;
-  overflow-y: auto;
-}
-
-.compactList {
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.listToolbar {
-  align-items: flex-end;
-}
-
-.listFilters {
-  width: 100%;
-}
-
-.userSearch {
-  flex: 1 1 300px;
-}
-
-.ownerTransferForm {
-  border-color: rgba(139, 92, 246, 0.28);
-  background: linear-gradient(180deg, rgba(250, 245, 255, 0.98), #ffffff);
-}
-
 .listHead,
 .listRow {
   display: grid;
@@ -189,10 +162,9 @@
 .userListHead,
 .userListRow {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 0.8fr) 128px;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) 128px;
   gap: 10px;
   padding: 12px;
-  align-items: center;
 }
 
 .userListHead {
@@ -222,11 +194,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.colMeta {
-  display: flex;
-  align-items: center;
 }
 
 .userListRow .colEmail,
@@ -328,15 +295,7 @@
 
   .userListHead,
   .userListRow {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 0.8fr) 112px;
-  }
-
-  .listFilters {
-    align-items: stretch;
-  }
-
-  .listFilters :global(.mantine-SegmentedControl-root) {
-    width: 100%;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 112px;
   }
 }
 
@@ -367,11 +326,6 @@
   border-color: var(--mantine-color-dark-4);
 }
 
-:global([data-mantine-color-scheme="dark"]) .ownerTransferForm {
-  background: var(--mantine-color-dark-6);
-  border-color: var(--mantine-color-violet-8);
-}
-
 :global([data-mantine-color-scheme="dark"]) .listWrap {
   background: var(--mantine-color-dark-7);
   border-color: var(--mantine-color-dark-4);
@@ -386,4 +340,50 @@
 :global([data-mantine-color-scheme="dark"]) .userListRow {
   background: var(--mantine-color-dark-7);
   border-color: var(--mantine-color-dark-5);
+}
+.colorThemeBtn {
+  font-weight: 800;
+}
+
+:global([data-mantine-color-scheme="dark"]) .card {
+  background: var(--surface-1);
+  border-color: var(--border-color);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectInput {
+  background: var(--surface-2) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectInput::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectSection {
+  color: var(--accent-secondary) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectDropdown {
+  background: var(--surface-1) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectOption {
+  color: var(--text-primary) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .selectOption[data-checked="true"],
+:global([data-mantine-color-scheme="dark"]) .selectOption[data-combobox-selected="true"],
+:global([data-mantine-color-scheme="dark"]) .selectOption[data-hovered="true"] {
+  background: var(--accent-soft) !important;
+  color: var(--text-primary) !important;
+}
+
+:global([data-mantine-color-scheme="dark"]) .actionBtn {
+  background: var(--accent-soft) !important;
+  color: var(--accent-secondary) !important;
 }
