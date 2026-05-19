@@ -1,36 +1,29 @@
-// Shared utility for connected-platforms state (localStorage-backed)
+// Shared utility for connected-platforms state.
+// The app now treats every supported source as available by default.
 
-const STORAGE_KEY = "chibitek:connectedPlatforms";
-
-// Default: all platforms disconnected
-const DEFAULT_STATE = {
-    x: false,
-    linkedin: false,
-    instagram: false,
-    tiktok: false,
-    reddit: false,
-    youtube: false,
+const ALL_CONNECTED = {
+  x: true,
+  linkedin: true,
+  instagram: true,
+  tiktok: true,
+  reddit: true,
+  youtube: true,
 };
 
 export function getConnectedPlatforms() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return { ...DEFAULT_STATE };
-        return { ...DEFAULT_STATE, ...JSON.parse(raw) };
-    } catch {
-        return { ...DEFAULT_STATE };
-    }
+  return { ...ALL_CONNECTED };
 }
 
-export function setConnectedPlatforms(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    // Dispatch storage event so other components on the same page can react
-    window.dispatchEvent(new Event("connectedPlatformsChanged"));
+export function setConnectedPlatforms() {
+  try {
+    localStorage.setItem("chibitek:connectedPlatforms", JSON.stringify(ALL_CONNECTED));
+  } catch {
+    // Ignore storage issues; all platforms remain available in memory.
+  }
+  window.dispatchEvent(new Event("connectedPlatformsChanged"));
 }
 
-export function togglePlatform(key) {
-    const current = getConnectedPlatforms();
-    current[key] = !current[key];
-    setConnectedPlatforms(current);
-    return current;
+export function togglePlatform() {
+  setConnectedPlatforms();
+  return getConnectedPlatforms();
 }

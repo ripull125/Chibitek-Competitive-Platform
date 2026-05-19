@@ -6,12 +6,12 @@ import { createTheme } from "@mantine/core";
  * - Deep navy body (dark[7]) for low-glare background
  * - Slightly lighter surfaces (dark[6]) for cards/panels
  * - High-contrast text (dark[0]) and readable dimmed text (dark[2-3])
- * - Teal primary to match existing brand gradient in the navbar
+ * - Blue primary to keep the original Chibitek app color
  *
  * Mantine uses theme.colors.dark in dark scheme (dark[7] as body background, dark[0] as text). :contentReference[oaicite:2]{index=2}
  */
 export const theme = createTheme({
-  primaryColor: "teal",
+  primaryColor: "blue",
   primaryShade: { light: 6, dark: 5 },
 
   colors: {

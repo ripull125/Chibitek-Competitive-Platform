@@ -46,6 +46,8 @@ import {
 } from "../utils/aiModelSettings";
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
+const CHAT_PENDING_STORAGE_KEY = "chibitek-chat-pending";
+const CHAT_AUTOSAVE_INTERVAL_MS = 10000;
 const SUMMARY_PROMPT = [
   "Summarize the most recent posts provided in system context.",
   "Rules: use only the provided posts, do not invent details.",
@@ -56,6 +58,29 @@ const SpeechRecognition =
   typeof window !== "undefined"
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
+
+const chatRuntime = {
+  inFlight: null,
+};
+
+const persistChatState = (state) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage?.setItem(CHAT_STORAGE_KEY, JSON.stringify(state));
+  } catch (err) {
+    console.warn("Failed to persist chat", err);
+  }
+};
+
+const persistPendingState = (state) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (state) window.localStorage?.setItem(CHAT_PENDING_STORAGE_KEY, JSON.stringify(state));
+    else window.localStorage?.removeItem(CHAT_PENDING_STORAGE_KEY);
+  } catch (err) {
+    console.warn("Failed to persist pending chat state", err);
+  }
+};
 
 const loadPersistedChat = () => {
   if (typeof window === "undefined") return null;
@@ -104,64 +129,188 @@ const CHAT_QUICK_PROMPTS = [
   },
 ];
 
-function MessageContent({ content }) {
-  const lines = String(content || "").split(/\n/);
-  const groups = [];
-  let buffer = [];
+function renderInlineMarkdown(text) {
+  const value = String(text || "");
+  const pattern = /(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
 
-  const flush = () => {
-    if (buffer.length) {
-      groups.push({ type: "paragraph", lines: buffer });
-      buffer = [];
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+
+    if (token.startsWith("[") && token.includes("](")) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (linkMatch) {
+        parts.push(
+          <a key={key} href={linkMatch[2]} target="_blank" rel="noreferrer">
+            {linkMatch[1]}
+          </a>
+        );
+      } else {
+        parts.push(token);
+      }
+    } else if (token.startsWith("`")) {
+      parts.push(<code key={key}>{token.slice(1, -1)}</code>);
+    } else if (token.startsWith("**") || token.startsWith("__")) {
+      parts.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*") || token.startsWith("_")) {
+      parts.push(<em key={key}>{token.slice(1, -1)}</em>);
+    } else {
+      parts.push(token);
     }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return parts;
+}
+
+function parseMarkdownBlocks(content) {
+  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+
+  const collectParagraph = () => {
+    const paragraph = [];
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed) break;
+      if (/^```/.test(trimmed) || /^#{1,3}\s+/.test(trimmed) || /^>\s?/.test(trimmed) || /^([-*•]|\d+[.)])\s+/.test(trimmed)) break;
+      paragraph.push(trimmed);
+      i += 1;
+    }
+    if (paragraph.length) blocks.push({ type: "paragraph", text: paragraph.join(" ") });
   };
 
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flush();
-      return;
-    }
-    if (/^([-*•]|\d+[.)])\s+/.test(trimmed)) {
-      flush();
-      groups.push({ type: "bullet", text: trimmed.replace(/^([-*•]|\d+[.)])\s+/, "") });
-    } else {
-      buffer.push(trimmed);
-    }
-  });
-  flush();
+  while (i < lines.length) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
 
-  if (!groups.length) return null;
+    if (!trimmed) {
+      i += 1;
+      continue;
+    }
+
+    if (/^```/.test(trimmed)) {
+      const language = trimmed.replace(/^```/, "").trim();
+      i += 1;
+      const code = [];
+      while (i < lines.length && !/^```/.test(lines[i].trim())) {
+        code.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) i += 1;
+      blocks.push({ type: "code", language, text: code.join("\n") });
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      i += 1;
+      continue;
+    }
+
+    if (/^>\s?/.test(trimmed)) {
+      const quote = [];
+      while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+        quote.push(lines[i].trim().replace(/^>\s?/, ""));
+        i += 1;
+      }
+      blocks.push({ type: "quote", text: quote.join(" ") });
+      continue;
+    }
+
+    if (/^([-*•]|\d+[.)])\s+/.test(trimmed)) {
+      const ordered = /^\d+[.)]\s+/.test(trimmed);
+      const items = [];
+
+      while (i < lines.length) {
+        const item = lines[i].trim();
+
+        if (!item) {
+          let nextIndex = i + 1;
+          while (nextIndex < lines.length && !lines[nextIndex].trim()) nextIndex += 1;
+          const nextItem = lines[nextIndex]?.trim() || "";
+          const nextLooksLikeSameList =
+            /^([-*•]|\d+[.)])\s+/.test(nextItem) && /^\d+[.)]\s+/.test(nextItem) === ordered;
+          if (nextLooksLikeSameList) {
+            i = nextIndex;
+            continue;
+          }
+          break;
+        }
+
+        const itemOrdered = /^\d+[.)]\s+/.test(item);
+        if (!/^([-*•]|\d+[.)])\s+/.test(item) || itemOrdered !== ordered) break;
+        items.push(item.replace(/^([-*•]|\d+[.)])\s+/, ""));
+        i += 1;
+      }
+      blocks.push({ type: ordered ? "ordered-list" : "list", items });
+      continue;
+    }
+
+    collectParagraph();
+  }
+
+  return blocks;
+}
+
+function MessageContent({ content }) {
+  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
+  if (!blocks.length) return null;
 
   return (
-    <Stack gap={6}>
-      {groups.map((group, index) => {
-        if (group.type === "bullet") {
+    <Box className="chat-markdown">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const size = block.level === 1 ? "lg" : block.level === 2 ? "md" : "sm";
           return (
-            <Group key={index} gap={8} align="flex-start" wrap="nowrap">
-              <Box
-                mt={7}
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: "var(--accent-primary)",
-                  flexShrink: 0,
-                }}
-              />
-              <Text size="sm" lh={1.55} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {group.text}
-              </Text>
-            </Group>
+            <Text key={index} fw={800} size={size} mt={index ? 8 : 0} mb={4} lh={1.25}>
+              {renderInlineMarkdown(block.text)}
+            </Text>
           );
         }
+
+        if (block.type === "code") {
+          return (
+            <Box key={index} component="pre" className="chat-markdown-code">
+              <code>{block.text}</code>
+            </Box>
+          );
+        }
+
+        if (block.type === "quote") {
+          return (
+            <Box key={index} className="chat-markdown-quote">
+              {renderInlineMarkdown(block.text)}
+            </Box>
+          );
+        }
+
+        if (block.type === "list" || block.type === "ordered-list") {
+          const Component = block.type === "ordered-list" ? "ol" : "ul";
+          return (
+            <Box key={index} component={Component} className="chat-markdown-list">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+              ))}
+            </Box>
+          );
+        }
+
         return (
-          <Text key={index} size="sm" lh={1.55} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-            {group.lines.join("\n")}
+          <Text key={index} size="sm" lh={1.55} className="chat-markdown-p">
+            {renderInlineMarkdown(block.text)}
           </Text>
         );
       })}
-    </Stack>
+    </Box>
   );
 }
 
@@ -232,9 +381,14 @@ export default function ChatInput() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [contextMenu, setContextMenu] = useState(null);
   const [currentConversationTitle, setCurrentConversationTitle] = useState(persisted?.currentConversationTitle ?? null);
   const [lastUsedProvider, setLastUsedProvider] = useState(null);
   const [lastUsedModel, setLastUsedModel] = useState(null);
+  const [lastRetrieval, setLastRetrieval] = useState(null);
+  const [lastContextCount, setLastContextCount] = useState(null);
+  const [lastAvailablePosts, setLastAvailablePosts] = useState(null);
+  const [voyageStatus, setVoyageStatus] = useState(null);
   const initialAiSettings = useMemo(() => loadAiSettings(), []);
   const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
 
@@ -243,12 +397,14 @@ export default function ChatInput() {
   const recognitionRef = useRef(null);
   const requestAbortRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
+  const periodicAutoSaveRef = useRef(null);
   const pendingCreateRef = useRef(null);
   const lastSavedJsonRef = useRef("");
   const conversationRef = useRef(conversation);
   const currentConversationIdRef = useRef(currentConversationId);
   const currentConversationTitleRef = useRef(currentConversationTitle);
   const currentUserIdRef = useRef(currentUserId);
+  const mountedRef = useRef(false);
   const hasHydratedRef = useRef(false);
 
   const hasUserMessages = useMemo(() => conversation.some((entry) => entry.role === "user"), [conversation]);
@@ -394,8 +550,8 @@ export default function ChatInput() {
       }
     } catch (error) {
       pendingCreateRef.current = null;
-      setAutoSaveStatus("error");
-      setSaveNotice(error.message || "Autosave failed.");
+      console.warn("Chat autosave will retry later:", error?.message || error);
+      setAutoSaveStatus("pending");
     }
   };
 
@@ -438,6 +594,27 @@ export default function ChatInput() {
   useEffect(() => {
     hasHydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(apiUrl("/api/chat/health"))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setVoyageStatus({
+            enabled: Boolean(data.voyage_enabled),
+            model: data.voyage_model || null,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setVoyageStatus({ enabled: false, model: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
 
   useEffect(() => {
     saveAiSettings({ modelChoice: aiModelChoice });
@@ -505,6 +682,31 @@ export default function ChatInput() {
   }, [conversation, currentUserId, hasUserMessages]);
 
   useEffect(() => {
+    if (!hasHydratedRef.current || !hasUserMessages) return undefined;
+
+    const flushSave = () => {
+      if (!conversationRef.current?.some((entry) => entry.role === "user")) return;
+      autoSaveConversation(conversationRef.current);
+    };
+
+    if (periodicAutoSaveRef.current) window.clearInterval(periodicAutoSaveRef.current);
+    periodicAutoSaveRef.current = window.setInterval(flushSave, CHAT_AUTOSAVE_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushSave();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", flushSave);
+
+    return () => {
+      if (periodicAutoSaveRef.current) window.clearInterval(periodicAutoSaveRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", flushSave);
+    };
+  }, [currentUserId, currentConversationId, hasUserMessages]);
+
+  useEffect(() => {
     if (!SpeechRecognition) return undefined;
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
@@ -525,6 +727,131 @@ export default function ChatInput() {
     return () => recognition.stop();
   }, []);
 
+  useEffect(() => {
+    const closeContextMenu = () => setContextMenu(null);
+    window.addEventListener("click", closeContextMenu);
+    window.addEventListener("scroll", closeContextMenu, true);
+    window.addEventListener("resize", closeContextMenu);
+    return () => {
+      window.removeEventListener("click", closeContextMenu);
+      window.removeEventListener("scroll", closeContextMenu, true);
+      window.removeEventListener("resize", closeContextMenu);
+    };
+  }, []);
+
+  const applyResponseMetadata = (data = {}) => {
+    setLastUsedProvider(data.provider || null);
+    setLastUsedModel(data.model || null);
+    setLastRetrieval(data.retrieval || null);
+    setLastContextCount(typeof data.context_posts === "number" ? data.context_posts : null);
+    setLastAvailablePosts(typeof data.available_posts === "number" ? data.available_posts : null);
+  };
+
+  const persistCompletedConversation = async (completedConversation, data = {}) => {
+    conversationRef.current = completedConversation;
+    persistChatState({
+      message: "",
+      conversation: completedConversation,
+      attachments: [],
+      currentConversationId: currentConversationIdRef.current,
+      currentConversationTitle: currentConversationTitleRef.current,
+      isSidebarCollapsed,
+    });
+    persistPendingState(null);
+    await autoSaveConversation(completedConversation);
+    persistChatState({
+      message: "",
+      conversation: completedConversation,
+      attachments: [],
+      currentConversationId: currentConversationIdRef.current,
+      currentConversationTitle: currentConversationTitleRef.current,
+      isSidebarCollapsed,
+    });
+    return { conversation: completedConversation, data };
+  };
+
+  const runChatRequest = async ({ visibleConversation, payloadMessages, outgoingAttachments = [] }) => {
+    const activeUserId = await getActiveUserId();
+    const modelMeta = getModelMeta(aiModelChoice);
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+
+    persistPendingState({
+      startedAt: new Date().toISOString(),
+      conversation: visibleConversation,
+      currentConversationId: currentConversationIdRef.current,
+      currentConversationTitle: currentConversationTitleRef.current,
+    });
+
+    await autoSaveConversation(visibleConversation);
+
+    const response = await fetch(apiUrl("/api/chat"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(activeUserId ? { "x-user-id": activeUserId } : {}),
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messages: payloadMessages,
+        attachments: outgoingAttachments,
+        user_id: activeUserId || undefined,
+        llmProvider: modelMeta?.provider,
+        chatModel: aiModelChoice,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const reason = errorBody?.error ? `: ${errorBody.error}` : "";
+      throw new Error(`Chat request failed${reason}`);
+    }
+
+    const data = await response.json();
+    const completedConversation = [
+      ...visibleConversation,
+      { role: "assistant", content: data.reply || t("chat.noResponse") },
+    ];
+    return persistCompletedConversation(completedConversation, data);
+  };
+
+  const attachInFlightRequest = (promise) => {
+    promise
+      .then(({ conversation: completedConversation, data }) => {
+        if (!mountedRef.current) return;
+        applyResponseMetadata(data);
+        setConversation(completedConversation);
+        setAttachments([]);
+        setMessage("");
+        setAutoSaveStatus("saved");
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        const fallback = {
+          role: "assistant",
+          content: error?.message?.includes("GITHUB_TOKEN") ? t("chat.missingToken") : t("chat.modelUnavailable"),
+        };
+        const nextConversation = [...conversationRef.current, fallback];
+        conversationRef.current = nextConversation;
+        persistChatState({
+          message: "",
+          conversation: nextConversation,
+          attachments: [],
+          currentConversationId: currentConversationIdRef.current,
+          currentConversationTitle: currentConversationTitleRef.current,
+          isSidebarCollapsed,
+        });
+        persistPendingState(null);
+        autoSaveConversation(nextConversation);
+        if (mountedRef.current) setConversation(nextConversation);
+      })
+      .finally(() => {
+        if (chatRuntime.inFlight === promise) chatRuntime.inFlight = null;
+        requestAbortRef.current = null;
+        if (mountedRef.current) setIsSending(false);
+      });
+  };
+
   const handleSend = async () => {
     if (isSending) return;
     if (!message.trim() && attachments.length === 0) return;
@@ -536,120 +863,86 @@ export default function ChatInput() {
       attachments: outgoingAttachments,
     };
 
-    const updatedConversation = [...conversation, userMessage];
+    const updatedConversation = [...conversationRef.current, userMessage];
+    conversationRef.current = updatedConversation;
     setConversation(updatedConversation);
     setMessage("");
     setAttachments([]);
     setIsSending(true);
     setSaveNotice("");
+    setAutoSaveStatus("saving");
 
-    try {
-      const activeUserId = await getActiveUserId();
-      const modelMeta = getModelMeta(aiModelChoice);
-      const controller = new AbortController();
-      requestAbortRef.current = controller;
-      const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
-      const response = await fetch(apiUrl("/api/chat"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(activeUserId ? { "x-user-id": activeUserId } : {}),
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          messages: payloadMessages,
-          attachments: outgoingAttachments,
-          user_id: activeUserId || undefined,
-          llmProvider: modelMeta?.provider,
-          chatModel: aiModelChoice,
-        }),
-      });
+    persistChatState({
+      message: "",
+      conversation: updatedConversation,
+      attachments: [],
+      currentConversationId: currentConversationIdRef.current,
+      currentConversationTitle: currentConversationTitleRef.current,
+      isSidebarCollapsed,
+    });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
-        throw new Error(`Chat request failed${reason}`);
-      }
-
-      const data = await response.json();
-      setLastUsedProvider(data.provider || null);
-      setLastUsedModel(data.model || null);
-      setConversation((prev) => [...prev, { role: "assistant", content: data.reply || t("chat.noResponse") }]);
-    } catch (error) {
-      if (error?.name === "AbortError") return;
-      setConversation((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: error?.message?.includes("GITHUB_TOKEN")
-            ? t("chat.missingToken")
-            : t("chat.modelUnavailable"),
-        },
-      ]);
-    } finally {
-      requestAbortRef.current = null;
-      setIsSending(false);
-    }
+    const payloadMessages = updatedConversation.map(({ role, content }) => ({ role, content }));
+    const requestPromise = runChatRequest({
+      visibleConversation: updatedConversation,
+      payloadMessages,
+      outgoingAttachments,
+    });
+    chatRuntime.inFlight = requestPromise;
+    attachInFlightRequest(requestPromise);
   };
 
   const handleSummarizeRecentPosts = async () => {
     if (isSending) return;
     const visiblePrompt = { role: "user", content: t("chat.quickSummarizeSavedPosts") };
-    setConversation((prev) => [...prev, visiblePrompt]);
+    const visibleConversation = [...conversationRef.current, visiblePrompt];
+    conversationRef.current = visibleConversation;
+    setConversation(visibleConversation);
+    setMessage("");
+    setAttachments([]);
     setIsSending(true);
     setSaveNotice("");
+    setAutoSaveStatus("saving");
 
-    try {
-      const activeUserId = await getActiveUserId();
-      const modelMeta = getModelMeta(aiModelChoice);
-      const controller = new AbortController();
-      requestAbortRef.current = controller;
-      const response = await fetch(apiUrl("/api/chat"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(activeUserId ? { "x-user-id": activeUserId } : {}),
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          messages: [{ role: "user", content: SUMMARY_PROMPT }],
-          user_id: activeUserId || undefined,
-          llmProvider: modelMeta?.provider,
-          chatModel: aiModelChoice,
-        }),
-      });
+    persistChatState({
+      message: "",
+      conversation: visibleConversation,
+      attachments: [],
+      currentConversationId: currentConversationIdRef.current,
+      currentConversationTitle: currentConversationTitleRef.current,
+      isSidebarCollapsed,
+    });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const reason = errorBody?.error ? `: ${errorBody.error}` : "";
-        throw new Error(`Chat request failed${reason}`);
-      }
-
-      const data = await response.json();
-      setLastUsedProvider(data.provider || null);
-      setLastUsedModel(data.model || null);
-      setConversation((prev) => [...prev, { role: "assistant", content: data.reply || t("chat.noResponse") }]);
-    } catch (error) {
-      if (error?.name === "AbortError") return;
-      setConversation((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: error?.message?.includes("GITHUB_TOKEN")
-            ? t("chat.missingToken")
-            : t("chat.modelUnavailable"),
-        },
-      ]);
-    } finally {
-      requestAbortRef.current = null;
-      setIsSending(false);
-    }
+    const requestPromise = runChatRequest({
+      visibleConversation,
+      payloadMessages: [{ role: "user", content: SUMMARY_PROMPT }],
+      outgoingAttachments: [],
+    });
+    chatRuntime.inFlight = requestPromise;
+    attachInFlightRequest(requestPromise);
   };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const pendingRaw = typeof window !== "undefined" ? window.localStorage?.getItem(CHAT_PENDING_STORAGE_KEY) : null;
+    if (chatRuntime.inFlight) {
+      setIsSending(true);
+      setAutoSaveStatus("saving");
+      attachInFlightRequest(chatRuntime.inFlight);
+    } else if (pendingRaw) {
+      persistPendingState(null);
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleStopGenerating = () => {
     if (!requestAbortRef.current) return;
     requestAbortRef.current.abort();
     requestAbortRef.current = null;
+    chatRuntime.inFlight = null;
+    persistPendingState(null);
     setIsSending(false);
   };
 
@@ -711,6 +1004,9 @@ export default function ChatInput() {
     lastSavedJsonRef.current = "";
     setAutoSaveStatus("idle");
     setSaveNotice("");
+    setLastRetrieval(null);
+    setLastContextCount(null);
+    setLastAvailablePosts(null);
   };
 
   const handleLoadConversation = async (conversationId) => {
@@ -872,6 +1168,18 @@ export default function ChatInput() {
     }
   };
 
+  const openChatContextMenu = (event, item) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      item,
+      x: Math.min(event.clientX, window.innerWidth - 190),
+      y: Math.min(event.clientY, window.innerHeight - 140),
+    });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
   const attachmentBadges = useMemo(
     () =>
       attachments.map((file) => (
@@ -893,9 +1201,36 @@ export default function ChatInput() {
     if (autoSaveStatus === "saving") return t("chat.saving");
     if (autoSaveStatus === "saved") return t("chat.savedStatus");
     if (autoSaveStatus === "local") return t("chat.savedLocally");
-    if (autoSaveStatus === "error") return t("chat.autosaveIssue");
+    if (autoSaveStatus === "pending" || autoSaveStatus === "error") return t("chat.syncPending", { defaultValue: "Sync pending" });
     return t("chat.autosaveOn");
-  }, [autoSaveStatus, hasUserMessages]);
+  }, [autoSaveStatus, hasUserMessages, t]);
+
+
+  const retrievalLabel = useMemo(() => {
+    if (lastRetrieval === "voyage-rerank") return t("chat.voyageReranked", { defaultValue: "Voyage ranked posts" });
+    if (lastRetrieval === "recent") return t("chat.recentContext", { defaultValue: "Recent posts context" });
+    if (lastRetrieval === "none") return t("chat.noPostContext", { defaultValue: "No post context" });
+    return "";
+  }, [lastRetrieval, t]);
+
+  const retrievalTitle = useMemo(() => {
+    if (!lastRetrieval) return "";
+    if (lastRetrieval === "voyage-rerank") {
+      return t("chat.voyageRerankHint", {
+        count: lastContextCount ?? 0,
+        total: lastAvailablePosts ?? 0,
+        defaultValue: "Voyage AI selected the most relevant saved posts before the chat model answered.",
+      });
+    }
+    if (lastRetrieval === "recent") {
+      return t("chat.recentContextHint", {
+        count: lastContextCount ?? 0,
+        total: lastAvailablePosts ?? 0,
+        defaultValue: "Using the latest saved posts. Add VOYAGE_API_KEY on the server to rank posts by relevance.",
+      });
+    }
+    return "";
+  }, [lastRetrieval, lastContextCount, lastAvailablePosts, t]);
 
   return (
     <Box
@@ -903,25 +1238,25 @@ export default function ChatInput() {
         minHeight: "100vh",
         background: "var(--bg-primary)",
         color: "var(--text-primary)",
-        padding: 10,
+        padding: 8,
       }}
     >
       <Box
         data-tour="chat-root"
         style={{
           width: "100%",
-          maxWidth: "min(1180px, calc(100vw - 20px))",
-          height: "calc(100dvh - 20px)",
+          maxWidth: "min(1000px, calc(100vw - 16px))",
+          height: "calc(100dvh - 16px)",
           marginInline: "auto",
           display: "grid",
-          gridTemplateColumns: isSidebarCollapsed ? "58px minmax(0, 1fr)" : "clamp(238px, 23vw, 292px) minmax(0, 1fr)",
+          gridTemplateColumns: isSidebarCollapsed ? "48px minmax(0, 1fr)" : "clamp(200px, 20vw, 236px) minmax(0, 1fr)",
           gap: 10,
         }}
       >
         <Paper
           withBorder
           radius="lg"
-          p={isSidebarCollapsed ? 6 : "xs"}
+          p={isSidebarCollapsed ? 5 : 8}
           style={{
             minWidth: 0,
             overflow: "hidden",
@@ -1007,8 +1342,9 @@ export default function ChatInput() {
                           withBorder
                           radius="md"
                           px="xs"
-                          py={7}
+                          py={6}
                           onClick={() => handleLoadConversation(item.id)}
+                          onContextMenu={(event) => openChatContextMenu(event, item)}
                           style={{
                             cursor: "pointer",
                             background: isActive ? "var(--accent-soft)" : "var(--surface-1)",
@@ -1089,7 +1425,7 @@ export default function ChatInput() {
         >
           <Box
             px="sm"
-            py={8}
+            py={7}
             style={{
               borderBottom: "1px solid var(--border-color)",
               background: "var(--surface-1)",
@@ -1101,12 +1437,33 @@ export default function ChatInput() {
                   {hasUserMessages ? getDisplayChatTitle(activeTitle, t, "chat.newChat") : t("chat.newChat")}
                 </Title>
                 <Group gap={6} mt={4} wrap="wrap">
-                  <Badge size="xs" variant="light" color={autoSaveStatus === "error" ? "red" : "blue"}>
+                  <Badge size="xs" variant="light" color={autoSaveStatus === "pending" || autoSaveStatus === "error" ? "gray" : "blue"}>
                     {autoSaveLabel}
                   </Badge>
-                  {saveNotice ? (
-                    <Badge size="xs" variant="light" color={saveNotice.toLowerCase().includes("fail") ? "red" : "gray"}>
+                  {saveNotice && !saveNotice.toLowerCase().includes("autosave") ? (
+                    <Badge size="xs" variant="light" color={saveNotice.toLowerCase().includes("fail") ? "yellow" : "gray"}>
                       {saveNotice}
+                    </Badge>
+                  ) : null}
+                  {voyageStatus ? (
+                    <Badge
+                      size="xs"
+                      variant="light"
+                      color={voyageStatus.enabled ? "blue" : "gray"}
+                      title={
+                        voyageStatus.enabled
+                          ? t("chat.voyageReadyHint", { defaultValue: "Voyage is ranking saved posts before the chat model answers." })
+                          : t("chat.voyageOffHint", { defaultValue: "Voyage is not configured, so chat uses recent saved posts instead." })
+                      }
+                    >
+                      {voyageStatus.enabled
+                        ? t("chat.voyageReady", { defaultValue: "Voyage ready" })
+                        : t("chat.voyageOff", { defaultValue: "Voyage off" })}
+                    </Badge>
+                  ) : null}
+                  {retrievalLabel ? (
+                    <Badge size="xs" variant="light" color={lastRetrieval === "voyage-rerank" ? "blue" : "gray"} title={retrievalTitle}>
+                      {retrievalLabel}
                     </Badge>
                   ) : null}
                   {(lastUsedProvider || lastUsedModel) ? (
@@ -1123,7 +1480,7 @@ export default function ChatInput() {
                   onChange={(value) => value && setAiModelChoice(value)}
                   data={AI_MODEL_OPTIONS}
                   searchable
-                  w={220}
+                  w={190}
                   size="xs"
                   placeholder={t("chat.chooseAiModel")}
                   disabled={isSending}
@@ -1135,16 +1492,16 @@ export default function ChatInput() {
             </Group>
           </Box>
 
-          <ScrollArea viewportRef={chatViewportRef} style={{ flex: 1 }} p="sm" type="auto" data-tour="chat-messages">
+          <ScrollArea viewportRef={chatViewportRef} style={{ flex: 1 }} p={8} type="auto" data-tour="chat-messages">
             <Box
               style={{
                 width: "100%",
-                maxWidth: 760,
+                maxWidth: 620,
                 marginInline: "auto",
                 display: "flex",
                 flexDirection: "column",
-                gap: 10,
-                paddingRight: 10,
+                gap: 7,
+                paddingRight: 8,
               }}
             >
               {conversation.map((entry, index) => {
@@ -1159,12 +1516,12 @@ export default function ChatInput() {
                   >
                     <Paper
                       shadow="xs"
-                      p={8}
+                      p={6}
                       withBorder={!isUser}
                       radius="lg"
                       style={{
-                        width: isUser ? "fit-content" : "min(700px, 100%)",
-                        maxWidth: isUser ? "72%" : "100%",
+                        width: isUser ? "fit-content" : "min(590px, 100%)",
+                        maxWidth: isUser ? "64%" : "100%",
                         background: isUser ? "var(--chat-user-bg)" : "var(--chat-assistant-bg)",
                         borderColor: isUser ? "var(--chat-user-border)" : "var(--border-color)",
                       }}
@@ -1236,6 +1593,9 @@ export default function ChatInput() {
                       {t("chat.recentPostSummary")}
                     </Button>
                   </Group>
+                  <Text size="xs" c="dimmed" mt={8}>
+                    {t("chat.voyageInlineHelp", { defaultValue: "Saved-post answers use recent posts, or Voyage-ranked posts when configured." })}
+                  </Text>
                 </Paper>
               ) : null}
 
@@ -1243,7 +1603,7 @@ export default function ChatInput() {
                 <Paper
                   withBorder
                   radius="lg"
-                  p="sm"
+                  p={8}
                   style={{ alignSelf: "flex-start", background: "var(--chat-assistant-bg)", borderColor: "var(--border-color)" }}
                 >
                   <Group gap="xs">
@@ -1272,17 +1632,17 @@ export default function ChatInput() {
             data-tour="chat-composer"
           >
             <Box
-              px={12}
-              py={8}
+              px={10}
+              py={6}
               style={{
                 width: "100%",
-                maxWidth: 760,
+                maxWidth: 620,
                 marginInline: "auto",
                 display: "flex",
                 alignItems: "flex-end",
                 gap: 8,
                 background: "var(--surface-1)",
-                borderRadius: 18,
+                borderRadius: 16,
                 boxShadow: "0 1px 6px var(--shadow)",
                 border: "1px solid var(--border-color)",
               }}
@@ -1331,7 +1691,7 @@ export default function ChatInput() {
               <ActionIcon
                 variant="filled"
                 color={isSending ? "red" : "blue"}
-                size="lg"
+                size="md"
                 radius="xl"
                 onClick={isSending ? handleStopGenerating : handleSend}
                 style={{ flexShrink: 0 }}
@@ -1343,6 +1703,67 @@ export default function ChatInput() {
           </Box>
         </Paper>
       </Box>
+
+      {contextMenu ? (
+        <Paper
+          withBorder
+          shadow="md"
+          radius="md"
+          p={4}
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            position: "fixed",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 10000,
+            minWidth: 160,
+            background: "var(--surface-1)",
+            borderColor: "var(--border-color)",
+          }}
+        >
+          <Stack gap={2}>
+            <Button
+              variant="subtle"
+              color="gray"
+              justify="flex-start"
+              size="xs"
+              leftSection={<IconFolderOpen size={14} />}
+              onClick={() => {
+                handleLoadConversation(contextMenu.item.id);
+                closeContextMenu();
+              }}
+            >
+              {t("chat.open")}
+            </Button>
+            <Button
+              variant="subtle"
+              color="gray"
+              justify="flex-start"
+              size="xs"
+              leftSection={<IconEdit size={14} />}
+              onClick={() => {
+                openRenameConversation(contextMenu.item);
+                closeContextMenu();
+              }}
+            >
+              {t("chat.rename")}
+            </Button>
+            <Button
+              variant="subtle"
+              color="red"
+              justify="flex-start"
+              size="xs"
+              leftSection={<IconTrash size={14} />}
+              onClick={() => {
+                setDeleteTarget(contextMenu.item);
+                closeContextMenu();
+              }}
+            >
+              {t("common.delete")}
+            </Button>
+          </Stack>
+        </Paper>
+      ) : null}
 
       <Modal opened={Boolean(renameTarget)} onClose={() => setRenameTarget(null)} title={t("chat.renameChat")} centered>
         <TextInput

@@ -20,7 +20,7 @@ import {
   Center,
   useMantineColorScheme,
 } from "@mantine/core";
-import { IconTrash, IconWorld, IconSun, IconMoon, IconDeviceDesktop, IconSearch } from "@tabler/icons-react";
+import { IconTrash, IconWorld, IconSun, IconMoon, IconDeviceDesktop, IconSearch, IconPalette } from "@tabler/icons-react";
 import { useAppTour } from "../tour/AppTourProvider.jsx";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
@@ -44,12 +44,36 @@ const NATIVE_LANGUAGE_OPTIONS = [
   { value: "es", label: "Español" },
 ];
 
+
+const ACCENT_THEME_STORAGE_KEY = "chibitek-accent-theme";
+
+const COLOR_THEME_OPTIONS = [
+  { value: "blue", label: "Blue", swatch: "#228be6" },
+  { value: "purple", label: "Purple", swatch: "#7950f2" },
+  { value: "green", label: "Green", swatch: "#2f9e44" },
+  { value: "orange", label: "Orange", swatch: "#f08c00" },
+  { value: "rose", label: "Rose", swatch: "#e64980" },
+];
+
+function readAccentTheme() {
+  if (typeof window === "undefined") return "blue";
+  return window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "blue";
+}
+
+function applyAccentTheme(value) {
+  if (typeof window === "undefined") return;
+  const safeValue = COLOR_THEME_OPTIONS.some((item) => item.value === value) ? value : "blue";
+  window.localStorage?.setItem(ACCENT_THEME_STORAGE_KEY, safeValue);
+  document.documentElement.setAttribute("data-chibitek-theme", safeValue);
+  window.dispatchEvent(new CustomEvent("chibitek:accentTheme", { detail: { theme: safeValue } }));
+}
+
 const getNativeLanguageName = (code) =>
   NATIVE_LANGUAGE_OPTIONS.find((item) => item.value === code)?.label || "English";
 
-function SettingsCard({ label, title, description, children, className = "" }) {
+function SettingsCard({ label, title, description, children, className = "", tourId = null }) {
   return (
-    <Paper withBorder radius="lg" p="md" className={`${classes.card} ${className}`.trim()}>
+    <Paper withBorder radius="lg" p="md" className={`${classes.card} ${className}`.trim()} data-tour={tourId || undefined}>
       <Stack gap={12} className={classes.cardInner}>
         <Text className={classes.sectionLabel}>{label}</Text>
         <Text className={classes.rowTitle}>{title}</Text>
@@ -91,6 +115,7 @@ export default function Settings() {
   const [adminBanner, setAdminBanner] = useState(null);
   const initialAiSettings = useMemo(() => loadAiSettings(), []);
   const [aiModelChoice, setAiModelChoice] = useState(initialAiSettings.modelChoice);
+  const [accentTheme, setAccentTheme] = useState(readAccentTheme);
 
   const languageLabel = useMemo(
     () => getNativeLanguageName(language),
@@ -297,6 +322,10 @@ export default function Settings() {
     window.addEventListener(eventName, syncSettings);
     return () => window.removeEventListener(eventName, syncSettings);
   }, []);
+
+  useEffect(() => {
+    applyAccentTheme(accentTheme);
+  }, [accentTheme]);
 
   async function handleCreateUser(e) {
     e.preventDefault();
@@ -517,6 +546,7 @@ export default function Settings() {
 
         <Box className={classes.grid}>
           <SettingsCard
+            tourId="settings-profile"
             label={t("settings.accountLabel")}
             title={t("settings.profileTitle")}
             description={t("settings.profileDesc")}
@@ -533,6 +563,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-integrations"
             label={t("settings.dataSourcesLabel")}
             title={t("settings.integrationsTitle")}
             description={t("settings.integrationsDesc")}
@@ -549,6 +580,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-language"
             label={t("settings.languageLabel")}
             title={t("settings.languageTitle")}
           >
@@ -585,6 +617,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-appearance"
             label={t("settings.appearanceLabel")}
             title={t("settings.themeTitle")}
             description={t("settings.themeDesc")}
@@ -624,9 +657,48 @@ export default function Settings() {
                 },
               ]}
             />
+
+            <Stack gap={8} mt={4} w="100%" align="center">
+              <Group gap={6} justify="center">
+                <IconPalette size={15} />
+                <Text size="sm" fw={700}>
+                  {t("settings.colorThemeTitle", { defaultValue: "Color theme" })}
+                </Text>
+              </Group>
+              <Group gap={8} justify="center" wrap="wrap">
+                {COLOR_THEME_OPTIONS.map((item) => {
+                  const selected = accentTheme === item.value;
+                  return (
+                    <Button
+                      key={item.value}
+                      size="xs"
+                      variant={selected ? "filled" : "light"}
+                      color="blue"
+                      radius="xl"
+                      className={classes.colorThemeBtn}
+                      onClick={() => setAccentTheme(item.value)}
+                      leftSection={
+                        <Box
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 999,
+                            background: item.swatch,
+                            boxShadow: "0 0 0 1px rgba(255,255,255,.7)",
+                          }}
+                        />
+                      }
+                    >
+                      {t(`settings.colorTheme.${item.value}`, { defaultValue: item.label })}
+                    </Button>
+                  );
+                })}
+              </Group>
+            </Stack>
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-tutorial-card"
             label={t("settings.tutorialLabel")}
             title={t("settings.tutorialTitle")}
             description={t("settings.tutorialDesc")}
@@ -645,6 +717,7 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
+            tourId="settings-ai"
             label={t("settings.aiLabel")}
             title={t("settings.chatModelTitle")}
             description={t("settings.chatModelDesc")}
@@ -684,6 +757,7 @@ export default function Settings() {
 
           {loadingAdmin ? (
             <SettingsCard
+              tourId="settings-admin"
               label={t("settings.adminLabel")}
               title={t("settings.adminConsoleTitle")}
               description={t("settings.loadingAdminControls")}
@@ -694,6 +768,7 @@ export default function Settings() {
 
           {!loadingAdmin && canManageRegularUsers ? (
             <SettingsCard
+              tourId="settings-admin"
               className={classes.adminCard}
               label={accessRole === "owner" ? t("settings.ownerLabel") : t("settings.adminLabel")}
               title={accessRole === "owner" ? t("settings.usersAdminsOwners") : t("settings.usersTitle")}
