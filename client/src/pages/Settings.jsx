@@ -698,25 +698,6 @@ export default function Settings() {
           </SettingsCard>
 
           <SettingsCard
-            tourId="settings-tutorial-card"
-            label={t("settings.tutorialLabel")}
-            title={t("settings.tutorialTitle")}
-            description={t("settings.tutorialDesc")}
-          >
-            <Box data-tour="settings-tutorial-card">
-              <Button
-                variant="light"
-                radius="md"
-                size="md"
-                className={classes.actionBtn}
-                onClick={() => tour.start()}
-              >
-                {t("common.start")}
-              </Button>
-            </Box>
-          </SettingsCard>
-
-          <SettingsCard
             tourId="settings-ai"
             label={t("settings.aiLabel")}
             title={t("settings.chatModelTitle")}

@@ -66,6 +66,7 @@ import classes from "./DashboardPage.module.css";
 import { useTranslation } from "react-i18next";
 import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
 import { analyzeUniversalPosts, convertSavedPosts } from "./DataConverter";
+import { useAppTour } from "../tour/AppTourProvider.jsx";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -1121,6 +1122,7 @@ function DashboardSkeleton() {
 /* ------------------------------------------------------------------ */
 export default function DashboardPage() {
   const { t } = useTranslation();
+  const tour = useAppTour();
   const { posts, setPosts, keywords, platformIdMap, loading, userId } = useDashboardData();
   const [toneAnalysisLoading, setToneAnalysisLoading] = useState(false);
   const analytics = useAnalytics(posts, keywords, platformIdMap);
@@ -1181,6 +1183,9 @@ export default function DashboardPage() {
                     })}
               </Text>
             </Stack>
+            <Button variant="light" radius="md" size="sm" onClick={() => tour.start()}>
+              {t("settings.tutorialTitle", { defaultValue: "Tutorial" })}
+            </Button>
           </Group>
         </header>
 
