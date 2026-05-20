@@ -1006,12 +1006,22 @@ function ToneBreakdown({ data, onStartAnalysis, analyzing, hasPosts }) {
 /* ------------------------------------------------------------------ */
 /*  AI Summary                                                         */
 /* ------------------------------------------------------------------ */
+const DASHBOARD_SUMMARY_KEY = "chibitek-dashboard-ai-summary";
+const CHAT_SEED_KEY = "chibitek-chat-seed-message";
+
 function AISummary({ analytics, userId }) {
   const { t } = useTranslation();
-  const [summary, setSummary] = useState(null);
+  const [summary, setSummary] = useState(() => {
+    try { return window.localStorage?.getItem(DASHBOARD_SUMMARY_KEY) || null; } catch { return null; }
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+
+  const saveSummary = (text) => {
+    setSummary(text);
+    try { window.localStorage?.setItem(DASHBOARD_SUMMARY_KEY, text); } catch {}
+  };
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -1045,13 +1055,18 @@ function AISummary({ analytics, userId }) {
         }),
       });
       const json = await res.json();
-      setSummary(json.reply || json.message || t("dashboard.noSummaryGenerated", { defaultValue: "No summary generated." }));
+      saveSummary(json.reply || json.message || t("dashboard.noSummaryGenerated", { defaultValue: "No summary generated." }));
     } catch (e) {
       setError(t("dashboard.summaryError", { defaultValue: "Could not generate summary. Check that the AI service is running." }));
     } finally {
       setLoading(false);
     }
   }, [analytics, userId, t]);
+
+  const continueInChat = () => {
+    try { window.localStorage?.setItem(CHAT_SEED_KEY, summary); } catch {}
+    navigate("/chat");
+  };
 
   return (
     <SectionCard
@@ -1067,7 +1082,7 @@ function AISummary({ analytics, userId }) {
           </Paper>
           <Group>
             <Button variant="light" size="sm" onClick={generate} loading={loading}>{t("dashboard.regenerate", { defaultValue: "Regenerate" })}</Button>
-            <Button variant="light" size="sm" onClick={() => navigate("/chat")} rightSection={<IconMessageChatbot size={16} />}>
+            <Button variant="light" size="sm" onClick={continueInChat} rightSection={<IconMessageChatbot size={16} />}>
               {t("dashboard.continueInChat", { defaultValue: "Continue in Chat" })}
             </Button>
           </Group>

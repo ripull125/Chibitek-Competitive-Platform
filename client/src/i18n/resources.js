@@ -4518,4 +4518,133 @@ Object.entries(EXTRA_TRANSLATIONS_FINAL_FIXES).forEach(([language, translation])
   deepMergeTranslation(resources[language].translation, translation);
 });
 
+
+const EXTRA_TRANSLATIONS_UI_FEATURES = {
+  en: {
+    settings: {
+      colorThemeTitle: "Color theme",
+      colorTheme: { blue: "Blue", purple: "Purple", green: "Green", orange: "Orange", rose: "Rose" }
+    },
+    chat: {
+      voyageReady: "Voyage ready",
+      voyageOff: "Voyage off",
+      voyageReadyHint: "Voyage is ranking saved posts before the chat model answers.",
+      voyageOffHint: "Voyage is not configured, so chat uses recent saved posts instead.",
+      voyageReranked: "Voyage ranked posts",
+      recentContext: "Recent posts context",
+      noPostContext: "No post context",
+      voyageInlineHelp: "Saved-post answers use recent posts, or Voyage-ranked posts when configured.",
+      voyageRerankHint: "Voyage AI selected the most relevant saved posts before the chat model answered."
+    },
+    reports: {
+      step1: "Step 1 — Pick a style",
+      step1Desc: "Choose the report type that fits your need.",
+      step2: "Step 2 — Let AI build it (optional)",
+      step2Desc: "Describe the report you want and AI will set it up for you.",
+      sectionToggleHint: "Sections included:"
+    }
+  },
+  ja: {
+    settings: {
+      colorThemeTitle: "カラーテーマ",
+      colorTheme: { blue: "ブルー", purple: "パープル", green: "グリーン", orange: "オレンジ", rose: "ローズ" }
+    },
+    chat: {
+      voyageReady: "Voyage 有効",
+      voyageOff: "Voyage 無効",
+      voyageReadyHint: "Voyage が保存済み投稿をランク付けしてからチャットモデルが回答します。",
+      voyageOffHint: "Voyage が設定されていないため、チャットは最近の保存済み投稿を使用します。",
+      voyageReranked: "Voyage ランク済み投稿",
+      recentContext: "最近の投稿コンテキスト",
+      noPostContext: "投稿コンテキストなし",
+      voyageInlineHelp: "保存済み投稿への回答は最近の投稿、またはVoyageが設定されている場合はランク付けされた投稿を使用します。",
+      voyageRerankHint: "Voyage AIがチャットモデルの回答前に最も関連性の高い保存済み投稿を選択しました。"
+    },
+    reports: {
+      step1: "ステップ1 — スタイルを選択",
+      step1Desc: "ニーズに合ったレポートタイプを選択してください。",
+      step2: "ステップ2 — AIに任せる（任意）",
+      step2Desc: "希望するレポートを説明するとAIが設定します。",
+      sectionToggleHint: "含まれるセクション:"
+    }
+  },
+  fr: {
+    settings: {
+      colorThemeTitle: "Couleur d'accentuation",
+      colorTheme: { blue: "Bleu", purple: "Violet", green: "Vert", orange: "Orange", rose: "Rose" }
+    },
+    chat: {
+      voyageReady: "Voyage actif",
+      voyageOff: "Voyage inactif",
+      voyageReadyHint: "Voyage classe les publications enregistrées avant que le modèle réponde.",
+      voyageOffHint: "Voyage n'est pas configuré ; le chat utilise les publications récentes.",
+      voyageReranked: "Publications classées par Voyage",
+      recentContext: "Contexte des publications récentes",
+      noPostContext: "Aucun contexte de publication",
+      voyageInlineHelp: "Les réponses utilisent les publications récentes ou celles classées par Voyage si configuré.",
+      voyageRerankHint: "Voyage AI a sélectionné les publications enregistrées les plus pertinentes avant de répondre."
+    },
+    reports: {
+      step1: "Étape 1 — Choisir un style",
+      step1Desc: "Choisissez le type de rapport qui correspond à vos besoins.",
+      step2: "Étape 2 — Laisser l'IA construire (facultatif)",
+      step2Desc: "Décrivez le rapport souhaité et l'IA le configurera.",
+      sectionToggleHint: "Sections incluses :"
+    }
+  },
+  de: {
+    settings: {
+      colorThemeTitle: "Akzentfarbe",
+      colorTheme: { blue: "Blau", purple: "Violett", green: "Grün", orange: "Orange", rose: "Rosé" }
+    },
+    chat: {
+      voyageReady: "Voyage aktiv",
+      voyageOff: "Voyage inaktiv",
+      voyageReadyHint: "Voyage ordnet gespeicherte Beiträge, bevor das Modell antwortet.",
+      voyageOffHint: "Voyage ist nicht konfiguriert; der Chat nutzt aktuelle Beiträge.",
+      voyageReranked: "Von Voyage geordnete Beiträge",
+      recentContext: "Kontext aktueller Beiträge",
+      noPostContext: "Kein Beitragskontext",
+      voyageInlineHelp: "Antworten nutzen aktuelle Beiträge oder von Voyage geordnete, wenn konfiguriert.",
+      voyageRerankHint: "Voyage AI hat die relevantesten gespeicherten Beiträge vor der Antwort ausgewählt."
+    },
+    reports: {
+      step1: "Schritt 1 — Stil wählen",
+      step1Desc: "Wählen Sie den Berichtstyp, der Ihrem Bedarf entspricht.",
+      step2: "Schritt 2 — KI erstellen lassen (optional)",
+      step2Desc: "Beschreiben Sie den gewünschten Bericht und die KI richtet ihn ein.",
+      sectionToggleHint: "Enthaltene Abschnitte:"
+    }
+  },
+  es: {
+    settings: {
+      colorThemeTitle: "Color de acento",
+      colorTheme: { blue: "Azul", purple: "Morado", green: "Verde", orange: "Naranja", rose: "Rosa" }
+    },
+    chat: {
+      voyageReady: "Voyage activo",
+      voyageOff: "Voyage inactivo",
+      voyageReadyHint: "Voyage clasifica las publicaciones guardadas antes de que el modelo responda.",
+      voyageOffHint: "Voyage no está configurado; el chat usa publicaciones recientes.",
+      voyageReranked: "Publicaciones clasificadas por Voyage",
+      recentContext: "Contexto de publicaciones recientes",
+      noPostContext: "Sin contexto de publicaciones",
+      voyageInlineHelp: "Las respuestas usan publicaciones recientes o clasificadas por Voyage si está configurado.",
+      voyageRerankHint: "Voyage AI seleccionó las publicaciones más relevantes antes de responder."
+    },
+    reports: {
+      step1: "Paso 1 — Elige un estilo",
+      step1Desc: "Elige el tipo de informe que se adapta a tu necesidad.",
+      step2: "Paso 2 — Deja que la IA lo cree (opcional)",
+      step2Desc: "Describe el informe que quieres y la IA lo configurará.",
+      sectionToggleHint: "Secciones incluidas:"
+    }
+  }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_UI_FEATURES).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
 export default resources;

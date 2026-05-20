@@ -9,7 +9,6 @@ import {
   Container,
   Group,
   LoadingOverlay,
-  NumberInput,
   Paper,
   ScrollArea,
   SimpleGrid,
@@ -94,15 +93,15 @@ const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter((s) => !s.hidden);
 const DEFAULT_ORDER = VISIBLE_SECTION_DEFS.map((s) => s.id);
 const VALID_SECTION_IDS = new Set(SECTION_DEFS.map((s) => s.id));
 const PANEL_LAYOUT = {
-  summary: { span: 1, height: 128 },
-  kpis: { span: 1, height: 128 },
-  timeline: { span: 1, height: 220 },
-  platforms: { span: 1, height: 220 },
-  tone: { span: 1, height: 220 },
-  toneEngagement: { span: 1, height: 220 },
-  topPosts: { span: 2, height: 264, chunkSize: 5 },
-  competitors: { span: 1, height: 246, chunkSize: 7 },
-  keywords: { span: 1, height: 246, chunkSize: 7 },
+  summary: { span: 1, height: 155 },
+  kpis: { span: 1, height: 155 },
+  timeline: { span: 1, height: 250 },
+  platforms: { span: 1, height: 250 },
+  tone: { span: 1, height: 250 },
+  toneEngagement: { span: 1, height: 250 },
+  topPosts: { span: 2, height: 310, chunkSize: 5 },
+  competitors: { span: 2, height: 380, chunkSize: 10 },
+  keywords: { span: 2, height: 380, chunkSize: 10 },
 };
 
 const REPORT_PRESETS = [
@@ -1135,67 +1134,85 @@ export default function Reports() {
         </Alert>
       )}
 
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md" mb="lg">
-        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-ai">
-          <Stack gap="xs">
-            <Group justify="space-between" align="center">
-              <Title order={2} size="h4">{t("reports.askAi")}</Title>
-              <Badge variant="light" color="blue">{t("reports.bestOption")}</Badge>
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="lg">
+        {/* Step 1: Pick a style and download */}
+        <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-layout">
+          <Stack gap="md">
+            <div>
+              <Title order={2} size="h4" mb={2}>{t("reports.step1", { defaultValue: "Step 1 — Pick a style" })}</Title>
+              <Text size="sm" c="dimmed">{t("reports.step1Desc", { defaultValue: "Choose the report type that fits your need." })}</Text>
+            </div>
+            <Stack gap="xs">
+              {REPORT_PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  variant={activePresetId === preset.id ? "filled" : "light"}
+                  size="md"
+                  radius="xl"
+                  onClick={() => applyPreset(preset)}
+                  justify="space-between"
+                  rightSection={activePresetId === preset.id ? <Badge size="xs" color="white" variant="transparent">✓</Badge> : null}
+                >
+                  <Stack gap={0} align="flex-start">
+                    <Text size="sm" fw={700}>{t(preset.labelKey)}</Text>
+                    <Text size="xs" c={activePresetId === preset.id ? "white" : "dimmed"} fw={400}>{t(preset.descriptionKey, { defaultValue: preset.description })}</Text>
+                  </Stack>
+                </Button>
+              ))}
+            </Stack>
+            <TextInput size="sm" label={t("reports.pdfTitle")} value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
+            <Button
+              size="lg"
+              leftSection={<IconDownload size={20} />}
+              onClick={generatePDF}
+              loading={generatingPdf}
+              disabled={!analytics || selectedOrderedSections.length === 0}
+              radius="xl"
+            >
+              {t("reports.downloadPdf")}
+            </Button>
+            <Group gap="xs" justify="space-between">
+              <Group gap="xs">
+                <Button size="xs" variant="subtle" leftSection={<IconSparkles size={13} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
+                  {t("reports.improveTakeaways")}
+                </Button>
+                <Button size="xs" variant="subtle" leftSection={<IconMoodSmile size={13} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
+                  {t("reports.analyzeTone")}
+                </Button>
+              </Group>
+              <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>{t("common.refresh")}</Button>
             </Group>
+          </Stack>
+        </Card>
+
+        {/* Step 2: AI customiser */}
+        <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-ai">
+          <Stack gap="md">
+            <div>
+              <Group gap="xs" mb={2}>
+                <Title order={2} size="h4">{t("reports.step2", { defaultValue: "Step 2 — Let AI build it (optional)" })}</Title>
+                <Badge variant="light" color="blue">{t("reports.bestOption")}</Badge>
+              </Group>
+              <Text size="sm" c="dimmed">{t("reports.step2Desc", { defaultValue: "Describe the report you want and AI will set it up for you." })}</Text>
+            </div>
             <Textarea
               autosize
-              minRows={2}
-              maxRows={3}
+              minRows={4}
+              maxRows={6}
+              size="md"
               value={reportPrompt}
               onChange={(event) => setReportPrompt(event.currentTarget.value)}
               placeholder={t("reports.promptPlaceholder")}
             />
-            <Group gap="xs" grow>
-              <Button size="sm" leftSection={<IconSparkles size={15} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()}>
+            <SimpleGrid cols={2} spacing="xs">
+              <Button size="md" leftSection={<IconSparkles size={16} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()} radius="xl">
                 {t("reports.build")}
               </Button>
-              <Button size="sm" variant="light" leftSection={<IconDownload size={15} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()}>
+              <Button size="md" variant="light" leftSection={<IconDownload size={16} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()} radius="xl">
                 {t("common.download")}
               </Button>
-            </Group>
-          </Stack>
-        </Card>
-
-        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-layout">
-          <Stack gap="xs">
-            <Group justify="space-between" align="center">
-              <Title order={2} size="h4">{t("reports.quickLayout")}</Title>
-              <Badge variant="light" color="gray">{t("common.pagesCount", { count: reportPages.length })}</Badge>
-            </Group>
-            <SimpleGrid cols={1} spacing={6}>
-              {REPORT_PRESETS.map((preset) => (
-                <Button key={preset.id} variant={activePresetId === preset.id ? "filled" : "light"} size="xs" radius="xl" onClick={() => applyPreset(preset)} justify="space-between">
-                  {t(preset.labelKey)}
-                </Button>
-              ))}
             </SimpleGrid>
-            <TextInput size="xs" label={t("reports.pdfTitle")} value={reportTitle} onChange={(event) => setReportTitle(event.currentTarget.value)} />
-            <Button size="sm" leftSection={<IconDownload size={15} />} onClick={generatePDF} loading={generatingPdf} disabled={!analytics || selectedOrderedSections.length === 0}>
-              {t("reports.downloadPdf")}
-            </Button>
-          </Stack>
-        </Card>
-
-        <Card withBorder shadow="sm" radius="xl" p="md" data-tour="reports-tools">
-          <Stack gap="xs">
-            <Group justify="space-between" align="center">
-              <Title order={2} size="h4">{t("reports.dataTools")}</Title>
-              <Badge variant="light" color="gray">{analytics ? t("common.postsCount", { count: analytics.totalPosts }) : t("common.loading")}</Badge>
-            </Group>
-            <SimpleGrid cols={2} spacing={6}>
-              <Button size="xs" variant="light" leftSection={<IconSparkles size={14} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
-                {t("reports.improveTakeaways")}
-              </Button>
-              <Button size="xs" variant="light" leftSection={<IconMoodSmile size={14} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
-                {t("reports.analyzeTone")}
-              </Button>
-            </SimpleGrid>
-            <NumberInput size="xs" label={t("reports.tonePostSample")} value={postLimit} min={1} max={100} onChange={(value) => setPostLimit(Number(value) || 10)} />
+            <Text size="xs" c="dimmed">{t("reports.sectionToggleHint", { defaultValue: "Sections included:" })}</Text>
             <Group gap={5} wrap="wrap">
               {VISIBLE_SECTION_DEFS.map((section) => {
                 const Icon = section.icon;
@@ -1207,24 +1224,17 @@ export default function Reports() {
                 );
               })}
             </Group>
-            <Group gap={5}>
-              <Badge size="xs" variant="light" color="gray">{t("reports.keywordStatus", { count: keywords.length, posts: keywordMeta?.totalPosts || 0 })}</Badge>
-              <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>{t("common.refresh")}</Button>
-            </Group>
           </Stack>
         </Card>
       </SimpleGrid>
 
       <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-preview">
-        <Group justify="space-between" mb="md" align="flex-start">
+        <Group justify="space-between" mb="md" align="center">
           <div>
             <Title order={2} size="h3">{t("reports.livePreview")}</Title>
             <Text size="sm" c="dimmed">{t("reports.livePreviewDesc")}</Text>
           </div>
-          <Group gap="xs">
-            <Badge variant="light" color="blue">{t("common.exportScale", { scale: PDF_EXPORT_SCALE })}</Badge>
-            <Badge variant="light" color="gray">{t("common.pagesCount", { count: reportPages.length })}</Badge>
-          </Group>
+          <Badge variant="light" color="gray">{t("common.pagesCount", { count: reportPages.length })}</Badge>
         </Group>
 
         <ScrollArea h={1120} offsetScrollbars type="auto">

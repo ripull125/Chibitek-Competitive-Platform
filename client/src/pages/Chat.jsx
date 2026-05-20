@@ -47,6 +47,7 @@ import {
 
 const CHAT_STORAGE_KEY = "chibitek-chat-state";
 const CHAT_PENDING_STORAGE_KEY = "chibitek-chat-pending";
+const CHAT_SEED_KEY = "chibitek-chat-seed-message";
 const CHAT_AUTOSAVE_INTERVAL_MS = 10000;
 const SUMMARY_PROMPT = [
   "Summarize the most recent posts provided in system context.",
@@ -1008,6 +1009,16 @@ export default function ChatInput() {
     setLastContextCount(null);
     setLastAvailablePosts(null);
   };
+
+  useEffect(() => {
+    try {
+      const seed = window.localStorage?.getItem(CHAT_SEED_KEY);
+      if (!seed) return;
+      window.localStorage.removeItem(CHAT_SEED_KEY);
+      handleNewConversation();
+      setConversation([...defaultConversation, { role: "assistant", content: seed }]);
+    } catch {}
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
