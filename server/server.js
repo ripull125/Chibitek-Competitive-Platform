@@ -154,7 +154,7 @@ const cerebrasEndpoint = CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1';
 const cerebrasEndpointAlt = 'https://api.cerebras.ai';
 const openaiEndpoint = OPENAI_BASE_URL || 'https://api.openai.com/v1';
 const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-4o-mini';
-const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-8b';
+const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-70b';
 
 function loadIndexedEnvValues(prefix, { start = 1, end = 20 } = {}) {
   const values = [];
@@ -229,10 +229,8 @@ function normalizeCerebrasModel(model) {
   if (!raw) return raw;
 
   const aliases = {
-    'llama-3.1-8b': 'llama3.1-8b',
     'llama-3.1-70b': 'llama3.1-70b',
     'llama-3.3-70b': 'llama-3.3-70b',
-    'meta/llama-3.1-8b-instruct': 'llama3.1-8b',
     'meta/llama-3.1-70b-instruct': 'llama3.1-70b',
   };
 
@@ -246,7 +244,6 @@ function getCerebrasModelCandidates(primaryModel) {
   const candidates = [
     base,
     fallback,
-    'llama3.1-8b',
     'llama3.1-70b',
   ].filter(Boolean);
   return Array.from(new Set(candidates));
@@ -269,7 +266,7 @@ function resolveChatConfig({ requestedProvider, requestedModel } = {}) {
   }
 
   if (provider === 'cerebras') {
-    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-8b');
+    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-70b');
     return {
       provider,
       model,

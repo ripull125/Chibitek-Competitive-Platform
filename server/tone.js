@@ -10,7 +10,7 @@ const CEREBRAS_API_KEYS = [
   process.env.CEREBRAS_API_KEY4,
 ].filter(Boolean); // Remove undefined keys
 
-const MODEL = 'llama3.1-8b';
+const MODEL = 'llama3.1-70b';
 
 const ALLOWED_TONES = [
   'Professional',

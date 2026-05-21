@@ -14,12 +14,10 @@ const MODEL_CATALOG = [
     { provider: "github", model: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku (GitHub)" },
     { provider: "github", model: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct (GitHub)" },
     { provider: "github", model: "meta/llama-3.1-70b-instruct", label: "Llama 3.1 70B Instruct (GitHub)" },
-    { provider: "github", model: "meta/llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct (GitHub)" },
     { provider: "github", model: "mistral/mistral-large", label: "Mistral Large (GitHub)" },
     { provider: "github", model: "mistral/mistral-small", label: "Mistral Small (GitHub)" },
     // Cerebras
     { provider: "cerebras", model: "llama3.1-70b", label: "Llama 3.1 70B (Cerebras)" },
-    { provider: "cerebras", model: "llama3.1-8b", label: "Llama 3.1 8B (Cerebras)" },
     { provider: "cerebras", model: "llama-3.3-70b", label: "Llama 3.3 70B (Cerebras)" },
     { provider: "cerebras", model: "qwen-3-32b", label: "Qwen 3 32B (Cerebras)" },
     { provider: "cerebras", model: "qwen-3-14b", label: "Qwen 3 14B (Cerebras)" },
