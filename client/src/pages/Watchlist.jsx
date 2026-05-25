@@ -755,6 +755,28 @@ function cleanUrl(value) {
   return isSafeUrl(url) ? url : null;
 }
 
+function urlLooksLikeSocialPage(url) {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+
+    // These are post/profile pages, not direct image assets. Using them as <img src>
+    // creates the broken-image clipboard icon that Instagram cards were showing.
+    if (host === "instagram.com" && /^\/(p|reel|tv|stories)\//.test(path)) return true;
+    if (host === "instagram.com" && path.startsWith("/explore/")) return true;
+    if (host === "x.com" || host === "twitter.com") return /\/status\//.test(path);
+    if (host === "linkedin.com") return path.includes("/feed/update") || path.includes("/posts/");
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be") return true;
+    if (host === "reddit.com" || host.endsWith(".reddit.com")) return /\/comments\//.test(path);
+    if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return /\/video\//.test(path);
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function urlLooksLikeVideo(url) {
   if (!url) return false;
   const lowered = String(url).toLowerCase();
@@ -786,8 +808,8 @@ function normalizeImageUrl(value) {
   let url = cleanUrl(value);
   if (!url || ["self", "default", "nsfw", "spoiler", "image"].includes(url.toLowerCase())) return null;
 
-  // Do not accidentally use a playable video URL as an image poster.
-  if (urlLooksLikeVideo(url)) return null;
+  // Do not accidentally use playable videos or social post/profile pages as image posters.
+  if (urlLooksLikeVideo(url) || urlLooksLikeSocialPage(url)) return null;
 
   // X/Twitter profile images often come back as tiny *_normal files.
   url = url.replace(/_normal(\.(jpg|jpeg|png|webp))/i, "_400x400$1");
@@ -1153,6 +1175,7 @@ function getInstagramMediaItems(post = {}) {
       m.display_url,
       m.displayUrl,
       m.thumbnail_src,
+      m.thumbnailSrc,
       m.thumbnail_url,
       m.thumbnailUrl,
       m.photo_url,
@@ -1160,7 +1183,9 @@ function getInstagramMediaItems(post = {}) {
       m.photo,
       m.image_url,
       m.imageUrl,
+      m.image,
       m.media_url,
+      m.mediaUrl,
       m.url
     );
     const videoUrl = pickFirstExplicitVideo(m.video_url, m.videoUrl, m.video_versions, m.video_versions2);
@@ -1178,6 +1203,9 @@ function getInstagramMediaItems(post = {}) {
   const imageUrl = pickFirstImage(
     post.image_url,
     post.imageUrl,
+    post.image,
+    post.media_url,
+    post.mediaUrl,
     post.photo_url,
     post.photoUrl,
     post.photo,
@@ -1185,10 +1213,13 @@ function getInstagramMediaItems(post = {}) {
     post.displayUrl,
     post.display_resources,
     post.thumbnail_src,
+    post.thumbnailSrc,
     post.thumbnail_url,
     post.thumbnailUrl,
     post.image_versions2?.candidates,
+    post.image_versions?.candidates,
     post.media_url,
+    post.mediaUrl,
     post.url
   );
   const videoUrl = pickFirstExplicitVideo(post.video_url, post.videoUrl, post.video_versions, post.video_versions2);
@@ -1212,14 +1243,47 @@ function getInstagramPostImage(post = {}) {
     post.displayUrl,
     post.image_url,
     post.imageUrl,
+    post.thumbnail_src,
+    post.thumbnailSrc,
     post.thumbnail_url,
     post.thumbnailUrl,
     post.cover,
     post.cover_url,
+    post.coverUrl,
     post.preview_image_url,
     post.video_url_thumbnail,
     post.images
   );
+}
+
+function getInstagramImageCandidates(post = {}) {
+  const mediaItems = getInstagramMediaItems(post);
+  return [
+    ...mediaItems.flatMap((item) => [item.preview_image_url, item.type !== "video" ? item.url : null]),
+    post.display_url,
+    post.displayUrl,
+    post.image_url,
+    post.imageUrl,
+    post.image,
+    post.media_url,
+    post.mediaUrl,
+    post.photo_url,
+    post.photoUrl,
+    post.thumbnail_src,
+    post.thumbnail_src,
+    post.thumbnailSrc,
+    post.thumbnail_url,
+    post.thumbnailUrl,
+    post.cover,
+    post.cover_url,
+    post.coverUrl,
+    post.preview_image_url,
+    post.video_url_thumbnail,
+    post.image_versions2?.candidates,
+    post.image_versions?.candidates,
+    post.display_resources,
+    post.images,
+  ];
 }
 
 function getInstagramPostDate(post = {}) {
@@ -1369,8 +1433,35 @@ function getTikTokVideoUrl(video = {}) {
 const MEDIA_PREVIEW_WIDTH = 360;
 const MEDIA_PREVIEW_HEIGHT = 203;
 
-function MediaPreview({ src, alt = "", radius = 12, videoSrc = null, youtubeId = null, title = "Video preview" }) {
-  const imageUrl = normalizeImageUrl(src);
+function MediaPreview({
+  src,
+  alt = "",
+  radius = 12,
+  videoSrc = null,
+  youtubeId = null,
+  title = "Video preview",
+  fallbackSrcs = [],
+}) {
+  const imageCandidates = useMemo(() => {
+    const seen = new Set();
+    return [src, ...(Array.isArray(fallbackSrcs) ? fallbackSrcs : [fallbackSrcs])]
+      .map((candidate) => normalizeImageUrl(candidate))
+      .filter((url) => {
+        if (!url || seen.has(url)) return false;
+        seen.add(url);
+        return true;
+      });
+  }, [src, fallbackSrcs]);
+
+  const [imageIndex, setImageIndex] = useState(0);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageIndex(0);
+    setImageFailed(false);
+  }, [imageCandidates.join("|")]);
+
+  const imageUrl = imageFailed ? null : imageCandidates[imageIndex];
   const safeVideoUrl = normalizeVideoUrl(videoSrc, { allowAnySafeUrl: true });
   const hasPlayable = Boolean(youtubeId || safeVideoUrl);
   if (!imageUrl && !hasPlayable) return null;
@@ -1392,6 +1483,14 @@ function MediaPreview({ src, alt = "", radius = 12, videoSrc = null, youtubeId =
     objectFit: "contain",
     display: "block",
     background: "var(--mantine-color-gray-0)",
+  };
+
+  const handleImageError = () => {
+    if (imageIndex + 1 < imageCandidates.length) {
+      setImageIndex((current) => current + 1);
+      return;
+    }
+    setImageFailed(true);
   };
 
   return (
@@ -1418,7 +1517,8 @@ function MediaPreview({ src, alt = "", radius = 12, videoSrc = null, youtubeId =
           src={imageUrl}
           alt={alt}
           loading="lazy"
-          referrerPolicy="no-referrer"
+          referrerPolicy="origin"
+          onError={handleImageError}
           style={mediaStyle}
         />
       )}
@@ -2426,7 +2526,13 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
           <Card key={post.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(igPostUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
               {(thumb || videoUrl) && (
-                <MediaPreview src={thumb} videoSrc={videoUrl} alt={caption || t("watchlist.instagramPostPreview")} title={t("watchlist.instagramVideo")} />
+                <MediaPreview
+                  src={thumb}
+                  fallbackSrcs={getInstagramImageCandidates(post)}
+                  videoSrc={videoUrl}
+                  alt={caption || t("watchlist.instagramPostPreview")}
+                  title={t("watchlist.instagramVideo")}
+                />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
                 {caption && <ExpandableText text={caption} size="xs" initialLines={3} />}

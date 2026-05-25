@@ -45,49 +45,72 @@ import {
   saveAiSettings,
 } from "../utils/aiModelSettings";
 
-const CHAT_STORAGE_KEY = "chibitek-chat-state";
-const CHAT_PENDING_STORAGE_KEY = "chibitek-chat-pending";
+const CHAT_STORAGE_BASE_KEY = "chibitek-chat-state";
+const CHAT_PENDING_STORAGE_BASE_KEY = "chibitek-chat-pending";
+const CHAT_ACTIVE_USER_KEY = "chibitek-chat-active-user-id";
 const CHAT_SEED_KEY = "chibitek-chat-seed-message";
 const CHAT_AUTOSAVE_INTERVAL_MS = 10000;
+const chatRuntime = {
+  inFlight: null,
+};
 const SUMMARY_PROMPT = [
   "Summarize the most recent posts provided in system context.",
   "Rules: use only the provided posts, do not invent details.",
   "Output: 1) one-sentence summary, 2) 3-5 top themes, 3) up to 3 notable posts with URLs if present, 4) gaps/uncertainties.",
 ].join(" ");
 
-const SpeechRecognition =
-  typeof window !== "undefined"
-    ? window.SpeechRecognition || window.webkitSpeechRecognition
-    : null;
+const getChatStorageKey = (userId) => `${CHAT_STORAGE_BASE_KEY}:${userId}`;
+const getPendingStorageKey = (userId) => `${CHAT_PENDING_STORAGE_BASE_KEY}:${userId}`;
 
-const chatRuntime = {
-  inFlight: null,
+const getLastActiveChatUserId = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage?.getItem(CHAT_ACTIVE_USER_KEY) || null;
+  } catch {
+    return null;
+  }
 };
 
-const persistChatState = (state) => {
-  if (typeof window === "undefined") return;
+const setLastActiveChatUserId = (userId) => {
+  if (typeof window === "undefined" || !userId) return;
   try {
-    window.localStorage?.setItem(CHAT_STORAGE_KEY, JSON.stringify(state));
+    window.localStorage?.setItem(CHAT_ACTIVE_USER_KEY, String(userId));
+  } catch (err) {
+    console.warn("Failed to persist active chat user", err);
+  }
+};
+
+const persistChatState = (state, userId) => {
+  if (typeof window === "undefined" || !userId) return;
+  try {
+    window.localStorage?.setItem(
+      getChatStorageKey(userId),
+      JSON.stringify({ ...state, ownerUserId: String(userId) })
+    );
   } catch (err) {
     console.warn("Failed to persist chat", err);
   }
 };
 
-const persistPendingState = (state) => {
-  if (typeof window === "undefined") return;
+const persistPendingState = (state, userId) => {
+  if (typeof window === "undefined" || !userId) return;
   try {
-    if (state) window.localStorage?.setItem(CHAT_PENDING_STORAGE_KEY, JSON.stringify(state));
-    else window.localStorage?.removeItem(CHAT_PENDING_STORAGE_KEY);
+    const key = getPendingStorageKey(userId);
+    if (state) window.localStorage?.setItem(key, JSON.stringify({ ...state, ownerUserId: String(userId) }));
+    else window.localStorage?.removeItem(key);
   } catch (err) {
     console.warn("Failed to persist pending chat state", err);
   }
 };
 
-const loadPersistedChat = () => {
-  if (typeof window === "undefined") return null;
+const loadPersistedChat = (userId) => {
+  if (typeof window === "undefined" || !userId) return null;
   try {
-    const raw = window.localStorage?.getItem(CHAT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const raw = window.localStorage?.getItem(getChatStorageKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.ownerUserId && String(parsed.ownerUserId) !== String(userId)) return null;
+    return parsed;
   } catch (err) {
     console.warn("Failed to load saved chat", err);
     return null;
@@ -354,7 +377,7 @@ const formatChatDate = (value) => {
 
 export default function ChatInput() {
   const { t, i18n } = useTranslation();
-  const persisted = useMemo(() => loadPersistedChat(), []);
+  const persisted = null;
 
   const defaultConversation = useMemo(
     () => [
@@ -410,6 +433,44 @@ export default function ChatInput() {
 
   const hasUserMessages = useMemo(() => conversation.some((entry) => entry.role === "user"), [conversation]);
   const activeTitle = useMemo(() => currentConversationTitle || buildConversationTitle(conversation, t), [conversation, currentConversationTitle, t]);
+
+  const persistCurrentChatState = (state) => persistChatState(state, currentUserIdRef.current);
+  const persistCurrentPendingState = (state) => persistPendingState(state, currentUserIdRef.current);
+
+  const applyPersistedChatState = (savedState) => {
+    if (!savedState) return false;
+    const savedConversation = Array.isArray(savedState.conversation) && savedState.conversation.length
+      ? savedState.conversation
+      : defaultConversation;
+    setMessage(savedState.message || "");
+    setConversation(savedConversation);
+    conversationRef.current = savedConversation;
+    setAttachments(Array.isArray(savedState.attachments) ? savedState.attachments : []);
+    setCurrentConversationId(savedState.currentConversationId || null);
+    setCurrentConversationTitle(savedState.currentConversationTitle || null);
+    currentConversationIdRef.current = savedState.currentConversationId || null;
+    currentConversationTitleRef.current = savedState.currentConversationTitle || null;
+    setIsSidebarCollapsed(Boolean(savedState.isSidebarCollapsed));
+    lastSavedJsonRef.current = JSON.stringify(savedConversation);
+    return true;
+  };
+
+  const resetLocalChatForAccountSwitch = () => {
+    setMessage("");
+    setAttachments([]);
+    setConversation(defaultConversation);
+    conversationRef.current = defaultConversation;
+    setCurrentConversationId(null);
+    setCurrentConversationTitle(null);
+    currentConversationIdRef.current = null;
+    currentConversationTitleRef.current = null;
+    lastSavedJsonRef.current = "";
+    setAutoSaveStatus("idle");
+    setSaveNotice("");
+    setLastRetrieval(null);
+    setLastContextCount(null);
+    setLastAvailablePosts(null);
+  };
 
   const getActiveUserId = async ({ force = false } = {}) => {
     if (!force && currentUserIdRef.current) return currentUserIdRef.current;
@@ -592,10 +653,21 @@ export default function ChatInput() {
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
+      const previousUserId = getLastActiveChatUserId();
       const publicUserId = await getActiveUserId({ force: true });
-      if (mounted && publicUserId) {
-        loadSavedConversations({ userId: publicUserId, silent: true });
+      if (!mounted || !publicUserId) return;
+
+      const isDifferentAccount = Boolean(previousUserId && String(previousUserId) !== String(publicUserId));
+      setLastActiveChatUserId(publicUserId);
+
+      if (isDifferentAccount) {
+        resetLocalChatForAccountSwitch();
+      } else {
+        const savedState = loadPersistedChat(publicUserId);
+        if (!applyPersistedChatState(savedState)) resetLocalChatForAccountSwitch();
       }
+
+      loadSavedConversations({ userId: publicUserId, silent: true });
     };
     loadUser();
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "chat" } }));
@@ -667,21 +739,16 @@ export default function ChatInput() {
   }, [conversation, isSending, attachments.length]);
 
   useEffect(() => {
-    if (!hasHydratedRef.current || typeof window === "undefined") return;
-    try {
-      const toStore = JSON.stringify({
-        message,
-        conversation,
-        attachments,
-        currentConversationId,
-        currentConversationTitle,
-        isSidebarCollapsed,
-      });
-      window.localStorage.setItem(CHAT_STORAGE_KEY, toStore);
-    } catch (err) {
-      console.warn("Failed to persist chat", err);
-    }
-  }, [message, conversation, attachments, currentConversationId, currentConversationTitle, isSidebarCollapsed]);
+    if (!hasHydratedRef.current || typeof window === "undefined" || !currentUserIdRef.current) return;
+    persistCurrentChatState({
+      message,
+      conversation,
+      attachments,
+      currentConversationId,
+      currentConversationTitle,
+      isSidebarCollapsed,
+    });
+  }, [message, conversation, attachments, currentConversationId, currentConversationTitle, isSidebarCollapsed, currentUserId]);
 
   useEffect(() => {
     if (!hasHydratedRef.current || !hasUserMessages) return undefined;
@@ -762,7 +829,7 @@ export default function ChatInput() {
 
   const persistCompletedConversation = async (completedConversation, data = {}) => {
     conversationRef.current = completedConversation;
-    persistChatState({
+    persistCurrentChatState({
       message: "",
       conversation: completedConversation,
       attachments: [],
@@ -770,9 +837,9 @@ export default function ChatInput() {
       currentConversationTitle: currentConversationTitleRef.current,
       isSidebarCollapsed,
     });
-    persistPendingState(null);
+    persistCurrentPendingState(null);
     await autoSaveConversation(completedConversation);
-    persistChatState({
+    persistCurrentChatState({
       message: "",
       conversation: completedConversation,
       attachments: [],
@@ -789,7 +856,7 @@ export default function ChatInput() {
     const controller = new AbortController();
     requestAbortRef.current = controller;
 
-    persistPendingState({
+    persistCurrentPendingState({
       startedAt: new Date().toISOString(),
       conversation: visibleConversation,
       currentConversationId: currentConversationIdRef.current,
@@ -846,7 +913,7 @@ export default function ChatInput() {
         };
         const nextConversation = [...conversationRef.current, fallback];
         conversationRef.current = nextConversation;
-        persistChatState({
+        persistCurrentChatState({
           message: "",
           conversation: nextConversation,
           attachments: [],
@@ -854,7 +921,7 @@ export default function ChatInput() {
           currentConversationTitle: currentConversationTitleRef.current,
           isSidebarCollapsed,
         });
-        persistPendingState(null);
+        persistCurrentPendingState(null);
         autoSaveConversation(nextConversation);
         if (mountedRef.current) setConversation(nextConversation);
       })
@@ -885,7 +952,7 @@ export default function ChatInput() {
     setSaveNotice("");
     setAutoSaveStatus("saving");
 
-    persistChatState({
+    persistCurrentChatState({
       message: "",
       conversation: updatedConversation,
       attachments: [],
@@ -916,7 +983,7 @@ export default function ChatInput() {
     setSaveNotice("");
     setAutoSaveStatus("saving");
 
-    persistChatState({
+    persistCurrentChatState({
       message: "",
       conversation: visibleConversation,
       attachments: [],
@@ -936,13 +1003,16 @@ export default function ChatInput() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const pendingRaw = typeof window !== "undefined" ? window.localStorage?.getItem(CHAT_PENDING_STORAGE_KEY) : null;
+    const pendingUserId = getLastActiveChatUserId();
+    const pendingRaw = typeof window !== "undefined" && pendingUserId
+      ? window.localStorage?.getItem(getPendingStorageKey(pendingUserId))
+      : null;
     if (chatRuntime.inFlight) {
       setIsSending(true);
       setAutoSaveStatus("saving");
       attachInFlightRequest(chatRuntime.inFlight);
     } else if (pendingRaw) {
-      persistPendingState(null);
+      persistCurrentPendingState(null);
     }
 
     return () => {
@@ -955,7 +1025,7 @@ export default function ChatInput() {
     requestAbortRef.current.abort();
     requestAbortRef.current = null;
     chatRuntime.inFlight = null;
-    persistPendingState(null);
+    persistCurrentPendingState(null);
     setIsSending(false);
   };
 
@@ -1300,8 +1370,9 @@ export default function ChatInput() {
               </ActionIcon>
               <ActionIcon
                 variant="filled"
-                color="gray"
+                color="violet"
                 radius="xl"
+                size={42}
                 onClick={() => setIsSidebarCollapsed(false)}
                 title={t("chat.openSidebar")}
                 style={{
@@ -1309,31 +1380,34 @@ export default function ChatInput() {
                   top: "50%",
                   left: "50%",
                   transform: "translate(-50%, -50%)",
-                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
-                  zIndex: 3,
+                  boxShadow: "0 16px 32px rgba(124, 58, 237, 0.28)",
+                  border: "2px solid var(--surface-1)",
+                  zIndex: 10,
                 }}
               >
-                <IconChevronRight size={18} />
+                <IconChevronRight size={24} stroke={2.8} />
               </ActionIcon>
             </Stack>
           ) : (
             <>
               <ActionIcon
                 variant="filled"
-                color="gray"
+                color="violet"
                 radius="xl"
+                size={44}
                 onClick={() => setIsSidebarCollapsed(true)}
                 title={t("chat.collapseSidebar")}
                 style={{
                   position: "absolute",
                   top: "50%",
-                  right: -12,
+                  right: 10,
                   transform: "translateY(-50%)",
-                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
-                  zIndex: 5,
+                  boxShadow: "0 16px 32px rgba(124, 58, 237, 0.30)",
+                  border: "2px solid var(--surface-1)",
+                  zIndex: 10,
                 }}
               >
-                <IconChevronLeft size={17} />
+                <IconChevronLeft size={24} stroke={2.8} />
               </ActionIcon>
               <Group justify="space-between" align="center" mb={8} wrap="nowrap">
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
