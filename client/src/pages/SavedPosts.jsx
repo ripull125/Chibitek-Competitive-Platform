@@ -23,8 +23,7 @@ async function getAuthSession() {
 
 async function getPublicUserId() {
   const session = await getAuthSession();
-  const authUserId = session?.user?.id || null;
-  if (!session?.access_token) return authUserId;
+  if (!session?.access_token) return null;
 
   try {
     const response = await fetch(apiUrl("/api/auth/access"), {
@@ -32,9 +31,9 @@ async function getPublicUserId() {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const payload = await response.json().catch(() => ({}));
-    return payload?.user_id || authUserId;
+    return response.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null;
   } catch {
-    return authUserId;
+    return null;
   }
 }
 

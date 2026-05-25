@@ -460,6 +460,18 @@ async function ensureVerifiedUserRow(authCtx) {
   const displayName = String(meta.full_name || meta.name || '').trim() || null;
   const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
 
+  const findProviderOwner = async () => {
+    if (!authUserId) return null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
+      .eq('provider_user_id', authUserId)
+      .limit(1)
+      .maybeSingle();
+    if (error && !isMissingTableError(error)) throw error;
+    return data || null;
+  };
+
   const applyLoginMetadata = async (userRow) => {
     if (!userRow?.id) return userRow;
 
@@ -477,7 +489,18 @@ async function ensureVerifiedUserRow(authCtx) {
         String(userRow.provider || '').trim().toLowerCase() === 'admin_created');
 
     if (canLinkProviderUserId && existingProviderUserId !== authUserId) {
-      updates.provider_user_id = authUserId;
+      const providerOwner = await findProviderOwner();
+      // If an old duplicate row already owns this Supabase Auth ID, do not use it.
+      // The pre-approved email row remains the source of truth and prevents new duplicate rows.
+      if (!providerOwner || providerOwner.id === userRow.id) {
+        updates.provider_user_id = authUserId;
+      } else {
+        console.warn('[Auth] Supabase provider_user_id is already linked to another public.users row; using email-approved row instead.', {
+          email: authCtx.email,
+          approvedUserId: userRow.id,
+          duplicateUserId: providerOwner.id,
+        });
+      }
     }
     if (provider && (!userRow.provider || String(userRow.provider).trim().toLowerCase() === 'admin_created')) {
       updates.provider = provider;
@@ -494,31 +517,39 @@ async function ensureVerifiedUserRow(authCtx) {
       .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
       .single();
 
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      // Avoid blocking a pre-approved user just because an older duplicate row already owns provider_user_id.
+      if (isDuplicateKeyError(updateErr) && updates.provider_user_id) {
+        const { provider_user_id, ...safeUpdates } = updates;
+        if (!Object.keys(safeUpdates).length) return { ...userRow, role: normalizeRole(userRow.role) };
+        const { data: safeUpdated, error: safeErr } = await supabase
+          .from('users')
+          .update(safeUpdates)
+          .eq('id', userRow.id)
+          .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
+          .single();
+        if (safeErr) throw safeErr;
+        return { ...safeUpdated, role: normalizeRole(safeUpdated.role) };
+      }
+      throw updateErr;
+    }
     return { ...updated, role: normalizeRole(updated.role) };
   };
 
-  // First try provider_user_id for already-linked Supabase Auth users.
-  if (authUserId) {
-    const { data: byProvider, error: byProviderErr } = await supabase
-      .from('users')
-      .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
-      .eq('provider_user_id', authUserId)
-      .limit(1)
-      .maybeSingle();
-    if (byProviderErr && !isMissingTableError(byProviderErr)) throw byProviderErr;
-    if (byProvider) return applyLoginMetadata(byProvider);
-  }
+  // Source of truth: admins/owners pre-approve users by email in public.users.
+  // Check email first so OAuth can link to the intended row instead of creating/using duplicates.
+  const approvedByEmail = await getUserByEmail(authCtx.email);
+  if (approvedByEmail) return applyLoginMetadata(approvedByEmail);
 
-  // Then allow only accounts explicitly pre-approved in public.users by email.
-  // Do not insert here: Supabase Auth may create auth.users rows from OAuth,
-  // but app access should remain deny-by-default until an admin adds the email.
-  const existing = await getUserByEmail(authCtx.email);
-  if (existing) return applyLoginMetadata(existing);
+  // Backward-compatible only for older rows that were already explicitly linked and carry the same email.
+  // Rows without the matching email are not considered approved app users.
+  const byProvider = await findProviderOwner();
+  if (byProvider && normalizeEmail(byProvider.email) === normalizeEmail(authCtx.email)) {
+    return applyLoginMetadata(byProvider);
+  }
 
   return null;
 }
-
 async function getPublicUserIdByAnyIdentifier(identifier) {
   const value = String(identifier || '').trim();
   if (!value) return null;
@@ -538,6 +569,7 @@ async function getPublicUserIdByAnyIdentifier(identifier) {
     .from('users')
     .select('id')
     .eq('provider_user_id', value)
+    .not('email', 'is', null)
     .limit(1)
     .maybeSingle();
   if (byProviderErr && !isMissingTableError(byProviderErr)) throw byProviderErr;
@@ -578,26 +610,6 @@ async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allo
 
   const mapped = await getPublicUserIdByAnyIdentifier(rawUserId);
   if (mapped) return mapped;
-
-  // Last-resort compatibility for old clients that only send a public.users UUID
-  // and no Authorization header. Token-authenticated OAuth users are handled above and are deny-by-default.
-  if (allowRawFallbackCreate && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawUserId)) {
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        id: rawUserId,
-        provider: 'supabase',
-        provider_user_id: rawUserId,
-        role: ROLE_USER,
-      })
-      .select('id')
-      .single();
-    if (!error && data?.id) return data.id;
-    if (error && !isDuplicateKeyError(error)) throw error;
-
-    const raced = await getPublicUserIdByAnyIdentifier(rawUserId);
-    if (raced) return raced;
-  }
 
   const err = new Error('User record was not found in public.users. Sign out and back in, then try again.');
   err.status = 401;
@@ -647,7 +659,16 @@ app.get('/api/auth/access', async (req, res) => {
     let userRow = null;
     try {
       userRow = await ensureVerifiedUserRow(auth);
-      access = await getAuthRoleByEmail(auth.email);
+      if (userRow?.id) {
+        const role = normalizeRole(userRow.role);
+        access = {
+          authorized: true,
+          role,
+          canManageRegularUsers: canManageRegularUsers(role),
+          canManageAdmins: canManageAdmins(role),
+          user: userRow,
+        };
+      }
     } catch (lookupErr) {
       // Do not fail login checks hard if DB lookup has transient/schema issues.
       console.warn('User access lookup failed, treating as unauthorized:', lookupErr?.message || lookupErr);
@@ -655,7 +676,7 @@ app.get('/api/auth/access', async (req, res) => {
 
     return res.json({
       email: auth.email,
-      user_id: userRow?.id || access.user?.id || null,
+      user_id: userRow?.id || null,
       authorized: access.authorized,
       role: access.role,
       isAdmin: access.role === ROLE_OWNER || access.role === ROLE_ADMIN,
@@ -1366,8 +1387,9 @@ ${attachmentContext}` }]
     const systemMessages = [
       {
         role: 'system',
-        content:
+        content: [
           'You are ChibitekAI, a concise, helpful assistant for competitive intelligence. Use any provided attachment context to strengthen answers.',
+        ].filter(Boolean).join('\n\n'),
       },
     ];
     if (postsContext) {
@@ -1519,7 +1541,7 @@ app.post('/api/chat/conversations', async (req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1550,7 +1572,7 @@ app.post('/api/chat/conversations', async (req, res) => {
 app.get('/api/chat/conversations', async (req, res) => {
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1581,7 +1603,7 @@ app.get('/api/chat/conversations/:id', async (req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1613,7 +1635,7 @@ const updateConversationById = async (req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1668,7 +1690,7 @@ app.delete('/api/chat/conversations/:id', async (req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1699,7 +1721,7 @@ const deleteConversationById = async (id, req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -1743,7 +1765,7 @@ app.post("/api/x/fetch-and-save/:username", async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -1884,7 +1906,7 @@ async function savePostHandler(req, res) {
 
   let requestUserId;
   try {
-    requestUserId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    requestUserId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -2095,7 +2117,7 @@ app.post("/api/saved-items", savePostHandler);
 app.get("/api/posts", async (req, res) => {
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -2179,7 +2201,7 @@ app.get("/api/posts", async (req, res) => {
 app.delete("/api/posts", async (req, res) => {
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -2202,7 +2224,7 @@ app.delete("/api/posts/:id", async (req, res) => {
 
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -2434,7 +2456,7 @@ app.post('/api/linkedin/save', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -3819,7 +3841,7 @@ const PLATFORM_DISPLAY = {
 app.get('/api/keywords', async (req, res) => {
   let userId;
   try {
-    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+    userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
   } catch (authErr) {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
@@ -3976,11 +3998,17 @@ app.get('/api/keywords', async (req, res) => {
       });
     });
 
-    // 7. Normalise rawScore → KPI 0–100
+    // 7. Convert rawScore → KPI 0–100 with volume confidence.
+    // The old max-only normalization could show every common word as 100 when scores were close.
+    // This keeps performance in the score, but scales confidence by how many posts mention the keyword.
     results.sort((a, b) => b.rawScore - a.rawScore);
     const maxRaw = results[0]?.rawScore || 1;
+    const maxSampleSize = Math.max(1, ...results.map(r => r.sampleSize || 0));
     results.forEach(r => {
-      r.kpi = Math.round((r.rawScore / maxRaw) * 100);
+      const relativePerformance = Math.min(1, Math.max(0, r.rawScore / maxRaw));
+      const volumeConfidence = 0.35 + 0.65 * Math.min(1, (r.sampleSize || 0) / maxSampleSize);
+      r.kpi = Math.max(1, Math.min(100, Math.round(relativePerformance * volumeConfidence * 100)));
+      r.volumeConfidence = Math.round(volumeConfidence * 100);
       delete r.rawScore;
     });
 
@@ -4016,7 +4044,7 @@ async function getSavedIdsHandler(req, res) {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -4039,12 +4067,35 @@ async function getSavedIdsHandler(req, res) {
 app.get('/api/posts/saved-ids', getSavedIdsHandler);
 app.get('/api/saved-items/saved-ids', getSavedIdsHandler);
 
+// ---------- DELETE /api/watchlist — remove all items for the user -----
+app.delete('/api/watchlist', async (req, res) => {
+  try {
+    let userId;
+    try {
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
+    } catch (authErr) {
+      return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
+    }
+
+    const { error } = await supabase
+      .from('watchlist_items')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return res.json({ deleted: true });
+  } catch (err) {
+    console.error('watchlist delete-all error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- GET  /api/watchlist — list all items for the user --------
 app.get('/api/watchlist', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -4068,7 +4119,7 @@ app.post('/api/watchlist', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -4097,7 +4148,7 @@ app.patch('/api/watchlist/:id', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -4130,7 +4181,7 @@ app.delete('/api/watchlist/:id', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }
@@ -4155,7 +4206,7 @@ app.post('/api/watchlist/run', async (req, res) => {
   try {
     let userId;
     try {
-      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: true });
+      userId = await resolvePublicUserIdFromRequest(req, { allowRawFallbackCreate: false });
     } catch (authErr) {
       return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
     }

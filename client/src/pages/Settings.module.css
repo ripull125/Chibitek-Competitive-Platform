@@ -154,7 +154,7 @@
 .listHead,
 .listRow {
   display: grid;
-  grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr) 128px;
+  grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr) minmax(178px, auto);
   gap: 10px;
   padding: 12px;
   align-items: center;
@@ -163,7 +163,7 @@
 .userListHead,
 .userListRow {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) 128px;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(158px, auto);
   gap: 10px;
   padding: 12px;
 }
@@ -211,6 +211,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  overflow: visible;
 }
 
 .listHead .colAction,
@@ -291,12 +292,12 @@
 
   .listHead,
   .listRow {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 112px;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(170px, auto);
   }
 
   .userListHead,
   .userListRow {
-    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) 112px;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(150px, auto);
   }
 }
 
@@ -406,4 +407,10 @@
 :global([data-mantine-color-scheme="dark"]) .actionBtn {
   background: var(--accent-soft) !important;
   color: var(--accent-secondary) !important;
+}
+
+
+.colAction :global(.mantine-Button-root) {
+  white-space: nowrap;
+  min-width: max-content;
 }

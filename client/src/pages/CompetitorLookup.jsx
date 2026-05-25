@@ -1783,10 +1783,9 @@ export default function CompetitorLookup() {
 
       const { data: sessionData } = await supabase.auth.getSession();
       const session = sessionData?.session;
-      const authUserId = session?.user?.id || null;
 
-      // The database foreign key points at public.users.id, not necessarily
-      // Supabase Auth's user.id. Ask the backend for the mapped public user id.
+      // The database foreign key points at public.users.id, not Supabase Auth's user.id.
+      // Only use the backend-approved public user id to avoid creating duplicate rows.
       if (session?.access_token) {
         try {
           const response = await fetch(apiUrl("/api/auth/access"), {
@@ -1794,14 +1793,14 @@ export default function CompetitorLookup() {
             headers: { Authorization: `Bearer ${session.access_token}` },
           });
           const payload = await response.json().catch(() => ({}));
-          if (mounted) setCurrentUserId(payload?.user_id || authUserId);
+          if (mounted) setCurrentUserId(response.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null);
           return;
         } catch {
           // Fall back below.
         }
       }
 
-      if (mounted) setCurrentUserId(authUserId);
+      if (mounted) setCurrentUserId(null);
     };
     loadUser();
     return () => {

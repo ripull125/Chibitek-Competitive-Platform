@@ -1,6 +1,5 @@
 const AI_SETTINGS_STORAGE_KEY = "chibitek-ai-settings";
 const AI_SETTINGS_EVENT = "chibitek:ai-settings-changed";
-
 const MODEL_CATALOG = [
     // GitHub Models
     { provider: "github", model: "openai/gpt-5", label: "GPT-5 (GitHub)" },
@@ -64,6 +63,7 @@ export function normalizeModelChoice(value) {
     return DEFAULT_MODEL_CHOICE;
 }
 
+
 export function getDefaultAiSettings() {
     const modelChoice = DEFAULT_MODEL_CHOICE;
     const meta = getModelMeta(modelChoice);
@@ -110,7 +110,8 @@ export function loadAiSettings() {
 export function saveAiSettings(next) {
     if (typeof window === "undefined") return;
 
-    const modelChoice = normalizeModelChoice(next?.modelChoice);
+    const existing = loadAiSettings();
+    const modelChoice = normalizeModelChoice(next?.modelChoice ?? existing.modelChoice);
     const meta = getModelMeta(modelChoice);
     const payload = {
         modelChoice,

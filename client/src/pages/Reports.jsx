@@ -4,6 +4,7 @@ import html2canvas from "html2canvas";
 import {
   Alert,
   Badge,
+  Box,
   Button,
   Card,
   Container,
@@ -12,6 +13,7 @@ import {
   Paper,
   ScrollArea,
   SimpleGrid,
+  Slider,
   Stack,
   Table,
   Text,
@@ -699,6 +701,24 @@ function ToneEngagementReport({ data, view, t }) {
   );
 }
 
+async function resolveReportsUserAccess() {
+  if (!supabase) return { userId: null, headers: {} };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return { userId: null, headers: {} };
+    const headers = { Authorization: `Bearer ${token}` };
+    const response = await fetch(apiUrl("/api/auth/access"), { cache: "no-store", headers });
+    const payload = await response.json().catch(() => ({}));
+    return {
+      userId: response.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null,
+      headers,
+    };
+  } catch {
+    return { userId: null, headers: {} };
+  }
+}
+
 function InsightReport({ summary, analytics, t }) {
   const lines = cleanInsightLines(summary);
   const takeaways = lines.length ? lines : buildAutoTakeaways(analytics, t);
@@ -728,6 +748,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [toneLoading, setToneLoading] = useState(false);
+  const [tonePostLimit, setTonePostLimit] = useState(10);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [aiBuildLoading, setAiBuildLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
@@ -754,16 +775,13 @@ export default function Reports() {
     setLoading(true);
     setStatusMessage("");
     try {
-      let uid = null;
-      if (supabase) {
-        const { data } = await supabase.auth.getUser();
-        uid = data?.user?.id || null;
-        setCurrentUserId(uid);
-      }
+      const { userId: uid, headers: authHeaders } = await resolveReportsUserAccess();
+      setCurrentUserId(uid);
       const qs = uid ? `?user_id=${encodeURIComponent(uid)}` : "";
+      const dataHeaders = uid ? { ...authHeaders, "x-user-id": uid } : authHeaders;
       const [postsRes, keywordRes, platformRes] = await Promise.all([
-        fetch(apiUrl(`/api/posts${qs}`)).then((r) => r.json()).catch(() => ({ posts: [] })),
-        fetch(apiUrl(`/api/keywords${qs}`)).then((r) => r.json()).catch(() => ({ keywords: [], totalPosts: 0 })),
+        fetch(apiUrl(`/api/posts${qs}`), { headers: dataHeaders }).then((r) => r.json()).catch(() => ({ posts: [] })),
+        fetch(apiUrl(`/api/keywords${qs}`), { headers: dataHeaders }).then((r) => r.json()).catch(() => ({ keywords: [], totalPosts: 0 })),
         fetch(apiUrl("/api/platforms")).then((r) => r.json()).catch(() => ({ platforms: {} })),
       ]);
 
@@ -869,12 +887,13 @@ export default function Reports() {
     setStatusMessage("Analyzing tone…");
     try {
       let uid = currentUserId;
-      if (!uid && supabase) {
-        const { data } = await supabase.auth.getUser();
-        uid = data?.user?.id || null;
+      if (!uid) {
+        const access = await resolveReportsUserAccess();
+        uid = access.userId;
         if (uid) setCurrentUserId(uid);
       }
-      const newestPosts = postLimit > 0 ? posts.slice(0, postLimit) : posts;
+      const toneLimit = Math.max(1, Math.min(tonePostLimit, posts.length));
+      const newestPosts = posts.slice(0, toneLimit);
       const candidates = newestPosts
         .map((post) => ({
           id: post.id,
@@ -914,7 +933,12 @@ export default function Reports() {
     } finally {
       setToneLoading(false);
     }
-  }, [currentUserId, posts, postLimit, toneLoading]);
+  }, [currentUserId, posts, tonePostLimit, toneLoading]);
+
+  useEffect(() => {
+    if (!posts.length) return;
+    setTonePostLimit((current) => Math.max(1, Math.min(current || 10, posts.length)));
+  }, [posts.length]);
 
   const generateSummary = useCallback(async () => {
     if (!analytics || summaryLoading) return;
@@ -1176,9 +1200,26 @@ export default function Reports() {
                 <Button size="xs" variant="subtle" leftSection={<IconSparkles size={13} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
                   {t("reports.improveTakeaways")}
                 </Button>
-                <Button size="xs" variant="subtle" leftSection={<IconMoodSmile size={13} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
-                  {t("reports.analyzeTone")}
-                </Button>
+                <Stack gap={3} style={{ minWidth: 210 }}>
+                  <Button size="xs" variant="subtle" leftSection={<IconMoodSmile size={13} />} onClick={runToneAnalysis} loading={toneLoading} disabled={!posts.length}>
+                    {t("reports.analyzeTone")}
+                  </Button>
+                  {posts.length ? (
+                    <Box>
+                      <Text size="xs" c="dimmed" ta="center">
+                        {t("reports.tonePostLimit", { count: tonePostLimit, total: posts.length, defaultValue: `Tone: ${tonePostLimit} of ${posts.length} posts` })}
+                      </Text>
+                      <Slider
+                        min={1}
+                        max={Math.max(1, posts.length)}
+                        value={Math.max(1, Math.min(tonePostLimit, Math.max(1, posts.length)))}
+                        onChange={setTonePostLimit}
+                        size="xs"
+                        disabled={posts.length <= 1 || toneLoading}
+                      />
+                    </Box>
+                  ) : null}
+                </Stack>
               </Group>
               <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>{t("common.refresh")}</Button>
             </Group>

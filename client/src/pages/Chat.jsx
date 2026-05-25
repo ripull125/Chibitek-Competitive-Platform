@@ -411,16 +411,33 @@ export default function ChatInput() {
   const hasUserMessages = useMemo(() => conversation.some((entry) => entry.role === "user"), [conversation]);
   const activeTitle = useMemo(() => currentConversationTitle || buildConversationTitle(conversation, t), [conversation, currentConversationTitle, t]);
 
-  const getActiveUserId = async () => {
-    if (currentUserIdRef.current) return currentUserIdRef.current;
+  const getActiveUserId = async ({ force = false } = {}) => {
+    if (!force && currentUserIdRef.current) return currentUserIdRef.current;
     if (!supabase) return null;
-    const { data } = await supabase.auth.getUser();
-    const uid = data?.user?.id || null;
-    if (uid) {
-      currentUserIdRef.current = uid;
-      setCurrentUserId(uid);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session || null;
+    const token = session?.access_token;
+
+    if (token) {
+      try {
+        const response = await fetch(apiUrl("/api/auth/access"), {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (response.ok && payload?.authorized && payload?.user_id) {
+          const publicUserId = String(payload.user_id);
+          currentUserIdRef.current = publicUserId;
+          setCurrentUserId(publicUserId);
+          return publicUserId;
+        }
+      } catch (error) {
+        console.warn("Unable to resolve public app user id:", error?.message || error);
+      }
     }
-    return uid;
+
+    return null;
   };
 
   const loadSavedConversations = async (options = {}) => {
@@ -575,14 +592,9 @@ export default function ChatInput() {
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
-      if (!supabase) return;
-      const { data, error } = await supabase.auth.getUser();
-      if (error) return;
-      const uid = data?.user?.id || null;
-      if (mounted) {
-        currentUserIdRef.current = uid;
-        setCurrentUserId(uid);
-        if (uid) loadSavedConversations({ userId: uid, silent: true });
+      const publicUserId = await getActiveUserId({ force: true });
+      if (mounted && publicUserId) {
+        loadSavedConversations({ userId: publicUserId, silent: true });
       }
     };
     loadUser();
@@ -1275,22 +1287,54 @@ export default function ChatInput() {
             borderColor: "var(--border-color)",
             display: "flex",
             flexDirection: "column",
+            position: "relative",
           }}
         >
           {isSidebarCollapsed ? (
-            <Stack align="center" gap={8} style={{ height: "100%" }}>
-              <ActionIcon variant="subtle" color="gray" radius="xl" onClick={() => setIsSidebarCollapsed(false)} title={t("chat.openSidebar")}>
-                <IconChevronRight size={18} />
-              </ActionIcon>
+            <Stack align="center" gap={8} style={{ height: "100%", paddingTop: 4 }}>
               <ActionIcon variant="filled" color="blue" radius="xl" onClick={handleNewConversation} title={t("chat.newChat")}>
                 <IconPlus size={18} />
               </ActionIcon>
               <ActionIcon variant="light" color="blue" radius="xl" onClick={() => setIsSidebarCollapsed(false)} title={t("chat.savedChats")}>
                 <IconFolderOpen size={18} />
               </ActionIcon>
+              <ActionIcon
+                variant="filled"
+                color="gray"
+                radius="xl"
+                onClick={() => setIsSidebarCollapsed(false)}
+                title={t("chat.openSidebar")}
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
+                  zIndex: 3,
+                }}
+              >
+                <IconChevronRight size={18} />
+              </ActionIcon>
             </Stack>
           ) : (
             <>
+              <ActionIcon
+                variant="filled"
+                color="gray"
+                radius="xl"
+                onClick={() => setIsSidebarCollapsed(true)}
+                title={t("chat.collapseSidebar")}
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  right: -12,
+                  transform: "translateY(-50%)",
+                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
+                  zIndex: 5,
+                }}
+              >
+                <IconChevronLeft size={17} />
+              </ActionIcon>
               <Group justify="space-between" align="center" mb={8} wrap="nowrap">
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
                   <Box
@@ -1317,9 +1361,6 @@ export default function ChatInput() {
                   </Box>
                 </Group>
                 <Group gap={4} wrap="nowrap">
-                  <ActionIcon variant="subtle" color="gray" radius="xl" onClick={() => setIsSidebarCollapsed(true)} title={t("chat.collapseSidebar")}>
-                    <IconChevronLeft size={17} />
-                  </ActionIcon>
                   <ActionIcon variant="filled" color="blue" radius="xl" onClick={handleNewConversation} title={t("chat.newChat")}>
                     <IconPlus size={17} />
                   </ActionIcon>

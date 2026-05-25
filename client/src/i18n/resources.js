@@ -4647,4 +4647,163 @@ Object.entries(EXTRA_TRANSLATIONS_UI_FEATURES).forEach(([language, translation])
   deepMergeTranslation(resources[language].translation, translation);
 });
 
+
+const EXTRA_TRANSLATIONS_AUTOSCRAPE_AUTH_PATCH = {
+  en: {
+    watchlist: {
+      deleteAll: "Delete all",
+      confirmDeleteAll: "Delete all {{count}} auto-scrape items? This cannot be undone.",
+      saveAll: "Save all ({{count}})",
+      savedAllCount: "Saved {{count}}",
+      retrySaveAll: "Retry save all"
+    },
+    settings: {
+      colorTheme: { default: "Default" }
+    },
+    connectedIntegrations: {
+      alwaysConnectedSubtitle: "All supported platforms are available in the app.",
+      allConnected: "{{count}} connected",
+      connectedPlatforms: "Connected platforms",
+      readyToSearch: "Ready to search",
+      readyToSearchDesc: "Use Competitor Lookup or Auto-Scraper without connecting anything here.",
+      noSetupNeeded: "No setup needed",
+      noSetupNeededDesc: "This screen is just a quick view of available data sources."
+    },
+    profile: {
+      unsavedChanges: "Unsaved changes",
+      upToDate: "Up to date",
+      profileDetails: "Profile details",
+      readyToSave: "Ready",
+      checkFields: "Check fields"
+    },
+    dashboard: { tonePostLimit: "Tone: {{count}} of {{total}} posts" },
+    reports: { tonePostLimit: "Tone: {{count}} of {{total}} posts" }
+  },
+  ja: {
+    watchlist: {
+      deleteAll: "すべて削除",
+      confirmDeleteAll: "自動スクレイプ項目 {{count}} 件をすべて削除しますか？この操作は取り消せません。",
+      saveAll: "すべて保存 ({{count}})",
+      savedAllCount: "{{count}} 件保存済み",
+      retrySaveAll: "すべて保存を再試行"
+    },
+    settings: {
+      colorTheme: { default: "標準" }
+    },
+    connectedIntegrations: {
+      alwaysConnectedSubtitle: "対応しているすべてのプラットフォームをアプリで利用できます。",
+      allConnected: "{{count}} 件接続済み",
+      connectedPlatforms: "接続済みプラットフォーム",
+      readyToSearch: "検索準備完了",
+      readyToSearchDesc: "ここで接続設定をしなくても、競合検索や自動スクレイプを使用できます。",
+      noSetupNeeded: "設定不要",
+      noSetupNeededDesc: "この画面は利用可能なデータソースの確認用です。"
+    },
+    profile: {
+      unsavedChanges: "未保存の変更",
+      upToDate: "最新です",
+      profileDetails: "プロフィール詳細",
+      readyToSave: "保存可能",
+      checkFields: "項目を確認"
+    },
+    dashboard: { tonePostLimit: "トーン: {{total}} 件中 {{count}} 件" },
+    reports: { tonePostLimit: "トーン: {{total}} 件中 {{count}} 件" }
+  },
+  fr: {
+    watchlist: {
+      deleteAll: "Tout supprimer",
+      confirmDeleteAll: "Supprimer les {{count}} éléments d’auto-scrape ? Action irréversible.",
+      saveAll: "Tout enregistrer ({{count}})",
+      savedAllCount: "{{count}} enregistré(s)",
+      retrySaveAll: "Réessayer tout enregistrer"
+    },
+    settings: {
+      colorTheme: { default: "Par défaut" }
+    },
+    connectedIntegrations: {
+      alwaysConnectedSubtitle: "Toutes les plateformes prises en charge sont disponibles dans l’application.",
+      allConnected: "{{count}} connectées",
+      connectedPlatforms: "Plateformes connectées",
+      readyToSearch: "Prêt à rechercher",
+      readyToSearchDesc: "Utilisez Competitor Lookup ou Auto-Scraper sans connexion supplémentaire ici.",
+      noSetupNeeded: "Aucune configuration requise",
+      noSetupNeededDesc: "Cet écran donne un aperçu des sources de données disponibles."
+    },
+    profile: {
+      unsavedChanges: "Modifications non enregistrées",
+      upToDate: "À jour",
+      profileDetails: "Détails du profil",
+      readyToSave: "Prêt",
+      checkFields: "Vérifier les champs"
+    },
+    dashboard: { tonePostLimit: "Ton : {{count}} sur {{total}} publications" },
+    reports: { tonePostLimit: "Ton : {{count}} sur {{total}} publications" }
+  },
+  de: {
+    watchlist: {
+      deleteAll: "Alle löschen",
+      confirmDeleteAll: "Alle {{count}} Auto-Scrape-Elemente löschen? Dies kann nicht rückgängig gemacht werden.",
+      saveAll: "Alle speichern ({{count}})",
+      savedAllCount: "{{count}} gespeichert",
+      retrySaveAll: "Alle erneut speichern"
+    },
+    settings: {
+      colorTheme: { default: "Standard" }
+    },
+    connectedIntegrations: {
+      alwaysConnectedSubtitle: "Alle unterstützten Plattformen sind in der App verfügbar.",
+      allConnected: "{{count}} verbunden",
+      connectedPlatforms: "Verbundene Plattformen",
+      readyToSearch: "Bereit zur Suche",
+      readyToSearchDesc: "Nutzen Sie Competitor Lookup oder Auto-Scraper ohne zusätzliche Verbindung hier.",
+      noSetupNeeded: "Keine Einrichtung nötig",
+      noSetupNeededDesc: "Diese Seite zeigt verfügbare Datenquellen auf einen Blick."
+    },
+    profile: {
+      unsavedChanges: "Ungespeicherte Änderungen",
+      upToDate: "Aktuell",
+      profileDetails: "Profildetails",
+      readyToSave: "Bereit",
+      checkFields: "Felder prüfen"
+    },
+    dashboard: { tonePostLimit: "Ton: {{count}} von {{total}} Beiträgen" },
+    reports: { tonePostLimit: "Ton: {{count}} von {{total}} Beiträgen" }
+  },
+  es: {
+    watchlist: {
+      deleteAll: "Eliminar todo",
+      confirmDeleteAll: "¿Eliminar los {{count}} elementos de auto-scrape? Esta acción no se puede deshacer.",
+      saveAll: "Guardar todo ({{count}})",
+      savedAllCount: "{{count}} guardados",
+      retrySaveAll: "Reintentar guardar todo"
+    },
+    settings: {
+      colorTheme: { default: "Predeterminado" }
+    },
+    connectedIntegrations: {
+      alwaysConnectedSubtitle: "Todas las plataformas compatibles están disponibles en la app.",
+      allConnected: "{{count}} conectadas",
+      connectedPlatforms: "Plataformas conectadas",
+      readyToSearch: "Listo para buscar",
+      readyToSearchDesc: "Usa Competitor Lookup o Auto-Scraper sin conectar nada aquí.",
+      noSetupNeeded: "Sin configuración",
+      noSetupNeededDesc: "Esta pantalla muestra rápidamente las fuentes de datos disponibles."
+    },
+    profile: {
+      unsavedChanges: "Cambios sin guardar",
+      upToDate: "Actualizado",
+      profileDetails: "Detalles del perfil",
+      readyToSave: "Listo",
+      checkFields: "Revisa los campos"
+    },
+    dashboard: { tonePostLimit: "Tono: {{count}} de {{total}} publicaciones" },
+    reports: { tonePostLimit: "Tono: {{count}} de {{total}} publicaciones" }
+  }
+};
+
+Object.entries(EXTRA_TRANSLATIONS_AUTOSCRAPE_AUTH_PATCH).forEach(([language, translation]) => {
+  if (!resources[language]) resources[language] = { translation: {} };
+  deepMergeTranslation(resources[language].translation, translation);
+});
+
 export default resources;

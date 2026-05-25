@@ -77,6 +77,7 @@ export async function resolveSessionAccess(session) {
   const email = normalizeEmail(session?.user?.email);
   const localAccess = {
     email,
+    user_id: null,
     authorized: false,
     role: ROLE_USER,
     isAdmin: false,
@@ -111,6 +112,7 @@ export async function resolveSessionAccess(session) {
 
     return {
       email: normalizeEmail(payload?.email || email),
+      user_id: payload?.user_id || null,
       authorized: Boolean(payload?.authorized),
       role,
       isAdmin,

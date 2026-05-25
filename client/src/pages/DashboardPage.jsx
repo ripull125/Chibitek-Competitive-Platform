@@ -13,6 +13,7 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
+  Slider,
   Skeleton,
   Stack,
   Text,
@@ -244,6 +245,24 @@ const getTrendLabel = (trendDir, t) => {
 /* ------------------------------------------------------------------ */
 /*  Data fetching hook                                                 */
 /* ------------------------------------------------------------------ */
+async function resolveDashboardUserAccess() {
+  if (!supabase) return { userId: null, headers: {} };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return { userId: null, headers: {} };
+    const headers = { Authorization: `Bearer ${token}` };
+    const response = await fetch(apiUrl("/api/auth/access"), { cache: "no-store", headers });
+    const payload = await response.json().catch(() => ({}));
+    return {
+      userId: response.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null,
+      headers,
+    };
+  } catch {
+    return { userId: null, headers: {} };
+  }
+}
+
 function useDashboardData() {
   const [posts, setPosts] = useState([]);
   const [keywords, setKeywords] = useState([]);
@@ -255,17 +274,14 @@ function useDashboardData() {
     let mounted = true;
     const load = async () => {
       setLoading(true);
-      let uid = null;
-      if (supabase) {
-        const { data } = await supabase.auth.getUser();
-        uid = data?.user?.id || null;
-      }
+      const { userId: uid, headers: authHeaders } = await resolveDashboardUserAccess();
       if (mounted) setUserId(uid);
 
-      const qs = uid ? "?user_id=" + uid : "";
+      const qs = uid ? "?user_id=" + encodeURIComponent(uid) : "";
+      const dataHeaders = uid ? { ...authHeaders, "x-user-id": uid } : authHeaders;
       const [postsRes, kwRes, platRes] = await Promise.all([
-        fetch(apiUrl("/api/posts" + qs)).then((r) => r.json()).catch(() => ({ posts: [] })),
-        fetch(apiUrl("/api/keywords" + qs)).then((r) => r.json()).catch(() => ({ keywords: [] })),
+        fetch(apiUrl("/api/posts" + qs), { headers: dataHeaders }).then((r) => r.json()).catch(() => ({ posts: [] })),
+        fetch(apiUrl("/api/keywords" + qs), { headers: dataHeaders }).then((r) => r.json()).catch(() => ({ keywords: [] })),
         fetch(apiUrl("/api/platforms")).then((r) => r.json()).catch(() => ({ platforms: {} })),
       ]);
 
@@ -938,7 +954,7 @@ function KeywordPerformance({ keywords }) {
 /* ------------------------------------------------------------------ */
 /*  Tone Distribution                                                  */
 /* ------------------------------------------------------------------ */
-function ToneBreakdown({ data, onStartAnalysis, analyzing, hasPosts }) {
+function ToneBreakdown({ data, onStartAnalysis, analyzing, hasPosts, tonePostLimit, setTonePostLimit, maxTonePosts }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   return (
@@ -948,18 +964,35 @@ function ToneBreakdown({ data, onStartAnalysis, analyzing, hasPosts }) {
       icon={IconMoodSmile}
       onViewData={() => navigate("/reports")}
       right={
-        <Button
-          size="xs"
-          variant={data.length ? "light" : "filled"}
-          leftSection={<IconSparkles size={14} />}
-          onClick={onStartAnalysis}
-          loading={analyzing}
-          disabled={!hasPosts}
-        >
-          {data.length
-            ? t("dashboard.refreshToneAnalysis", { defaultValue: "Refresh Analysis" })
-            : t("dashboard.startToneAnalysis", { defaultValue: "Start Analysis" })}
-        </Button>
+        <Stack gap={4} align="end" style={{ minWidth: 180 }}>
+          <Button
+            size="xs"
+            variant={data.length ? "light" : "filled"}
+            leftSection={<IconSparkles size={14} />}
+            onClick={onStartAnalysis}
+            loading={analyzing}
+            disabled={!hasPosts}
+          >
+            {data.length
+              ? t("dashboard.refreshToneAnalysis", { defaultValue: "Refresh Analysis" })
+              : t("dashboard.startToneAnalysis", { defaultValue: "Start Analysis" })}
+          </Button>
+          {hasPosts ? (
+            <Box w={180}>
+              <Text size="xs" c="dimmed" ta="right" mb={2}>
+                {t("dashboard.tonePostLimit", { count: tonePostLimit, total: maxTonePosts, defaultValue: `Tone: ${tonePostLimit} of ${maxTonePosts} posts` })}
+              </Text>
+              <Slider
+                min={1}
+                max={Math.max(1, maxTonePosts)}
+                value={Math.min(tonePostLimit, Math.max(1, maxTonePosts))}
+                onChange={setTonePostLimit}
+                size="xs"
+                disabled={maxTonePosts <= 1 || analyzing}
+              />
+            </Box>
+          ) : null}
+        </Stack>
       }
       tourId="dashboard-tone"
     >
@@ -1140,6 +1173,7 @@ export default function DashboardPage() {
   const tour = useAppTour();
   const { posts, setPosts, keywords, platformIdMap, loading, userId } = useDashboardData();
   const [toneAnalysisLoading, setToneAnalysisLoading] = useState(false);
+  const [tonePostLimit, setTonePostLimit] = useState(10);
   const analytics = useAnalytics(posts, keywords, platformIdMap);
 
   const runToneAnalysisFromDashboard = useCallback(async () => {
@@ -1147,9 +1181,10 @@ export default function DashboardPage() {
     setToneAnalysisLoading(true);
     try {
       const universalPosts = convertSavedPosts(posts);
+      const limit = Math.max(1, Math.min(tonePostLimit, universalPosts.length));
       const missing = universalPosts
         .filter((post) => !post.tone && String(post.Message || "").trim())
-        .slice(-10);
+        .slice(-limit);
 
       if (!missing.length) return;
 
@@ -1169,7 +1204,12 @@ export default function DashboardPage() {
     } finally {
       setToneAnalysisLoading(false);
     }
-  }, [posts, setPosts, toneAnalysisLoading, userId]);
+  }, [posts, setPosts, toneAnalysisLoading, tonePostLimit, userId]);
+
+  useEffect(() => {
+    if (!posts.length) return;
+    setTonePostLimit((current) => Math.max(1, Math.min(current || 10, posts.length)));
+  }, [posts.length]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("chibitek:pageReady", { detail: { page: "dashboard" } }));
@@ -1239,6 +1279,9 @@ export default function DashboardPage() {
                 onStartAnalysis={runToneAnalysisFromDashboard}
                 analyzing={toneAnalysisLoading}
                 hasPosts={posts.length > 0}
+                tonePostLimit={Math.max(1, Math.min(tonePostLimit, Math.max(1, posts.length)))}
+                setTonePostLimit={setTonePostLimit}
+                maxTonePosts={posts.length}
               />
             </SimpleGrid>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">

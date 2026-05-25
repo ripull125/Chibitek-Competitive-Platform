@@ -44,6 +44,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconEye,
+  IconDeviceFloppy,
 } from "@tabler/icons-react";
 import { supabase } from "../supabaseClient";
 import { apiUrl } from "../utils/api";
@@ -124,8 +125,7 @@ async function getAuthSession() {
 
 async function getUserId() {
   const session = await getAuthSession();
-  const authUserId = session?.user?.id || null;
-  if (!session?.access_token) return authUserId;
+  if (!session?.access_token) return null;
 
   try {
     const res = await fetch(apiUrl("/api/auth/access"), {
@@ -133,9 +133,9 @@ async function getUserId() {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const payload = await res.json().catch(() => ({}));
-    return payload?.user_id || authUserId;
+    return res.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null;
   } catch {
-    return authUserId;
+    return null;
   }
 }
 
@@ -143,7 +143,8 @@ async function apiFetch(path, opts = {}) {
   const session = await getAuthSession();
   const userId = await getUserId();
   const url = apiUrl(path);
-  const headers = { "Content-Type": "application/json", "x-user-id": userId, ...opts.headers };
+  const headers = { "Content-Type": "application/json", ...opts.headers };
+  if (userId) headers["x-user-id"] = userId;
   if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
   const res = await fetch(url, { ...opts, headers });
   if (!res.ok) {
@@ -206,6 +207,7 @@ export default function Watchlist() {
 
   // delete confirmation
   const [deleteId, setDeleteId] = useState(null);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   /* ── load items ──────────────────── */
   const loadItems = async () => {
@@ -319,6 +321,29 @@ export default function Watchlist() {
     }
   };
 
+  const confirmDeleteAll = async () => {
+    if (!items.length || deletingAll) return;
+    const confirmed = window.confirm(
+      t("watchlist.confirmDeleteAll", {
+        count: items.length,
+        defaultValue: `Delete all ${items.length} auto-scrape items? This cannot be undone.`,
+      })
+    );
+    if (!confirmed) return;
+
+    setDeletingAll(true);
+    try {
+      await apiFetch("/api/watchlist", { method: "DELETE" });
+      setItems([]);
+      setCardResults({});
+      setExpandedCards(new Set());
+    } catch (err) {
+      console.error("delete all watchlist error:", err);
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   /* ── run individual item ─────────── */
   const runItem = async (itemId) => {
     setRunningIds((prev) => new Set(prev).add(itemId));
@@ -388,6 +413,17 @@ export default function Watchlist() {
               <IconRefresh size={18} />
             </ActionIcon>
           </Tooltip>
+
+          <Button
+            leftSection={<IconTrash size={16} />}
+            color="red"
+            variant="light"
+            loading={deletingAll}
+            disabled={items.length === 0}
+            onClick={confirmDeleteAll}
+          >
+            {t("watchlist.deleteAll", { defaultValue: "Delete all" })}
+          </Button>
 
           <Button
             leftSection={<IconPlayerPlayFilled size={16} />}
@@ -865,8 +901,313 @@ function getLinkedInPostImage(post = {}) {
   );
 }
 
+function textFromValue(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "object") {
+    return (
+      textFromValue(value.text) ||
+      textFromValue(value.caption) ||
+      textFromValue(value.caption_text) ||
+      textFromValue(value.description) ||
+      textFromValue(value.node?.text) ||
+      (Array.isArray(value.edges) ? value.edges.map((edge) => textFromValue(edge?.node?.text)).filter(Boolean).join("\n") : "")
+    );
+  }
+  return "";
+}
+
+function objectValuesArray(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.values(value).filter(Boolean);
+}
+
+function firstFiniteMetric(...values) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    if (typeof value === "object") {
+      const nested = value.count ?? value.value ?? value.total_count ?? value.totalCount;
+      if (nested != null && Number.isFinite(Number(nested))) return Number(nested);
+      continue;
+    }
+    const parsed = parseMetricValue(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findNestedValue(root, keyTests = [], maxDepth = 5) {
+  const seen = new WeakSet();
+  const queue = [{ value: root, depth: 0, path: "root" }];
+  while (queue.length) {
+    const { value, depth, path } = queue.shift();
+    if (!value || typeof value !== "object" || depth > maxDepth) continue;
+    if (seen.has(value)) continue;
+    seen.add(value);
+
+    for (const [key, child] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      const lowerPath = `${path}.${key}`.toLowerCase();
+      const isMatch = keyTests.some((test) => test.test(lowerKey) || test.test(lowerPath));
+      if (isMatch && child != null && typeof child !== "object") return child;
+      if (isMatch && child && typeof child === "object") {
+        const metric = firstFiniteMetric(child);
+        if (metric != null) return metric;
+      }
+      if (child && typeof child === "object") queue.push({ value: child, depth: depth + 1, path: lowerPath });
+    }
+  }
+  return null;
+}
+
+function getInstagramMetric(post = {}, names = []) {
+  const directValues = names.flatMap((name) => [post?.[name], post?.metrics?.[name], post?.insights?.[name], post?.statistics?.[name]]);
+  const direct = firstFiniteMetric(...directValues);
+  if (direct != null) return direct;
+  const tests = names.map((name) => new RegExp(`^${escapeRegExp(name)}$`, "i"));
+  return firstFiniteMetric(findNestedValue(post, tests));
+}
+
+function isLikelyNormalizedInstagramPost(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const hasIdentity = Boolean(value.code || value.shortcode || value.pk || value.id || value.url || value.permalink);
+  const hasDisplayData = Boolean(
+    value.user?.username ||
+    value.owner?.username ||
+    value.author?.username ||
+    value.username ||
+    value.caption ||
+    value.like_count != null ||
+    value.comment_count != null ||
+    value.taken_at ||
+    value.taken_at_timestamp ||
+    value.created_at ||
+    Array.isArray(value.media)
+  );
+  return hasIdentity && hasDisplayData;
+}
+
+function hasUsefulInstagramShellFields(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Boolean(
+    value.user?.username ||
+    value.owner?.username ||
+    value.author?.username ||
+    value.username ||
+    value.caption ||
+    value.like_count != null ||
+    value.comment_count != null ||
+    value.taken_at ||
+    value.taken_at_timestamp ||
+    value.created_at ||
+    value.url ||
+    value.permalink ||
+    value.code ||
+    value.shortcode
+  );
+}
+
+function mergeInstagramPostShell(shell, inner) {
+  if (!shell || typeof shell !== "object" || !inner || typeof inner !== "object") return inner || shell;
+  const shellCaption = shell.caption?.text || shell.caption?.caption || (typeof shell.caption === "string" ? shell.caption : null);
+  return {
+    ...inner,
+    ...shell,
+    user: shell.user?.username ? shell.user : (inner.user || shell.user),
+    owner: shell.owner?.username ? shell.owner : (inner.owner || shell.owner),
+    author: shell.author?.username ? shell.author : (inner.author || shell.author),
+    caption: shellCaption || inner.caption || shell.caption,
+    media: Array.isArray(shell.media) && shell.media.length ? shell.media : inner.media,
+    like_count: shell.like_count ?? shell.likeCount ?? inner.like_count ?? inner.likeCount,
+    comment_count: shell.comment_count ?? shell.commentCount ?? inner.comment_count ?? inner.commentCount,
+    taken_at: shell.taken_at ?? inner.taken_at,
+    taken_at_timestamp: shell.taken_at_timestamp ?? inner.taken_at_timestamp,
+    created_at: shell.created_at ?? inner.created_at,
+    url: shell.url || shell.permalink || inner.url || inner.permalink,
+    permalink: shell.permalink || shell.url || inner.permalink || inner.url,
+  };
+}
+
+function unwrapInstagramPost(value) {
+  if (!value) return value;
+  if (isLikelyNormalizedInstagramPost(value)) return value;
+
+  const inner =
+    value?.node ||
+    (value?.media && !Array.isArray(value.media) ? value.media : null) ||
+    value?.item ||
+    value?.result ||
+    value?.response ||
+    value?.data?.xdt_shortcode_media ||
+    value?.data?.shortcode_media ||
+    (value?.data?.media && !Array.isArray(value.data.media) ? value.data.media : null) ||
+    value?.data?.post ||
+    value?.data ||
+    value;
+
+  if (inner !== value && hasUsefulInstagramShellFields(value)) return mergeInstagramPostShell(value, inner);
+  return inner;
+}
+
+function toInstagramArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value.posts)) return value.posts;
+  if (Array.isArray(value.reels)) return value.reels;
+  if (Array.isArray(value.items)) return value.items;
+  if (Array.isArray(value.medias)) return value.medias;
+  if (Array.isArray(value.media) && !isLikelyNormalizedInstagramPost(value)) return value.media;
+  if (Array.isArray(value.data?.posts)) return value.data.posts;
+  if (Array.isArray(value.data?.reels)) return value.data.reels;
+  if (Array.isArray(value.data?.items)) return value.data.items;
+  if (Array.isArray(value.data?.medias)) return value.data.medias;
+  if (Array.isArray(value.edges)) return value.edges.map((edge) => edge?.node || edge).filter(Boolean);
+
+  const objectBacked =
+    objectValuesArray(value.posts).length ? objectValuesArray(value.posts) :
+    objectValuesArray(value.reels).length ? objectValuesArray(value.reels) :
+    objectValuesArray(value.items).length ? objectValuesArray(value.items) :
+    objectValuesArray(value.medias).length ? objectValuesArray(value.medias) :
+    objectValuesArray(value.data?.posts).length ? objectValuesArray(value.data.posts) :
+    objectValuesArray(value.data?.reels).length ? objectValuesArray(value.data.reels) :
+    objectValuesArray(value.data?.items).length ? objectValuesArray(value.data.items) :
+    objectValuesArray(value.data?.medias).length ? objectValuesArray(value.data.medias) :
+    [];
+
+  return objectBacked;
+}
+
+function getInstagramCaption(post = {}) {
+  return (
+    textFromValue(post.caption?.text) ||
+    textFromValue(post.caption?.caption) ||
+    textFromValue(post.caption) ||
+    textFromValue(post.text) ||
+    textFromValue(post.edge_media_to_caption) ||
+    textFromValue(post.accessibility_caption) ||
+    textFromValue(post.title) ||
+    textFromValue(post.description) ||
+    ""
+  );
+}
+
+function getInstagramUsername(post = {}) {
+  return String(
+    post.username ||
+    post.handle ||
+    post.user?.username ||
+    post.owner?.username ||
+    post.author?.username ||
+    post.account?.username ||
+    post.profile?.username ||
+    post.caption?.user?.username ||
+    post.caption?.owner?.username ||
+    post.ownerUsername ||
+    post.owner_username ||
+    post.authorUsername ||
+    post.author_username ||
+    post.user_username ||
+    findNestedValue(post, [/^username$/, /owner\.username$/, /user\.username$/, /author\.username$/]) ||
+    "unknown"
+  ).replace(/^@/, "");
+}
+
+function getInstagramPostId(post = {}) {
+  return String(post.id || post.pk || post.media_id || post.mediaId || post.shortcode || post.code || post.url || post.permalink || "");
+}
+
+function getInstagramPostUrl(post = {}) {
+  const direct = post.url || post.permalink || post.shortcode_url || post.link;
+  const match = String(direct || "").match(/instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  const code = String(post.shortcode || post.code || post.short_code || post.shortCode || match?.[2] || "").trim();
+  if (match?.[1] && match?.[2]) return `https://www.instagram.com/${match[1]}/${match[2]}/`;
+  if (direct && isSafeUrl(direct)) return direct;
+  if (!code) return null;
+  const isReel = post.product_type === "clips" || post.__typename === "XDTGraphVideo" || post.is_video === true || post.media_type === 2 || post.media_type === "VIDEO";
+  return `https://www.instagram.com/${isReel ? "reel" : "p"}/${code}/`;
+}
+
+function getInstagramMediaItems(post = {}) {
+  const direct = Array.isArray(post.media) ? post.media : [];
+  const carousel = [
+    ...direct,
+    ...(Array.isArray(post.carousel_media) ? post.carousel_media : []),
+    ...(Array.isArray(post.carousel_media_items) ? post.carousel_media_items : []),
+    ...(Array.isArray(post.children) ? post.children : []),
+    ...(Array.isArray(post.resources) ? post.resources : []),
+    ...(Array.isArray(post.edge_sidecar_to_children?.edges) ? post.edge_sidecar_to_children.edges.map((edge) => edge?.node).filter(Boolean) : []),
+  ];
+
+  const fromCarousel = carousel.map((raw, index) => {
+    const m = raw?.node || raw?.media || raw;
+    const imageUrl = pickFirstImage(
+      m.preview_image_url,
+      m.image_versions2?.candidates,
+      m.image_versions?.candidates,
+      m.display_resources,
+      m.display_url,
+      m.displayUrl,
+      m.thumbnail_src,
+      m.thumbnail_url,
+      m.thumbnailUrl,
+      m.photo_url,
+      m.photoUrl,
+      m.photo,
+      m.image_url,
+      m.imageUrl,
+      m.media_url,
+      m.url
+    );
+    const videoUrl = pickFirstExplicitVideo(m.video_url, m.videoUrl, m.video_versions, m.video_versions2);
+    return {
+      media_key: m.id || m.pk || m.code || `${post?.id || "ig"}-${index}`,
+      type: m.media_type === 2 || m.mediaType === 2 || m.is_video || videoUrl ? "video" : "photo",
+      url: videoUrl || imageUrl,
+      preview_image_url: imageUrl || m.preview_image_url || null,
+      variants: m.video_versions || m.video_versions2 || (videoUrl ? [{ url: videoUrl, content_type: "video/mp4" }] : []),
+    };
+  }).filter((item) => item.url || item.preview_image_url);
+
+  if (fromCarousel.length) return fromCarousel;
+
+  const imageUrl = pickFirstImage(
+    post.image_url,
+    post.imageUrl,
+    post.photo_url,
+    post.photoUrl,
+    post.photo,
+    post.display_url,
+    post.displayUrl,
+    post.display_resources,
+    post.thumbnail_src,
+    post.thumbnail_url,
+    post.thumbnailUrl,
+    post.image_versions2?.candidates,
+    post.media_url,
+    post.url
+  );
+  const videoUrl = pickFirstExplicitVideo(post.video_url, post.videoUrl, post.video_versions, post.video_versions2);
+  if (videoUrl || imageUrl) {
+    return [{
+      media_key: post.id || post.pk || post.code || "ig-media",
+      type: videoUrl ? "video" : "photo",
+      url: videoUrl || imageUrl,
+      preview_image_url: imageUrl || post.thumbnail_url || null,
+      variants: post.video_versions || post.video_versions2 || (videoUrl ? [{ url: videoUrl, content_type: "video/mp4" }] : []),
+    }];
+  }
+
+  return [];
+}
+
 function getInstagramPostImage(post = {}) {
-  return pickFirstImage(
+  const mediaItem = getInstagramMediaItems(post).find((item) => item.preview_image_url || item.type !== "video");
+  return mediaItem?.preview_image_url || (mediaItem?.type !== "video" ? mediaItem?.url : null) || pickFirstImage(
     post.display_url,
     post.displayUrl,
     post.image_url,
@@ -875,10 +1216,14 @@ function getInstagramPostImage(post = {}) {
     post.thumbnailUrl,
     post.cover,
     post.cover_url,
+    post.preview_image_url,
     post.video_url_thumbnail,
-    post.edge_sidecar_to_children?.edges?.[0]?.node?.display_url,
     post.images
   );
+}
+
+function getInstagramPostDate(post = {}) {
+  return post.taken_at || post.taken_at_timestamp || post.timestamp || post.created_at || post.createdAt || post.date || post.caption?.created_at || post.caption?.created_at_utc || null;
 }
 
 function getTikTokCover(video = {}) {
@@ -993,7 +1338,10 @@ function getLinkedInVideoUrl(post = {}) {
 }
 
 function getInstagramVideoUrl(post = {}) {
+  const mediaVideo = getInstagramMediaItems(post).find((item) => item.type === "video");
   return pickFirstExplicitVideo(
+    mediaVideo?.url,
+    mediaVideo?.variants,
     post.video_url,
     post.videoUrl,
     post.video_versions,
@@ -1143,6 +1491,207 @@ function SaveBtn({ platform, postId, authorId, content, publishedAt, likes, shar
   );
 }
 
+
+function normalizePublishedAt(value) {
+  if (!value) return new Date().toISOString();
+  const date = new Date(typeof value === "number" ? (value > 1e12 ? value : value * 1000) : value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
+function buildSavePayload({ platform, postId, authorId, content, publishedAt, likes, shares, comments, extra = {}, userId }) {
+  if (!postId) return null;
+  return {
+    platform_name: PLATFORM_NAMES[platform] || platform,
+    platform_user_id: String(authorId || "unknown"),
+    platform_post_id: String(postId),
+    content: String(content || "").slice(0, 2000),
+    published_at: normalizePublishedAt(publishedAt),
+    likes: Number(likes) || 0,
+    shares: Number(shares) || 0,
+    comments: Number(comments) || 0,
+    user_id: userId,
+    ...(extra || {}),
+  };
+}
+
+function getSavePayloadsForPlatform(platform, data, userId) {
+  const payloads = [];
+  const push = (payload) => {
+    if (!payload?.platform_post_id) return;
+    if (payloads.some((item) => item.platform_post_id === payload.platform_post_id)) return;
+    payloads.push(payload);
+  };
+
+  if (platform === "x") {
+    const tweets = extractArray(data, "tweets", "data") || [];
+    const users = extractArray(data, "users") || extractArray(data?.includes, "users") || [];
+    const userMap = new Map(users.map((u) => [String(u.id), u]));
+    tweets.forEach((tweet) => {
+      const m = tweet.public_metrics || tweet.metrics || {};
+      const author = userMap.get(String(tweet.author_id)) || {};
+      push(buildSavePayload({
+        platform,
+        postId: tweet.id,
+        authorId: tweet.author_id || author.username,
+        content: tweet.text,
+        publishedAt: tweet.created_at,
+        likes: m.like_count,
+        shares: m.retweet_count,
+        comments: m.reply_count,
+        extra: { author_name: author?.name, author_handle: author?.username, username: author?.username },
+        userId,
+      }));
+    });
+  } else if (platform === "youtube") {
+    const videos = [...(extractArray(data, "videos", "items") || []), ...(data?.video ? [data.video] : [])];
+    videos.forEach((v) => {
+      const vidId = v.videoId || v.id || getYouTubeVideoId(v.url);
+      const thumb = getYouTubeVideoThumbnail(v, vidId);
+      const videoUrl = v.url || (vidId ? `https://www.youtube.com/watch?v=${vidId}` : null);
+      push(buildSavePayload({
+        platform,
+        postId: vidId,
+        authorId: v.channelId || v.channelTitle,
+        content: v.title || v.description,
+        publishedAt: v.publishedAt,
+        likes: v.likes,
+        comments: v.comments,
+        extra: { title: v.title, description: v.description, channelTitle: v.channelTitle, videoId: vidId, thumbnail: thumb, url: videoUrl },
+        userId,
+      }));
+    });
+  } else if (platform === "reddit") {
+    const posts = extractArray(data, "posts", "children", "items", "data") || [];
+    posts.map((p) => p.data || p).forEach((post) => {
+      push(buildSavePayload({
+        platform,
+        postId: post.id || post.name,
+        authorId: post.author,
+        content: post.title || post.selftext,
+        publishedAt: post.created_utc || post.created,
+        likes: post.score ?? post.ups,
+        comments: post.num_comments,
+        extra: { subreddit: post.subreddit, url: post.permalink ? `https://reddit.com${post.permalink}` : post.url },
+        userId,
+      }));
+    });
+  } else if (platform === "linkedin") {
+    const posts = extractArray(data, "posts", "items", "data") || [];
+    posts.map((p) => p.node || p).forEach((post) => {
+      const id = post.id || post.urn || post.activityUrn || post.url || post.post_url;
+      push(buildSavePayload({
+        platform,
+        postId: id,
+        authorId: post.author_id || post.author?.name || post.companyName || post.profileName,
+        content: post.text || post.content || post.caption || post.commentary || post.title,
+        publishedAt: post.published_at || post.created_at || post.date,
+        likes: firstMetric(post.likes, post.numLikes, post.reaction_count, post.reactions),
+        comments: firstMetric(post.comments, post.numComments, post.comment_count),
+        shares: firstMetric(post.shares, post.reposts, post.share_count),
+        extra: { url: post.url || post.post_url || post.link, title: post.title, author_name: post.author?.name || post.authorName },
+        userId,
+      }));
+    });
+  } else if (platform === "instagram") {
+    const rawItems = [
+      ...toInstagramArray(data?.posts),
+      ...toInstagramArray(data?.items),
+      ...toInstagramArray(data?.reels),
+      ...toInstagramArray(data?.data),
+      ...(Array.isArray(data) ? data : []),
+    ];
+    const posts = rawItems.length ? rawItems : toInstagramArray(data);
+    posts.map(unwrapInstagramPost).filter(Boolean).forEach((post) => {
+      push(buildSavePayload({
+        platform,
+        postId: getInstagramPostId(post),
+        authorId: getInstagramUsername(post),
+        content: getInstagramCaption(post),
+        publishedAt: getInstagramPostDate(post),
+        likes: getInstagramMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]),
+        comments: getInstagramMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]),
+        extra: { shortcode: post.shortcode || post.code, thumbnail: getInstagramPostImage(post), url: getInstagramPostUrl(post), username: getInstagramUsername(post) },
+        userId,
+      }));
+    });
+  } else if (platform === "tiktok") {
+    const videos = extractArray(data, "itemList", "search_item_list", "videos", "items", "data") || [];
+    videos.map((v) => v?.item || v?.data || v).forEach((vid) => {
+      const author = vid.author?.uniqueId || vid.author?.nickname || vid.author_id || vid.username;
+      push(buildSavePayload({
+        platform,
+        postId: vid.id || vid.aweme_id,
+        authorId: author,
+        content: vid.desc || vid.description || vid.title,
+        publishedAt: vid.createTime || vid.created_at,
+        likes: vid.diggCount ?? vid.likes,
+        comments: vid.commentCount ?? vid.comments,
+        shares: vid.shareCount ?? vid.shares,
+        extra: { author_name: vid.author?.nickname, username: vid.author?.uniqueId, thumbnail: getTikTokCover(vid), url: vid.url || (vid.id && author ? `https://www.tiktok.com/@${author}/video/${vid.id}` : undefined) },
+        userId,
+      }));
+    });
+  }
+
+  return payloads.filter(Boolean);
+}
+
+function SaveAllButton({ platform, data, savedPostIds, onSaved }) {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState(null); // null | saving | saved | error
+  const [savedCount, setSavedCount] = useState(0);
+  const possible = useMemo(() => getSavePayloadsForPlatform(platform, data, "__preview__"), [platform, data]);
+  const remainingCount = possible.filter((item) => !savedPostIds?.has(String(item.platform_post_id))).length;
+
+  const handleSaveAll = async (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (!remainingCount || status === "saving") return;
+    setStatus("saving");
+    setSavedCount(0);
+    try {
+      const uid = await getUserId();
+      const payloads = getSavePayloadsForPlatform(platform, data, uid)
+        .filter((item) => !savedPostIds?.has(String(item.platform_post_id)));
+      let count = 0;
+      for (const payload of payloads) {
+        try {
+          await apiFetch("/api/saved-items", { method: "POST", body: JSON.stringify(payload) });
+          count += 1;
+          if (onSaved) onSaved(String(payload.platform_post_id));
+        } catch (err) {
+          console.warn("Save all skipped one post:", err?.message || err);
+        }
+      }
+      setSavedCount(count);
+      setStatus("saved");
+    } catch (err) {
+      console.error("Save all failed:", err);
+      setStatus("error");
+    }
+  };
+
+  if (!possible.length) return <span />;
+
+  return (
+    <Button
+      size="xs"
+      variant="light"
+      color={status === "error" ? "red" : status === "saved" ? "green" : "blue"}
+      leftSection={<IconDeviceFloppy size={14} />}
+      loading={status === "saving"}
+      disabled={!remainingCount || status === "saving"}
+      onClick={handleSaveAll}
+    >
+      {status === "saved"
+        ? t("watchlist.savedAllCount", { count: savedCount, defaultValue: `Saved ${savedCount}` })
+        : status === "error"
+          ? t("watchlist.retrySaveAll", { defaultValue: "Retry save all" })
+          : t("watchlist.saveAll", { count: remainingCount, defaultValue: `Save all (${remainingCount})` })}
+    </Button>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    ResultsRenderer — smart platform-aware display
    ═══════════════════════════════════════════════════════════════════════ */
@@ -1154,7 +1703,8 @@ function ResultsRenderer({ platform, scrapeType, data, savedPostIds, onSaved, so
 
   return (
     <Stack gap="sm">
-      <Group justify="flex-end">
+      <Group justify="space-between" align="center">
+        <SaveAllButton platform={platform} data={data} savedPostIds={savedPostIds} onSaved={onSaved} />
         <SortSelect value={sortMode} onChange={onSortChange || (() => {})} />
       </Group>
       {/* Platform-specific rendering — each renderer handles its own data extraction */}
@@ -1851,8 +2401,15 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
   // Posts or reels
   // ScrapeCreators: user_posts = { posts: [{ node: {...} }] }, user_reels = { items: [{ media: {...} }] }
   const isReels = scrapeType === "user_reels";
-  const rawItems = extractArray(data, "posts", "items", "reels", "data") || [];
-  const postItems = sortPostsForDisplay(rawItems.map(p => p.node || p.media || p), sortMode);
+  const rawItems = [
+    ...toInstagramArray(data?.posts),
+    ...toInstagramArray(data?.items),
+    ...toInstagramArray(data?.reels),
+    ...toInstagramArray(data?.data),
+    ...(Array.isArray(data) ? data : []),
+  ];
+  const sourceItems = rawItems.length ? rawItems : toInstagramArray(data);
+  const postItems = sortPostsForDisplay(sourceItems.map(unwrapInstagramPost).filter(Boolean), sortMode);
 
   if (!postItems.length) return <Text size="sm" c="dimmed">{isReels ? t("watchlist.noReelsReturned") : t("watchlist.noPostsReturned")}</Text>;
 
@@ -1860,26 +2417,28 @@ function InstagramRenderer({ scrapeType, data, savedPostIds, onSaved, sortMode =
     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
       {postItems.map((post, i) => {
         const thumb = getInstagramPostImage(post);
-        const isVideo = post.is_video || post.media_type === "VIDEO";
+        const caption = getInstagramCaption(post);
+        const username = getInstagramUsername(post);
+        const postId = getInstagramPostId(post);
         const videoUrl = getInstagramVideoUrl(post);
-        const igPostUrl = (post.shortcode || post.code) ? `https://instagram.com/p/${post.shortcode || post.code}` : null;
+        const igPostUrl = getInstagramPostUrl(post);
         return (
           <Card key={post.id || i} withBorder radius="sm" p="xs" {...cardLinkProps(igPostUrl)}>
             <Group gap="sm" wrap="nowrap" align="start">
               {(thumb || videoUrl) && (
-                <MediaPreview src={thumb} videoSrc={videoUrl} alt={post.caption || t("watchlist.instagramPostPreview")} title={t("watchlist.instagramVideo")} />
+                <MediaPreview src={thumb} videoSrc={videoUrl} alt={caption || t("watchlist.instagramPostPreview")} title={t("watchlist.instagramVideo")} />
               )}
               <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                {(post.caption || post.text) && <ExpandableText text={post.caption || post.text} size="xs" initialLines={3} />}
-                {post.username && <Text size="xs" c="dimmed">@{post.username}</Text>}
+                {caption && <ExpandableText text={caption} size="xs" initialLines={3} />}
+                {username && <Text size="xs" c="dimmed">@{username}</Text>}
                 <Group justify="space-between" align="center">
                   <Group gap={6} wrap="wrap">
-                    {(post.like_count ?? post.likes) != null && <Badge variant="light" size="xs">❤️ {fmtNum(post.like_count ?? post.likes)}</Badge>}
-                    {(post.comment_count ?? post.comments) != null && <Badge variant="light" size="xs">💬 {fmtNum(post.comment_count ?? post.comments)}</Badge>}
+                    {getInstagramMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]) != null && <Badge variant="light" size="xs">❤️ {fmtNum(getInstagramMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"]))}</Badge>}
+                    {getInstagramMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]) != null && <Badge variant="light" size="xs">💬 {fmtNum(getInstagramMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"]))}</Badge>}
                   </Group>
-                  <SaveBtn platform="instagram" postId={post.id || post.shortcode || post.code} authorId={post.username || post.owner?.username} content={post.caption || post.text} likes={post.like_count ?? post.likes} comments={post.comment_count ?? post.comments} savedPostIds={savedPostIds} onSaved={onSaved} />
+                  <SaveBtn platform="instagram" postId={postId} authorId={username} content={caption} publishedAt={getInstagramPostDate(post)} likes={getInstagramMetric(post, ["like_count", "likeCount", "likesCount", "likes_count", "likes"])} comments={getInstagramMetric(post, ["comment_count", "commentCount", "commentsCount", "comments_count", "num_comments", "comments"])} extra={{ shortcode: post.shortcode || post.code, thumbnail: thumb, url: igPostUrl, username }} savedPostIds={savedPostIds} onSaved={onSaved} />
                 </Group>
-                {(post.timestamp || post.taken_at) && <Text size="xs" c="dimmed">{fmtDate(post.timestamp || post.taken_at)}</Text>}
+                {getInstagramPostDate(post) && <Text size="xs" c="dimmed">{fmtDate(getInstagramPostDate(post))}</Text>}
               </Stack>
             </Group>
           </Card>
