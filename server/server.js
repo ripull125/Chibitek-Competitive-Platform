@@ -17,6 +17,7 @@ import { lookupInstagramInput } from "./instagramApi.js";
 import { lookupTikTokInput } from "./tiktokApi.js";
 import { lookupRedditInput } from "./redditApi.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
+import { collectCerebrasApiKeys } from "./utils/envKeys.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -151,10 +152,13 @@ const {
 
 const githubAiEndpoint = 'https://models.github.ai/inference';
 const cerebrasEndpoint = CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1';
-const cerebrasEndpointAlt = 'https://api.cerebras.ai';
 const openaiEndpoint = OPENAI_BASE_URL || 'https://api.openai.com/v1';
-const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-4o-mini';
-const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-70b';
+const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-5-nano';
+const cerebrasFallbackModels = (process.env.CHAT_MODEL_CEREBRAS_FALLBACKS || 'gpt-oss-120b,zai-glm-4.7')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || cerebrasFallbackModels[0] || 'gpt-oss-120b';
 
 function loadIndexedEnvValues(prefix, { start = 1, end = 20 } = {}) {
   const values = [];
@@ -177,7 +181,7 @@ function resolveRequestedProvider(rawProvider) {
   }
 
   if (GITHUB_KEYS.length) return 'github';
-  if (CEREBRAS_API_KEY || process.env.CEREBRAS_API_KEY1) return 'cerebras';
+  if (CEREBRAS_KEYS.length) return 'cerebras';
   return 'openai';
 }
 
@@ -195,11 +199,7 @@ function nextGithubKey() {
   return GITHUB_KEYS[index];
 }
 
-const CEREBRAS_KEYS = [
-  CEREBRAS_API_KEY,
-  ...(process.env.CEREBRAS_API_KEYS || '').split(',').map((s) => s.trim()).filter(Boolean),
-  ...loadIndexedEnvValues('CEREBRAS_API_KEY', { start: 1, end: 20 }),
-].filter(Boolean);
+const CEREBRAS_KEYS = collectCerebrasApiKeys();
 
 let cerebrasKeyIndex = 0;
 function nextCerebrasKey() {
@@ -228,23 +228,34 @@ function normalizeCerebrasModel(model) {
   const raw = String(model || '').trim();
   if (!raw) return raw;
 
-  const aliases = {
-    'llama-3.1-70b': 'llama3.1-70b',
-    'llama-3.3-70b': 'llama-3.3-70b',
-    'meta/llama-3.1-70b-instruct': 'llama3.1-70b',
-  };
+  const keepLegacy = String(process.env.CEREBRAS_ALLOW_LEGACY_MODELS || '').toLowerCase() === 'true';
+  const aliases = keepLegacy
+    ? {}
+    : {
+      // These public Cerebras model IDs have been deprecated. Route old UI/env
+      // selections to the current production default instead of surfacing a 404.
+      'llama3.1-70b': 'gpt-oss-120b',
+      'llama-3.1-70b': 'gpt-oss-120b',
+      'llama-3.3-70b': 'gpt-oss-120b',
+      'llama3.1-8b': 'gpt-oss-120b',
+      'qwen-3-235b-a22b-instruct-2507': 'gpt-oss-120b',
+      'qwen-3-32b': 'gpt-oss-120b',
+      'qwen-3-14b': 'gpt-oss-120b',
+      'deepseek-r1-distill-llama-70b': 'gpt-oss-120b',
+      'meta/llama-3.1-70b-instruct': 'gpt-oss-120b',
+    };
 
   const key = raw.toLowerCase();
   return aliases[key] || raw;
 }
 
 function getCerebrasModelCandidates(primaryModel) {
-  const base = normalizeCerebrasModel(primaryModel);
-  const fallback = normalizeCerebrasModel(cerebrasFallbackModel);
   const candidates = [
-    base,
-    fallback,
-    'llama3.1-70b',
+    normalizeCerebrasModel(primaryModel),
+    normalizeCerebrasModel(cerebrasFallbackModel),
+    ...cerebrasFallbackModels.map(normalizeCerebrasModel),
+    'gpt-oss-120b',
+    'zai-glm-4.7',
   ].filter(Boolean);
   return Array.from(new Set(candidates));
 }
@@ -266,7 +277,7 @@ function resolveChatConfig({ requestedProvider, requestedModel } = {}) {
   }
 
   if (provider === 'cerebras') {
-    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-70b');
+    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'gpt-oss-120b');
     return {
       provider,
       model,
@@ -449,58 +460,64 @@ async function ensureVerifiedUserRow(authCtx) {
   const displayName = String(meta.full_name || meta.name || '').trim() || null;
   const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
 
-  // If an older fallback-created row exists using the Supabase Auth id as provider_user_id,
-  // reuse it instead of creating a second public.users row for the same person.
+  const applyLoginMetadata = async (userRow) => {
+    if (!userRow?.id) return userRow;
+
+    const updates = {};
+    if (!userRow.email && authCtx.email) updates.email = authCtx.email;
+    if (!userRow.name && displayName) updates.name = displayName;
+
+    const existingProviderUserId = String(userRow.provider_user_id || '').trim();
+    const adminCreatedProviderUserId = makeAdminCreatedProviderUserId(authCtx.email);
+    const canLinkProviderUserId =
+      authUserId &&
+      (!existingProviderUserId ||
+        existingProviderUserId === authUserId ||
+        existingProviderUserId === adminCreatedProviderUserId ||
+        String(userRow.provider || '').trim().toLowerCase() === 'admin_created');
+
+    if (canLinkProviderUserId && existingProviderUserId !== authUserId) {
+      updates.provider_user_id = authUserId;
+    }
+    if (provider && (!userRow.provider || String(userRow.provider).trim().toLowerCase() === 'admin_created')) {
+      updates.provider = provider;
+    }
+
+    if (!Object.keys(updates).length) {
+      return { ...userRow, role: normalizeRole(userRow.role) };
+    }
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userRow.id)
+      .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
+      .single();
+
+    if (updateErr) throw updateErr;
+    return { ...updated, role: normalizeRole(updated.role) };
+  };
+
+  // First try provider_user_id for already-linked Supabase Auth users.
   if (authUserId) {
     const { data: byProvider, error: byProviderErr } = await supabase
       .from('users')
-      .select('id, email, role, name, provider, created_at, updated_at')
+      .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
       .eq('provider_user_id', authUserId)
       .limit(1)
       .maybeSingle();
     if (byProviderErr && !isMissingTableError(byProviderErr)) throw byProviderErr;
-    if (byProvider) {
-      const updates = {};
-      if (!byProvider.email && authCtx.email) updates.email = authCtx.email;
-      if (!byProvider.name && displayName) updates.name = displayName;
-      if (Object.keys(updates).length) {
-        const { data: updated, error: updateErr } = await supabase
-          .from('users')
-          .update(updates)
-          .eq('id', byProvider.id)
-          .select('id, email, role, name, provider, created_at, updated_at')
-          .single();
-        if (!updateErr && updated) return { ...updated, role: normalizeRole(updated.role) };
-      }
-      return { ...byProvider, role: normalizeRole(byProvider.role) };
-    }
+    if (byProvider) return applyLoginMetadata(byProvider);
   }
 
+  // Then allow only accounts explicitly pre-approved in public.users by email.
+  // Do not insert here: Supabase Auth may create auth.users rows from OAuth,
+  // but app access should remain deny-by-default until an admin adds the email.
   const existing = await getUserByEmail(authCtx.email);
-  if (existing) return existing;
+  if (existing) return applyLoginMetadata(existing);
 
-  const { data, error } = await supabase
-    .from('users')
-    .insert({
-      email: authCtx.email,
-      name: displayName,
-      provider,
-      provider_user_id: authUserId || makeAdminCreatedProviderUserId(authCtx.email),
-      role: ROLE_USER,
-    })
-    .select('id, email, role, name, provider, created_at, updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return {
-    ...data,
-    role: normalizeRole(data.role),
-  };
+  return null;
 }
-
 
 async function getPublicUserIdByAnyIdentifier(identifier) {
   const value = String(identifier || '').trim();
@@ -530,8 +547,8 @@ async function getPublicUserIdByAnyIdentifier(identifier) {
 }
 
 async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allowRawFallbackCreate = false } = {}) {
-  // Best path: use the bearer token, verify the Supabase Auth user, and map/create
-  // the row in public.users. That public.users.id is the only value safe for posts.user_id.
+  // Best path: use the bearer token, verify the Supabase Auth user, and map
+  // it to a pre-approved public.users row. That public.users.id is the only value safe for posts.user_id.
   const token = getBearerToken(req);
   if (token) {
     const auth = await getRequestAuthContext(req);
@@ -546,6 +563,10 @@ async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allo
     }
     const mapped = await getPublicUserIdByAnyIdentifier(auth.user?.id);
     if (mapped) return mapped;
+
+    const err = new Error('This authenticated account is not on the approved user list. Ask an admin to add the email in Settings before using the app.');
+    err.status = 403;
+    throw err;
   }
 
   const rawUserId = String(getUserIdFromRequest(req) || '').trim();
@@ -558,8 +579,8 @@ async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allo
   const mapped = await getPublicUserIdByAnyIdentifier(rawUserId);
   if (mapped) return mapped;
 
-  // Last-resort compatibility for old clients that only send the Supabase Auth UUID
-  // and no Authorization header. This avoids FK failures for new users.
+  // Last-resort compatibility for old clients that only send a public.users UUID
+  // and no Authorization header. Token-authenticated OAuth users are handled above and are deny-by-default.
   if (allowRawFallbackCreate && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawUserId)) {
     const { data, error } = await supabase
       .from('users')
@@ -1356,18 +1377,15 @@ ${attachmentContext}` }]
       });
     }
 
-    const maxAttempts = chatConfig.provider === 'github'
-      ? Math.max(1, GITHUB_KEYS.length)
-      : chatConfig.provider === 'cerebras'
-        ? Math.max(1, CEREBRAS_KEYS.length || 1) * 4
-        : 1;
-
     const cerebrasModelCandidates = chatConfig.provider === 'cerebras'
       ? getCerebrasModelCandidates(chatConfig.model)
       : [];
+    const maxAttempts = chatConfig.provider === 'github'
+      ? Math.max(1, GITHUB_KEYS.length)
+      : chatConfig.provider === 'cerebras'
+        ? Math.max(1, CEREBRAS_KEYS.length || 1) * Math.max(1, cerebrasModelCandidates.length || 1)
+        : 1;
     let cerebrasModelIndex = 0;
-    let triedCerebrasAltBase = false;
-
     let response;
     let lastError = null;
     let attemptedUnknownModelFallback = false;
@@ -1414,17 +1432,6 @@ ${attachmentContext}` }]
             };
             continue;
           }
-
-          if (cerebras404 && !triedCerebrasAltBase) {
-            triedCerebrasAltBase = true;
-            chatConfig = {
-              ...chatConfig,
-              baseUrl: cerebrasEndpointAlt,
-              apiKey: nextCerebrasKey() || chatConfig.apiKey,
-            };
-            continue;
-          }
-
           const shouldRetryCerebras = (unauthorized || rateLimited) && attempt < maxAttempts - 1;
           if (shouldRetryCerebras) {
             chatConfig = {

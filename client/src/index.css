@@ -83,12 +83,13 @@ body,
   min-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  background-color: var(--bg-primary);
-  transition: background-color 0.3s ease;
+  background: var(--app-bg-gradient, var(--bg-primary));
+  transition: background 0.3s ease;
 }
 /* Base chrome follows theme */
-html, body, #root { background: var(--mantine-color-body); color: var(--mantine-color-text); }
-.app-main, .app-sidebar { background: var(--mantine-color-body); }
+html, body, #root { background: var(--app-bg-gradient, var(--mantine-color-body)); color: var(--mantine-color-text); }
+.app-main { background: var(--app-bg-gradient, var(--mantine-color-body)); }
+.app-sidebar { background: var(--nav-bg, var(--mantine-color-body)); }
 
 
 :root {
@@ -114,6 +115,8 @@ html[data-mantine-color-scheme='light'] {
   --chat-user-bg: #e7f5ff;
   --chat-user-border: #bfdbfe;
   --chat-assistant-bg: #ffffff;
+  --app-bg-gradient: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 
 html[data-mantine-color-scheme='dark'] {
@@ -134,8 +137,21 @@ html[data-mantine-color-scheme='dark'] {
   --chat-user-bg: rgba(34, 139, 230, 0.22);
   --chat-user-border: rgba(116, 192, 252, 0.35);
   --chat-assistant-bg: #111827;
+  --app-bg-gradient: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 
+
+
+html[data-chibitek-theme='default'] {
+  --accent-primary: #228be6;
+  --accent-secondary: #339af0;
+  --accent-soft: #e7f5ff;
+  --accent-gradient: linear-gradient(135deg, #1971c2 0%, #228be6 58%, #74c0fc 100%);
+  --accent-shadow: rgba(34, 139, 230, 0.18);
+  --app-bg-gradient: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --settings-page-bg: var(--app-bg-gradient);
+}
 
 
 html[data-chibitek-theme='blue'] {
@@ -144,6 +160,8 @@ html[data-chibitek-theme='blue'] {
   --accent-soft: #e7f5ff;
   --accent-gradient: linear-gradient(135deg, #1971c2 0%, #228be6 58%, #74c0fc 100%);
   --accent-shadow: rgba(34, 139, 230, 0.24);
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(34, 139, 230, 0.16), transparent 31%), linear-gradient(180deg, #ffffff 0%, #f0f8ff 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 html[data-chibitek-theme='purple'] {
   --accent-primary: #7950f2;
@@ -151,6 +169,8 @@ html[data-chibitek-theme='purple'] {
   --accent-soft: #f3f0ff;
   --accent-gradient: linear-gradient(135deg, #6741d9 0%, #7950f2 58%, #b197fc 100%);
   --accent-shadow: rgba(121, 80, 242, 0.24);
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(121, 80, 242, 0.17), transparent 31%), linear-gradient(180deg, #ffffff 0%, #f6f3ff 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 html[data-chibitek-theme='green'] {
   --accent-primary: #2f9e44;
@@ -158,6 +178,8 @@ html[data-chibitek-theme='green'] {
   --accent-soft: #ebfbee;
   --accent-gradient: linear-gradient(135deg, #2b8a3e 0%, #2f9e44 58%, #8ce99a 100%);
   --accent-shadow: rgba(47, 158, 68, 0.24);
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(47, 158, 68, 0.16), transparent 31%), linear-gradient(180deg, #ffffff 0%, #f0fff4 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 html[data-chibitek-theme='orange'] {
   --accent-primary: #f08c00;
@@ -165,6 +187,8 @@ html[data-chibitek-theme='orange'] {
   --accent-soft: #fff4e6;
   --accent-gradient: linear-gradient(135deg, #e67700 0%, #f08c00 58%, #ffd8a8 100%);
   --accent-shadow: rgba(240, 140, 0, 0.24);
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(240, 140, 0, 0.16), transparent 31%), linear-gradient(180deg, #ffffff 0%, #fff7ed 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 html[data-chibitek-theme='rose'] {
   --accent-primary: #e64980;
@@ -172,6 +196,8 @@ html[data-chibitek-theme='rose'] {
   --accent-soft: #fff0f6;
   --accent-gradient: linear-gradient(135deg, #d6336c 0%, #e64980 58%, #faa2c1 100%);
   --accent-shadow: rgba(230, 73, 128, 0.24);
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(230, 73, 128, 0.16), transparent 31%), linear-gradient(180deg, #ffffff 0%, #fff5f8 100%);
+  --settings-page-bg: var(--app-bg-gradient);
 }
 
 html[data-mantine-color-scheme='dark'][data-chibitek-theme='blue'] {
@@ -188,6 +214,24 @@ html[data-mantine-color-scheme='dark'][data-chibitek-theme='orange'] {
 }
 html[data-mantine-color-scheme='dark'][data-chibitek-theme='rose'] {
   --accent-soft: rgba(247, 131, 172, 0.16);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='default'] {
+  --app-bg-gradient: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='blue'] {
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(77, 171, 247, 0.10), transparent 34%), linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='purple'] {
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(151, 117, 250, 0.12), transparent 34%), linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='green'] {
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(81, 207, 102, 0.10), transparent 34%), linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='orange'] {
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(255, 169, 77, 0.10), transparent 34%), linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+html[data-mantine-color-scheme='dark'][data-chibitek-theme='rose'] {
+  --app-bg-gradient: radial-gradient(circle at 96% 4%, rgba(247, 131, 172, 0.10), transparent 34%), linear-gradient(180deg, #0f172a 0%, #111827 100%);
 }
 html[data-mantine-color-scheme='dark'] .mantine-Input-input,
 html[data-mantine-color-scheme='dark'] .mantine-Textarea-input,

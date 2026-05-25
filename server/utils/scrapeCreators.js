@@ -1,17 +1,16 @@
 // Scrape Creators API helper with key rotation + failover
 import fetch from 'node-fetch';
+import { collectScrapeCreatorsApiKeys } from './envKeys.js';
 
 const SCRAPE_CREATORS_BASE = 'https://api.scrapecreators.com';
 
-// Collect all SCRAPE_CREATORS* keys from env (loaded once)
+// Collect every supported ScrapeCreators token shape from env once.
+// Supported examples: SCRAPE_CREATORS0, SCRAPE_CREATORS_API_KEY1,
+// SCRAPE_CREATORS_API_KEYS="key1,key2", SCRAPECREATORS_TOKEN3, etc.
 let _cachedKeys = null;
 function loadApiKeys() {
   if (_cachedKeys) return _cachedKeys;
-  const keys = [];
-  for (let i = 0; i <= 24; i++) {
-    const key = process.env[`SCRAPE_CREATORS${i}`];
-    if (key) keys.push(key);
-  }
+  const keys = collectScrapeCreatorsApiKeys();
   if (!keys.length) {
     throw new Error('No SCRAPE_CREATORS API keys found in env');
   }

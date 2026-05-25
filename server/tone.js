@@ -1,16 +1,39 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import { collectCerebrasApiKeys } from './utils/envKeys.js';
 
 dotenv.config();
 
-const CEREBRAS_API_KEYS = [
-  process.env.CEREBRAS_API_KEY1,
-  process.env.CEREBRAS_API_KEY2,
-  process.env.CEREBRAS_API_KEY3,
-  process.env.CEREBRAS_API_KEY4,
-].filter(Boolean); // Remove undefined keys
+const CEREBRAS_API_KEYS = collectCerebrasApiKeys();
+const CEREBRAS_MODELS = (process.env.TONE_CEREBRAS_MODELS || process.env.CHAT_MODEL_CEREBRAS_FALLBACKS || 'gpt-oss-120b,zai-glm-4.7')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const MODEL = normalizeCerebrasModel(process.env.TONE_CEREBRAS_MODEL || CEREBRAS_MODELS[0] || 'gpt-oss-120b');
 
-const MODEL = 'llama3.1-70b';
+function normalizeCerebrasModel(model) {
+  const raw = String(model || '').trim();
+  if (!raw) return raw;
+  const aliases = {
+    'llama3.1-8b': 'gpt-oss-120b',
+    'llama3.1-70b': 'gpt-oss-120b',
+    'llama-3.1-70b': 'gpt-oss-120b',
+    'llama-3.3-70b': 'gpt-oss-120b',
+    'qwen-3-235b-a22b-instruct-2507': 'gpt-oss-120b',
+    'qwen-3-32b': 'gpt-oss-120b',
+    'qwen-3-14b': 'gpt-oss-120b',
+    'deepseek-r1-distill-llama-70b': 'gpt-oss-120b',
+  };
+  return aliases[raw.toLowerCase()] || raw;
+}
+
+let cerebrasToneKeyIndex = 0;
+function nextToneKey() {
+  if (!CEREBRAS_API_KEYS.length) return null;
+  const index = cerebrasToneKeyIndex % CEREBRAS_API_KEYS.length;
+  cerebrasToneKeyIndex++;
+  return { apiKey: CEREBRAS_API_KEYS[index], index };
+}
 
 const ALLOWED_TONES = [
   'Professional',
@@ -76,9 +99,17 @@ export async function categorizeTone(text, post_id, user_id) {
 
   let lastError = null;
 
-  // Try each API key until one succeeds
-  for (let keyIndex = 0; keyIndex < CEREBRAS_API_KEYS.length; keyIndex++) {
-    const apiKey = CEREBRAS_API_KEYS[keyIndex];
+  // Try all configured models across all keys. This lets old/deprecated model
+  // selections fall forward and lets every key participate in the rotation.
+  const modelsToTry = Array.from(new Set([MODEL, ...CEREBRAS_MODELS.map(normalizeCerebrasModel), 'gpt-oss-120b', 'zai-glm-4.7'].filter(Boolean)));
+  const maxAttempts = Math.max(1, CEREBRAS_API_KEYS.length) * Math.max(1, modelsToTry.length);
+  let modelIndex = 0;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const keySlot = nextToneKey();
+    if (!keySlot) break;
+    const { apiKey, index: keyIndex } = keySlot;
+    const model = modelsToTry[modelIndex] || MODEL;
 
     try {
       const resp = await fetch('https://api.cerebras.ai/v1/chat/completions', {
@@ -88,7 +119,7 @@ export async function categorizeTone(text, post_id, user_id) {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: MODEL,
+          model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
@@ -104,6 +135,13 @@ export async function categorizeTone(text, post_id, user_id) {
         console.warn(`[tone.js] Key ${keyIndex + 1} failed with ${resp.status}, trying next key...`);
         lastError = new Error(`Cerebras error: ${resp.status} ${body}`);
         continue; // Try next key
+      }
+
+      if (resp.status === 404 && modelIndex < modelsToTry.length - 1) {
+        const body = await resp.text();
+        lastError = new Error(`Cerebras model ${model} failed with 404: ${body}`);
+        modelIndex++;
+        continue;
       }
 
       if (!resp.ok) {
@@ -157,7 +195,7 @@ export async function categorizeTone(text, post_id, user_id) {
         throw err;
       }
       // For 401/429, continue to next key
-      if (keyIndex < CEREBRAS_API_KEYS.length - 1) {
+      if (attempt < maxAttempts - 1) {
         console.warn(`[tone.js] Key ${keyIndex + 1} failed, trying next key...`);
       }
     }

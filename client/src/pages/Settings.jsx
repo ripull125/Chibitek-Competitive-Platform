@@ -48,21 +48,68 @@ const NATIVE_LANGUAGE_OPTIONS = [
 const ACCENT_THEME_STORAGE_KEY = "chibitek-accent-theme";
 
 const COLOR_THEME_OPTIONS = [
-  { value: "blue", label: "Blue", swatch: "#228be6" },
-  { value: "purple", label: "Purple", swatch: "#7950f2" },
-  { value: "green", label: "Green", swatch: "#2f9e44" },
-  { value: "orange", label: "Orange", swatch: "#f08c00" },
-  { value: "rose", label: "Rose", swatch: "#e64980" },
+  {
+    value: "default",
+    label: "Default",
+    swatch: "#ffffff",
+    text: "#111827",
+    border: "rgba(15, 23, 42, 0.16)",
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+  },
+  {
+    value: "blue",
+    label: "Blue",
+    swatch: "#228be6",
+    text: "#ffffff",
+    border: "rgba(34, 139, 230, 0.36)",
+    background: "linear-gradient(135deg, #1971c2 0%, #228be6 58%, #74c0fc 100%)",
+  },
+  {
+    value: "purple",
+    label: "Purple",
+    swatch: "#7950f2",
+    text: "#ffffff",
+    border: "rgba(121, 80, 242, 0.36)",
+    background: "linear-gradient(135deg, #6741d9 0%, #7950f2 58%, #b197fc 100%)",
+  },
+  {
+    value: "green",
+    label: "Green",
+    swatch: "#2f9e44",
+    text: "#ffffff",
+    border: "rgba(47, 158, 68, 0.36)",
+    background: "linear-gradient(135deg, #2b8a3e 0%, #2f9e44 58%, #8ce99a 100%)",
+  },
+  {
+    value: "orange",
+    label: "Orange",
+    swatch: "#f08c00",
+    text: "#111827",
+    border: "rgba(240, 140, 0, 0.36)",
+    background: "linear-gradient(135deg, #f08c00 0%, #ffa94d 58%, #ffd8a8 100%)",
+  },
+  {
+    value: "rose",
+    label: "Rose",
+    swatch: "#e64980",
+    text: "#ffffff",
+    border: "rgba(230, 73, 128, 0.36)",
+    background: "linear-gradient(135deg, #d6336c 0%, #e64980 58%, #faa2c1 100%)",
+  },
 ];
 
+function normalizeAccentTheme(value) {
+  return COLOR_THEME_OPTIONS.some((item) => item.value === value) ? value : "default";
+}
+
 function readAccentTheme() {
-  if (typeof window === "undefined") return "blue";
-  return window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "blue";
+  if (typeof window === "undefined") return "default";
+  return normalizeAccentTheme(window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "default");
 }
 
 function applyAccentTheme(value) {
   if (typeof window === "undefined") return;
-  const safeValue = COLOR_THEME_OPTIONS.some((item) => item.value === value) ? value : "blue";
+  const safeValue = normalizeAccentTheme(value);
   window.localStorage?.setItem(ACCENT_THEME_STORAGE_KEY, safeValue);
   document.documentElement.setAttribute("data-chibitek-theme", safeValue);
   window.dispatchEvent(new CustomEvent("chibitek:accentTheme", { detail: { theme: safeValue } }));
@@ -672,11 +719,23 @@ export default function Settings() {
                     <Button
                       key={item.value}
                       size="xs"
-                      variant={selected ? "filled" : "light"}
-                      color="blue"
+                      variant="default"
                       radius="xl"
                       className={classes.colorThemeBtn}
+                      aria-pressed={selected}
                       onClick={() => setAccentTheme(item.value)}
+                      style={{
+                        "--theme-btn-bg": item.background,
+                        "--theme-btn-color": item.text,
+                        "--theme-btn-border": selected
+                          ? item.value === "default"
+                            ? "rgba(15, 23, 42, 0.24)"
+                            : item.swatch
+                          : item.border,
+                        "--theme-btn-shadow": selected
+                          ? `0 0 0 2px ${item.value === "default" ? "rgba(15, 23, 42, 0.16)" : item.border}, 0 10px 24px rgba(15, 23, 42, 0.16)`
+                          : "0 8px 18px rgba(15, 23, 42, 0.08)",
+                      }}
                       leftSection={
                         <Box
                           style={{
@@ -684,7 +743,8 @@ export default function Settings() {
                             height: 10,
                             borderRadius: 999,
                             background: item.swatch,
-                            boxShadow: "0 0 0 1px rgba(255,255,255,.7)",
+                            border: item.value === "default" ? "1px solid rgba(15, 23, 42, 0.22)" : "1px solid rgba(255,255,255,.78)",
+                            boxShadow: "0 1px 4px rgba(15, 23, 42, 0.18)",
                           }}
                         />
                       }

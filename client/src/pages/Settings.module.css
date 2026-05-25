@@ -5,7 +5,8 @@
   min-height: 100vh;
   padding: 48px 24px;
   /* + a bit */
-  background: var(--mantine-color-body);
+  background: var(--settings-page-bg, var(--app-bg-gradient, var(--mantine-color-body)));
+  transition: background 220ms ease;
 }
 
 .shell {
@@ -343,6 +344,25 @@
 }
 .colorThemeBtn {
   font-weight: 800;
+  border-width: 1px;
+  background: var(--theme-btn-bg) !important;
+  color: var(--theme-btn-color) !important;
+  border-color: var(--theme-btn-border) !important;
+  box-shadow: var(--theme-btn-shadow) !important;
+  transition: transform 140ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.colorThemeBtn :global(.mantine-Button-label),
+.colorThemeBtn :global(.mantine-Button-section) {
+  color: var(--theme-btn-color) !important;
+}
+
+.colorThemeBtn:hover {
+  transform: translateY(-1px);
+}
+
+.colorThemeBtn[aria-pressed="true"] {
+  transform: translateY(-1px);
 }
 
 :global([data-mantine-color-scheme="dark"]) .card {

@@ -14,11 +14,13 @@ import {
 
 const colorSchemeManager = localStorageColorSchemeManager({ key: "chibitek-color-scheme" });
 const ACCENT_THEME_STORAGE_KEY = "chibitek-accent-theme";
+const ACCENT_THEME_VALUES = new Set(["default", "blue", "purple", "green", "orange", "rose"]);
 
 function applyStoredAccentTheme() {
   if (typeof document === "undefined") return;
-  const stored = window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "blue";
-  document.documentElement.setAttribute("data-chibitek-theme", stored);
+  const stored = window.localStorage?.getItem(ACCENT_THEME_STORAGE_KEY) || "default";
+  const theme = ACCENT_THEME_VALUES.has(stored) ? stored : "default";
+  document.documentElement.setAttribute("data-chibitek-theme", theme);
 }
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
