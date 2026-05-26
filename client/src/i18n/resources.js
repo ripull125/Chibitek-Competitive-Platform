@@ -4537,11 +4537,10 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI selected the most relevant saved posts before the chat model answered."
     },
     reports: {
-      step1: "Step 1 — Pick a style",
+      step1: "Pick a style",
       step1Desc: "Choose the report type that fits your need.",
-      step2: "Step 2 — Let AI build it (optional)",
-      step2Desc: "Describe the report you want and AI will set it up for you.",
-      sectionToggleHint: "Sections included:"
+      sectionsHeading: "Sections included",
+      sectionsHeadingDesc: "Toggle which sections appear in the report."
     }
   },
   ja: {
@@ -4561,11 +4560,10 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AIがチャットモデルの回答前に最も関連性の高い保存済み投稿を選択しました。"
     },
     reports: {
-      step1: "ステップ1 — スタイルを選択",
+      step1: "スタイルを選択",
       step1Desc: "ニーズに合ったレポートタイプを選択してください。",
-      step2: "ステップ2 — AIに任せる（任意）",
-      step2Desc: "希望するレポートを説明するとAIが設定します。",
-      sectionToggleHint: "含まれるセクション:"
+      sectionsHeading: "含まれるセクション",
+      sectionsHeadingDesc: "レポートに表示するセクションを切り替えます。"
     }
   },
   fr: {
@@ -4585,11 +4583,10 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI a sélectionné les publications enregistrées les plus pertinentes avant de répondre."
     },
     reports: {
-      step1: "Étape 1 — Choisir un style",
+      step1: "Choisir un style",
       step1Desc: "Choisissez le type de rapport qui correspond à vos besoins.",
-      step2: "Étape 2 — Laisser l'IA construire (facultatif)",
-      step2Desc: "Décrivez le rapport souhaité et l'IA le configurera.",
-      sectionToggleHint: "Sections incluses :"
+      sectionsHeading: "Sections incluses",
+      sectionsHeadingDesc: "Choisissez les sections à inclure dans le rapport."
     }
   },
   de: {
@@ -4609,11 +4606,10 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI hat die relevantesten gespeicherten Beiträge vor der Antwort ausgewählt."
     },
     reports: {
-      step1: "Schritt 1 — Stil wählen",
+      step1: "Stil wählen",
       step1Desc: "Wählen Sie den Berichtstyp, der Ihrem Bedarf entspricht.",
-      step2: "Schritt 2 — KI erstellen lassen (optional)",
-      step2Desc: "Beschreiben Sie den gewünschten Bericht und die KI richtet ihn ein.",
-      sectionToggleHint: "Enthaltene Abschnitte:"
+      sectionsHeading: "Enthaltene Abschnitte",
+      sectionsHeadingDesc: "Wählen Sie, welche Abschnitte im Bericht erscheinen."
     }
   },
   es: {
@@ -4633,11 +4629,10 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI seleccionó las publicaciones más relevantes antes de responder."
     },
     reports: {
-      step1: "Paso 1 — Elige un estilo",
+      step1: "Elige un estilo",
       step1Desc: "Elige el tipo de informe que se adapta a tu necesidad.",
-      step2: "Paso 2 — Deja que la IA lo cree (opcional)",
-      step2Desc: "Describe el informe que quieres y la IA lo configurará.",
-      sectionToggleHint: "Secciones incluidas:"
+      sectionsHeading: "Secciones incluidas",
+      sectionsHeadingDesc: "Activa qué secciones aparecen en el informe."
     }
   }
 };

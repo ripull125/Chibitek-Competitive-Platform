@@ -17,7 +17,6 @@ import {
   Stack,
   Table,
   Text,
-  Textarea,
   TextInput,
   ThemeIcon,
   Title,
@@ -93,7 +92,6 @@ const SECTION_DEFS = [
 
 const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter((s) => !s.hidden);
 const DEFAULT_ORDER = VISIBLE_SECTION_DEFS.map((s) => s.id);
-const VALID_SECTION_IDS = new Set(SECTION_DEFS.map((s) => s.id));
 const PANEL_LAYOUT = {
   summary: { span: 1, height: 155 },
   kpis: { span: 1, height: 155 },
@@ -165,34 +163,6 @@ function getPostTitle(post) {
 
 function getCompetitorName(post) {
   return post.username || post.extra?.author_handle || post.extra?.username || post.competitors?.display_name || "Unknown";
-}
-
-function stripJsonFence(value) {
-  return String(value || "")
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-}
-
-function safeParseJson(value) {
-  const cleaned = stripJsonFence(value);
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try { return JSON.parse(match[0]); } catch { return null; }
-  }
-}
-
-function cleanSectionList(sections, fallback = REPORT_PRESETS[0].sections) {
-  const list = Array.isArray(sections) ? sections : fallback;
-  const next = [];
-  list.forEach((id) => {
-    if (VALID_SECTION_IDS.has(id) && !next.includes(id)) next.push(id);
-  });
-  return next.length ? next : fallback;
 }
 
 function deriveAnalytics(posts, keywords, platformIdMap) {
@@ -750,16 +720,13 @@ export default function Reports() {
   const [toneLoading, setToneLoading] = useState(false);
   const [tonePostLimit, setTonePostLimit] = useState(10);
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [aiBuildLoading, setAiBuildLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState("");
-  const [reportPrompt, setReportPrompt] = useState("");
   const [reportTitle, setReportTitle] = useState(() => t("reports.defaultTitle"));
   const [postLimit, setPostLimit] = useState(10);
   const [toneChartView, setToneChartView] = useState("scatter");
   const [selectedSections, setSelectedSections] = useState(REPORT_PRESETS[0].sections);
   const [sectionOrder, setSectionOrder] = useState(DEFAULT_ORDER);
   const [statusMessage, setStatusMessage] = useState("");
-  const [pendingAutoDownload, setPendingAutoDownload] = useState(false);
 
   const analytics = useMemo(() => deriveAnalytics(posts, keywords, platformIdMap), [posts, keywords, platformIdMap]);
   const selectedOrderedSections = useMemo(
@@ -854,15 +821,6 @@ export default function Reports() {
       setGeneratingPdf(false);
     }
   }, [generatingPdf, reportPages]);
-
-  useEffect(() => {
-    if (!pendingAutoDownload || aiBuildLoading || generatingPdf) return;
-    const timer = setTimeout(() => {
-      setPendingAutoDownload(false);
-      generatePDF();
-    }, 550);
-    return () => clearTimeout(timer);
-  }, [pendingAutoDownload, aiBuildLoading, generatingPdf, selectedOrderedSections, aiSummary, generatePDF]);
 
   const applyPreset = (preset) => {
     setSelectedSections(preset.sections);
@@ -985,54 +943,6 @@ export default function Reports() {
       setSummaryLoading(false);
     }
   }, [analytics, currentUserId, summaryLoading]);
-
-  const buildReportWithAi = useCallback(async ({ download = false } = {}) => {
-    if (!analytics || !reportPrompt.trim() || aiBuildLoading) return;
-    setAiBuildLoading(true);
-    setStatusMessage("");
-    try {
-      const availableSections = VISIBLE_SECTION_DEFS.map((s) => `${s.id}: ${t(s.labelKey)} (${t(s.typeKey)})`).join("\n");
-      const dataSnapshot = {
-        totalPosts: analytics.totalPosts,
-        totalEngagement: analytics.totalEngagement,
-        avgEngagement: analytics.avgEngagement,
-        platforms: analytics.platformBreakdown.slice(0, 6),
-        competitors: analytics.competitors.slice(0, 6),
-        keywords: analytics.topKeywords.slice(0, 10),
-        tones: analytics.toneDistribution,
-      };
-      const prompt = `You are configuring a clean dashboard-style PDF report builder for Chibitek. Return only valid JSON.\n\nUser request:\n${reportPrompt}\n\nAvailable section IDs:\n${availableSections}\n\nData snapshot:\n${JSON.stringify(dataSnapshot)}\n\nReturn JSON with this shape:\n{\n  "title": "short report title",\n  "sections": ["summary", "kpis"],\n  "toneChartView": "scatter" or "bar",\n  "summary": "3 short bullets, each under 12 words, no heading"\n}\nRules: use only available section IDs; keep the report light; put kpis and summary near the top; do not include markdown headings in summary; include tone only when tone data exists or user asks for tone; include keywords only if keyword data exists or the user asks for keywords.`;
-      const aiSettings = loadAiSettings();
-      const modelMeta = getModelMeta(aiSettings?.modelChoice);
-      const res = await fetch(apiUrl("/api/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }],
-          user_id: currentUserId || undefined,
-          llmProvider: modelMeta?.provider,
-          chatModel: aiSettings?.modelChoice,
-        }),
-      });
-      if (!res.ok) throw new Error(`Chat request failed: ${res.status}`);
-      const json = await res.json();
-      const plan = safeParseJson(json.reply || json.message || "") || {};
-      const sections = cleanSectionList(plan.sections, REPORT_PRESETS[0].sections);
-
-      setReportTitle(String(plan.title || t("reports.defaultTitle")).slice(0, 80));
-      setAiSummary(String(plan.summary || plan.notes || "").trim());
-      setSelectedSections(sections);
-      setSectionOrder([...sections, ...DEFAULT_ORDER.filter((id) => !sections.includes(id))]);
-      if (["scatter", "bar"].includes(plan.toneChartView)) setToneChartView(plan.toneChartView);
-      setStatusMessage(download ? t("reports.aiBuiltDownloading") : t("reports.aiBuiltPreview"));
-      if (download) setPendingAutoDownload(true);
-    } catch (error) {
-      console.error("AI report builder failed:", error);
-      setStatusMessage(t("reports.aiBuilderFailed"));
-    } finally {
-      setAiBuildLoading(false);
-    }
-  }, [analytics, reportPrompt, aiBuildLoading, currentUserId]);
 
   const renderPanel = (block) => {
     if (!analytics) return null;
@@ -1158,12 +1068,11 @@ export default function Reports() {
         </Alert>
       )}
 
-      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="lg">
-        {/* Step 1: Pick a style and download */}
-        <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-layout">
+      <Card withBorder shadow="sm" radius="xl" p="lg" mb="lg" data-tour="reports-layout">
+        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
           <Stack gap="md">
             <div>
-              <Title order={2} size="h4" mb={2}>{t("reports.step1", { defaultValue: "Step 1 — Pick a style" })}</Title>
+              <Title order={2} size="h4" mb={2}>{t("reports.step1", { defaultValue: "Pick a style" })}</Title>
               <Text size="sm" c="dimmed">{t("reports.step1Desc", { defaultValue: "Choose the report type that fits your need." })}</Text>
             </div>
             <Stack gap="xs">
@@ -1195,7 +1104,25 @@ export default function Reports() {
             >
               {t("reports.downloadPdf")}
             </Button>
-            <Group gap="xs" justify="space-between">
+          </Stack>
+
+          <Stack gap="md">
+            <div>
+              <Title order={2} size="h4" mb={2}>{t("reports.sectionsHeading", { defaultValue: "Sections included" })}</Title>
+              <Text size="sm" c="dimmed">{t("reports.sectionsHeadingDesc", { defaultValue: "Toggle which sections appear in the report." })}</Text>
+            </div>
+            <Group gap={5} wrap="wrap">
+              {VISIBLE_SECTION_DEFS.map((section) => {
+                const Icon = section.icon;
+                const active = selectedSections.includes(section.id);
+                return (
+                  <Button key={section.id} size="xs" radius="xl" variant={active ? "filled" : "light"} leftSection={<Icon size={11} />} onClick={() => toggleSection(section.id)}>
+                    {t(section.labelKey)}
+                  </Button>
+                );
+              })}
+            </Group>
+            <Group gap="xs" justify="space-between" mt="xs">
               <Group gap="xs">
                 <Button size="xs" variant="subtle" leftSection={<IconSparkles size={13} />} onClick={generateSummary} loading={summaryLoading} disabled={!analytics}>
                   {t("reports.improveTakeaways")}
@@ -1224,50 +1151,8 @@ export default function Reports() {
               <Button size="xs" variant="subtle" leftSection={<IconRefresh size={13} />} onClick={loadData} disabled={loading}>{t("common.refresh")}</Button>
             </Group>
           </Stack>
-        </Card>
-
-        {/* Step 2: AI customiser */}
-        <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-ai">
-          <Stack gap="md">
-            <div>
-              <Group gap="xs" mb={2}>
-                <Title order={2} size="h4">{t("reports.step2", { defaultValue: "Step 2 — Let AI build it (optional)" })}</Title>
-                <Badge variant="light" color="blue">{t("reports.bestOption")}</Badge>
-              </Group>
-              <Text size="sm" c="dimmed">{t("reports.step2Desc", { defaultValue: "Describe the report you want and AI will set it up for you." })}</Text>
-            </div>
-            <Textarea
-              autosize
-              minRows={4}
-              maxRows={6}
-              size="md"
-              value={reportPrompt}
-              onChange={(event) => setReportPrompt(event.currentTarget.value)}
-              placeholder={t("reports.promptPlaceholder")}
-            />
-            <SimpleGrid cols={2} spacing="xs">
-              <Button size="md" leftSection={<IconSparkles size={16} />} onClick={() => buildReportWithAi({ download: false })} loading={aiBuildLoading} disabled={!analytics || !reportPrompt.trim()} radius="xl">
-                {t("reports.build")}
-              </Button>
-              <Button size="md" variant="light" leftSection={<IconDownload size={16} />} onClick={() => buildReportWithAi({ download: true })} loading={aiBuildLoading || pendingAutoDownload || generatingPdf} disabled={!analytics || !reportPrompt.trim()} radius="xl">
-                {t("common.download")}
-              </Button>
-            </SimpleGrid>
-            <Text size="xs" c="dimmed">{t("reports.sectionToggleHint", { defaultValue: "Sections included:" })}</Text>
-            <Group gap={5} wrap="wrap">
-              {VISIBLE_SECTION_DEFS.map((section) => {
-                const Icon = section.icon;
-                const active = selectedSections.includes(section.id);
-                return (
-                  <Button key={section.id} size="xs" radius="xl" variant={active ? "filled" : "light"} leftSection={<Icon size={11} />} onClick={() => toggleSection(section.id)}>
-                    {t(section.labelKey)}
-                  </Button>
-                );
-              })}
-            </Group>
-          </Stack>
-        </Card>
-      </SimpleGrid>
+        </SimpleGrid>
+      </Card>
 
       <Card withBorder shadow="sm" radius="xl" p="lg" data-tour="reports-preview">
         <Group justify="space-between" mb="md" align="center">

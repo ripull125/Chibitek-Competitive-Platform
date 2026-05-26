@@ -1296,8 +1296,9 @@ export default function SavedPosts() {
     fetch(apiUrl("/api/platforms"))
       .then((r) => r.json())
       .then((data) => {
-        if (data && typeof data === "object") {
-          for (const [key, id] of Object.entries(data)) {
+        const platforms = data?.platforms && typeof data.platforms === "object" ? data.platforms : data;
+        if (platforms && typeof platforms === "object") {
+          for (const [key, id] of Object.entries(platforms)) {
             const cfg = PLATFORM_CARD_CONFIG[key];
             if (cfg && id) newMap[id] = { ...cfg };
           }

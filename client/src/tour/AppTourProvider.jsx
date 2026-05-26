@@ -96,8 +96,8 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.reports.title", { defaultValue: "Reports" }),
-        body: t("tutorial.reports.body", { defaultValue: "Tell AI what kind of PDF you want, then build the preview." }),
-        target: target("reports-ai", "reports-builder"),
+        body: t("tutorial.reports.body", { defaultValue: "Pick a style and toggle the sections you want included in the PDF." }),
+        target: target("reports-layout", "reports-builder"),
       },
       {
         title: t("tutorial.reportPreview.title", { defaultValue: "Report preview" }),
