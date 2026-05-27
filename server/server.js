@@ -2248,7 +2248,7 @@ async function ensurePlatform(name) {
   const { data } = await supabase
     .from('platforms')
     .select('id')
-    .eq('name', name)
+    .ilike('name', name)
     .maybeSingle();
   if (data) return data.id;
 
@@ -3731,7 +3731,7 @@ app.get('/api/platforms', async (req, res) => {
   } catch (err) {
     console.error('[GET /api/platforms] error:', err.message);
     // Fall back to reasonable defaults so the client keeps working
-    res.json({ platforms: { x: 1, youtube: 8, linkedin: 2, instagram: 3, tiktok: 5, reddit: 6 } });
+    res.json({ platforms: { x: 1, youtube: 8, linkedin: 9, instagram: 3, tiktok: 5, reddit: 10 } });
   }
 });
 
