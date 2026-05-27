@@ -4537,10 +4537,11 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI selected the most relevant saved posts before the chat model answered."
     },
     reports: {
-      step1: "Pick a style",
+      step1: "Step 1 — Pick a style",
       step1Desc: "Choose the report type that fits your need.",
-      sectionsHeading: "Sections included",
-      sectionsHeadingDesc: "Toggle which sections appear in the report."
+      step2: "Step 2 — Let AI build it (optional)",
+      step2Desc: "Describe the report you want and AI will set it up for you.",
+      sectionToggleHint: "Sections included:"
     }
   },
   ja: {
@@ -4560,10 +4561,11 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AIがチャットモデルの回答前に最も関連性の高い保存済み投稿を選択しました。"
     },
     reports: {
-      step1: "スタイルを選択",
+      step1: "ステップ1 — スタイルを選択",
       step1Desc: "ニーズに合ったレポートタイプを選択してください。",
-      sectionsHeading: "含まれるセクション",
-      sectionsHeadingDesc: "レポートに表示するセクションを切り替えます。"
+      step2: "ステップ2 — AIに任せる（任意）",
+      step2Desc: "希望するレポートを説明するとAIが設定します。",
+      sectionToggleHint: "含まれるセクション:"
     }
   },
   fr: {
@@ -4583,10 +4585,11 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI a sélectionné les publications enregistrées les plus pertinentes avant de répondre."
     },
     reports: {
-      step1: "Choisir un style",
+      step1: "Étape 1 — Choisir un style",
       step1Desc: "Choisissez le type de rapport qui correspond à vos besoins.",
-      sectionsHeading: "Sections incluses",
-      sectionsHeadingDesc: "Choisissez les sections à inclure dans le rapport."
+      step2: "Étape 2 — Laisser l'IA construire (facultatif)",
+      step2Desc: "Décrivez le rapport souhaité et l'IA le configurera.",
+      sectionToggleHint: "Sections incluses :"
     }
   },
   de: {
@@ -4606,10 +4609,11 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI hat die relevantesten gespeicherten Beiträge vor der Antwort ausgewählt."
     },
     reports: {
-      step1: "Stil wählen",
+      step1: "Schritt 1 — Stil wählen",
       step1Desc: "Wählen Sie den Berichtstyp, der Ihrem Bedarf entspricht.",
-      sectionsHeading: "Enthaltene Abschnitte",
-      sectionsHeadingDesc: "Wählen Sie, welche Abschnitte im Bericht erscheinen."
+      step2: "Schritt 2 — KI erstellen lassen (optional)",
+      step2Desc: "Beschreiben Sie den gewünschten Bericht und die KI richtet ihn ein.",
+      sectionToggleHint: "Enthaltene Abschnitte:"
     }
   },
   es: {
@@ -4629,10 +4633,11 @@ const EXTRA_TRANSLATIONS_UI_FEATURES = {
       voyageRerankHint: "Voyage AI seleccionó las publicaciones más relevantes antes de responder."
     },
     reports: {
-      step1: "Elige un estilo",
+      step1: "Paso 1 — Elige un estilo",
       step1Desc: "Elige el tipo de informe que se adapta a tu necesidad.",
-      sectionsHeading: "Secciones incluidas",
-      sectionsHeadingDesc: "Activa qué secciones aparecen en el informe."
+      step2: "Paso 2 — Deja que la IA lo cree (opcional)",
+      step2Desc: "Describe el informe que quieres y la IA lo configurará.",
+      sectionToggleHint: "Secciones incluidas:"
     }
   }
 };
@@ -4643,160 +4648,156 @@ Object.entries(EXTRA_TRANSLATIONS_UI_FEATURES).forEach(([language, translation])
 });
 
 
-const EXTRA_TRANSLATIONS_AUTOSCRAPE_AUTH_PATCH = {
+
+const EXTRA_TRANSLATIONS_TOUR_CLEANUP = {
   en: {
-    watchlist: {
-      deleteAll: "Delete all",
-      confirmDeleteAll: "Delete all {{count}} auto-scrape items? This cannot be undone.",
-      saveAll: "Save all ({{count}})",
-      savedAllCount: "Saved {{count}}",
-      retrySaveAll: "Retry save all"
+    tutorial: {
+      label: "Tutorial",
+      exit: "Exit tutorial",
+      tipOf: "Tip {{current}} of {{total}}",
+      finish: "Finish tutorial",
+      nextScreen: "Next screen",
+      next: "Next",
+      dashboard: { title: "Dashboard", body: "Start here for the main performance snapshot across saved posts." },
+      dashboardSections: { title: "Performance sections", body: "Once posts are saved, this area shows platform performance, top posts, keywords, and tone." },
+      competitorLookup: { title: "Competitor Lookup", body: "Choose a platform, then search by username, URL, hashtag, or keyword." },
+      results: { title: "Results", body: "Review the results, open originals, and save useful examples for analysis." },
+      savedPosts: { title: "Saved Posts", body: "Saved posts are the evidence library for reports, keywords, dashboard charts, and chat answers." },
+      savedPostsActions: { title: "Platform controls", body: "When posts exist, each platform section has its own sort, delete, and review controls." },
+      keywordTracking: { title: "Keyword Tracking", body: "Repeated topics are ranked by engagement, consistency, trend, and platform coverage." },
+      autoscraper: { title: "Auto Scraper", body: "Create searches that can pull fresh posts from each social platform." },
+      reports: { title: "Reports", body: "Build a PDF from saved posts, keywords, tone, and platform performance." },
+      reportPreview: { title: "Report preview", body: "Check the layout here before downloading the final report." },
+      chat: { title: "Chat", body: "Ask questions about saved posts, reports, or uploaded files." },
+      chatHistory: { title: "Chat history", body: "Saved chats appear here. If the account is new, start a fresh chat from the composer." },
+      appearance: { title: "Appearance", body: "Switch light or dark mode and choose the app color theme." },
+      aiModel: { title: "Chat model", body: "Choose the AI model shared by the Chat page." }
     },
-    settings: {
-      colorTheme: { default: "Default" }
-    },
-    connectedIntegrations: {
-      alwaysConnectedSubtitle: "All supported platforms are available in the app.",
-      allConnected: "{{count}} connected",
-      connectedPlatforms: "Connected platforms",
-      readyToSearch: "Ready to search",
-      readyToSearchDesc: "Use Competitor Lookup or Auto-Scraper without connecting anything here.",
-      noSetupNeeded: "No setup needed",
-      noSetupNeededDesc: "This screen is just a quick view of available data sources."
-    },
-    profile: {
-      unsavedChanges: "Unsaved changes",
-      upToDate: "Up to date",
-      profileDetails: "Profile details",
-      readyToSave: "Ready",
-      checkFields: "Check fields"
-    },
-    dashboard: { tonePostLimit: "Tone: {{count}} of {{total}} posts" },
-    reports: { tonePostLimit: "Tone: {{count}} of {{total}} posts" }
+    savedPosts: {
+      deleteAllPlatform: "Delete All -- {{platform}}",
+      confirmDeletePlatform: "Delete {{count}} saved posts from {{platform}}? This action cannot be undone.",
+      failedDeletePlatform: "Failed to delete platform posts"
+    }
   },
   ja: {
-    watchlist: {
-      deleteAll: "すべて削除",
-      confirmDeleteAll: "自動スクレイプ項目 {{count}} 件をすべて削除しますか？この操作は取り消せません。",
-      saveAll: "すべて保存 ({{count}})",
-      savedAllCount: "{{count}} 件保存済み",
-      retrySaveAll: "すべて保存を再試行"
+    tutorial: {
+      label: "チュートリアル",
+      exit: "チュートリアルを終了",
+      tipOf: "ヒント {{current}} / {{total}}",
+      finish: "チュートリアルを終了",
+      nextScreen: "次の画面",
+      next: "次へ",
+      dashboard: { title: "ダッシュボード", body: "保存済み投稿の主なパフォーマンス概要はここから確認します。" },
+      dashboardSections: { title: "パフォーマンス項目", body: "投稿を保存すると、プラットフォーム別の成果、上位投稿、キーワード、トーンが表示されます。" },
+      competitorLookup: { title: "競合検索", body: "プラットフォームを選び、ユーザー名、URL、ハッシュタグ、またはキーワードで検索します。" },
+      results: { title: "結果", body: "結果を確認し、元投稿を開き、分析に使う例を保存します。" },
+      savedPosts: { title: "保存済み投稿", body: "保存済み投稿は、レポート、キーワード、ダッシュボード、チャット回答の根拠になります。" },
+      savedPostsActions: { title: "プラットフォーム操作", body: "投稿がある場合、各プラットフォームごとに並べ替え、削除、確認ができます。" },
+      keywordTracking: { title: "キーワード追跡", body: "繰り返し出る話題を、エンゲージメント、一貫性、トレンド、掲載先でランク付けします。" },
+      autoscraper: { title: "自動スクレイプ", body: "各SNSから新しい投稿を取得する検索条件を作成します。" },
+      reports: { title: "レポート", body: "保存済み投稿、キーワード、トーン、プラットフォーム成果からPDFを作成します。" },
+      reportPreview: { title: "レポートプレビュー", body: "ダウンロード前にここでレイアウトを確認します。" },
+      chat: { title: "チャット", body: "保存済み投稿、レポート、アップロードファイルについて質問できます。" },
+      chatHistory: { title: "チャット履歴", body: "保存済みチャットがここに表示されます。新しいアカウントでは入力欄から新規チャットを始めます。" },
+      appearance: { title: "外観", body: "ライト/ダークモードとアプリのカラーテーマを変更します。" },
+      aiModel: { title: "チャットモデル", body: "チャット画面で使うAIモデルを選択します。" }
     },
-    settings: {
-      colorTheme: { default: "標準" }
-    },
-    connectedIntegrations: {
-      alwaysConnectedSubtitle: "対応しているすべてのプラットフォームをアプリで利用できます。",
-      allConnected: "{{count}} 件接続済み",
-      connectedPlatforms: "接続済みプラットフォーム",
-      readyToSearch: "検索準備完了",
-      readyToSearchDesc: "ここで接続設定をしなくても、競合検索や自動スクレイプを使用できます。",
-      noSetupNeeded: "設定不要",
-      noSetupNeededDesc: "この画面は利用可能なデータソースの確認用です。"
-    },
-    profile: {
-      unsavedChanges: "未保存の変更",
-      upToDate: "最新です",
-      profileDetails: "プロフィール詳細",
-      readyToSave: "保存可能",
-      checkFields: "項目を確認"
-    },
-    dashboard: { tonePostLimit: "トーン: {{total}} 件中 {{count}} 件" },
-    reports: { tonePostLimit: "トーン: {{total}} 件中 {{count}} 件" }
+    savedPosts: {
+      deleteAllPlatform: "すべて削除 -- {{platform}}",
+      confirmDeletePlatform: "{{platform}} の保存済み投稿 {{count}} 件を削除しますか？この操作は元に戻せません。",
+      failedDeletePlatform: "プラットフォーム投稿の削除に失敗しました"
+    }
   },
   fr: {
-    watchlist: {
-      deleteAll: "Tout supprimer",
-      confirmDeleteAll: "Supprimer les {{count}} éléments d’auto-scrape ? Action irréversible.",
-      saveAll: "Tout enregistrer ({{count}})",
-      savedAllCount: "{{count}} enregistré(s)",
-      retrySaveAll: "Réessayer tout enregistrer"
+    tutorial: {
+      label: "Tutoriel",
+      exit: "Quitter le tutoriel",
+      tipOf: "Astuce {{current}} sur {{total}}",
+      finish: "Terminer le tutoriel",
+      nextScreen: "Écran suivant",
+      next: "Suivant",
+      dashboard: { title: "Tableau de bord", body: "Commencez ici pour voir l'aperçu principal des performances des publications enregistrées." },
+      dashboardSections: { title: "Sections de performance", body: "Une fois des publications enregistrées, cette zone montre les plateformes, meilleures publications, mots-clés et tons." },
+      competitorLookup: { title: "Recherche concurrentielle", body: "Choisissez une plateforme, puis cherchez par nom d'utilisateur, URL, hashtag ou mot-clé." },
+      results: { title: "Résultats", body: "Examinez les résultats, ouvrez les originaux et enregistrez les meilleurs exemples." },
+      savedPosts: { title: "Publications enregistrées", body: "Les publications enregistrées alimentent les rapports, mots-clés, graphiques et réponses du chat." },
+      savedPostsActions: { title: "Contrôles par plateforme", body: "Quand des publications existent, chaque section de plateforme a ses propres contrôles de tri, suppression et révision." },
+      keywordTracking: { title: "Suivi des mots-clés", body: "Les sujets répétés sont classés par engagement, cohérence, tendance et couverture de plateforme." },
+      autoscraper: { title: "Auto-scrape", body: "Créez des recherches pour récupérer de nouvelles publications depuis chaque plateforme sociale." },
+      reports: { title: "Rapports", body: "Créez un PDF à partir des publications, mots-clés, tons et performances par plateforme." },
+      reportPreview: { title: "Aperçu du rapport", body: "Vérifiez la mise en page ici avant de télécharger le rapport final." },
+      chat: { title: "Chat", body: "Posez des questions sur les publications, rapports ou fichiers téléversés." },
+      chatHistory: { title: "Historique du chat", body: "Les chats enregistrés apparaissent ici. Pour un nouveau compte, commencez dans la zone de saisie." },
+      appearance: { title: "Apparence", body: "Changez le mode clair/sombre et le thème de couleur de l'application." },
+      aiModel: { title: "Modèle de chat", body: "Choisissez le modèle IA utilisé par la page Chat." }
     },
-    settings: {
-      colorTheme: { default: "Par défaut" }
-    },
-    connectedIntegrations: {
-      alwaysConnectedSubtitle: "Toutes les plateformes prises en charge sont disponibles dans l’application.",
-      allConnected: "{{count}} connectées",
-      connectedPlatforms: "Plateformes connectées",
-      readyToSearch: "Prêt à rechercher",
-      readyToSearchDesc: "Utilisez Competitor Lookup ou Auto-Scraper sans connexion supplémentaire ici.",
-      noSetupNeeded: "Aucune configuration requise",
-      noSetupNeededDesc: "Cet écran donne un aperçu des sources de données disponibles."
-    },
-    profile: {
-      unsavedChanges: "Modifications non enregistrées",
-      upToDate: "À jour",
-      profileDetails: "Détails du profil",
-      readyToSave: "Prêt",
-      checkFields: "Vérifier les champs"
-    },
-    dashboard: { tonePostLimit: "Ton : {{count}} sur {{total}} publications" },
-    reports: { tonePostLimit: "Ton : {{count}} sur {{total}} publications" }
+    savedPosts: {
+      deleteAllPlatform: "Tout supprimer -- {{platform}}",
+      confirmDeletePlatform: "Supprimer {{count}} publications enregistrées de {{platform}} ? Cette action est irréversible.",
+      failedDeletePlatform: "Échec de la suppression des publications de la plateforme"
+    }
   },
   de: {
-    watchlist: {
-      deleteAll: "Alle löschen",
-      confirmDeleteAll: "Alle {{count}} Auto-Scrape-Elemente löschen? Dies kann nicht rückgängig gemacht werden.",
-      saveAll: "Alle speichern ({{count}})",
-      savedAllCount: "{{count}} gespeichert",
-      retrySaveAll: "Alle erneut speichern"
+    tutorial: {
+      label: "Tutorial",
+      exit: "Tutorial beenden",
+      tipOf: "Tipp {{current}} von {{total}}",
+      finish: "Tutorial abschließen",
+      nextScreen: "Nächste Seite",
+      next: "Weiter",
+      dashboard: { title: "Dashboard", body: "Beginnen Sie hier mit der wichtigsten Leistungsübersicht gespeicherter Beiträge." },
+      dashboardSections: { title: "Leistungsbereiche", body: "Sobald Beiträge gespeichert sind, zeigt dieser Bereich Plattformleistung, Top-Beiträge, Keywords und Ton." },
+      competitorLookup: { title: "Wettbewerbssuche", body: "Wählen Sie eine Plattform und suchen Sie nach Benutzername, URL, Hashtag oder Keyword." },
+      results: { title: "Ergebnisse", body: "Prüfen Sie Ergebnisse, öffnen Sie Originale und speichern Sie nützliche Beispiele." },
+      savedPosts: { title: "Gespeicherte Beiträge", body: "Gespeicherte Beiträge bilden die Grundlage für Berichte, Keywords, Dashboard-Diagramme und Chat-Antworten." },
+      savedPostsActions: { title: "Plattformsteuerung", body: "Wenn Beiträge vorhanden sind, hat jede Plattform eigene Steuerelemente zum Sortieren, Löschen und Prüfen." },
+      keywordTracking: { title: "Keyword-Tracking", body: "Wiederkehrende Themen werden nach Engagement, Konsistenz, Trend und Plattformabdeckung bewertet." },
+      autoscraper: { title: "Auto-Scraper", body: "Erstellen Sie Suchläufe, um frische Beiträge von jeder Social-Plattform zu ziehen." },
+      reports: { title: "Berichte", body: "Erstellen Sie ein PDF aus gespeicherten Beiträgen, Keywords, Ton und Plattformleistung." },
+      reportPreview: { title: "Berichtsvorschau", body: "Prüfen Sie hier das Layout, bevor Sie den finalen Bericht herunterladen." },
+      chat: { title: "Chat", body: "Stellen Sie Fragen zu gespeicherten Beiträgen, Berichten oder hochgeladenen Dateien." },
+      chatHistory: { title: "Chatverlauf", body: "Gespeicherte Chats erscheinen hier. Bei einem neuen Konto starten Sie im Eingabefeld." },
+      appearance: { title: "Darstellung", body: "Wechseln Sie hell/dunkel und wählen Sie die App-Farbe." },
+      aiModel: { title: "Chat-Modell", body: "Wählen Sie das KI-Modell, das auch die Chat-Seite verwendet." }
     },
-    settings: {
-      colorTheme: { default: "Standard" }
-    },
-    connectedIntegrations: {
-      alwaysConnectedSubtitle: "Alle unterstützten Plattformen sind in der App verfügbar.",
-      allConnected: "{{count}} verbunden",
-      connectedPlatforms: "Verbundene Plattformen",
-      readyToSearch: "Bereit zur Suche",
-      readyToSearchDesc: "Nutzen Sie Competitor Lookup oder Auto-Scraper ohne zusätzliche Verbindung hier.",
-      noSetupNeeded: "Keine Einrichtung nötig",
-      noSetupNeededDesc: "Diese Seite zeigt verfügbare Datenquellen auf einen Blick."
-    },
-    profile: {
-      unsavedChanges: "Ungespeicherte Änderungen",
-      upToDate: "Aktuell",
-      profileDetails: "Profildetails",
-      readyToSave: "Bereit",
-      checkFields: "Felder prüfen"
-    },
-    dashboard: { tonePostLimit: "Ton: {{count}} von {{total}} Beiträgen" },
-    reports: { tonePostLimit: "Ton: {{count}} von {{total}} Beiträgen" }
+    savedPosts: {
+      deleteAllPlatform: "Alle löschen -- {{platform}}",
+      confirmDeletePlatform: "{{count}} gespeicherte Beiträge von {{platform}} löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      failedDeletePlatform: "Beiträge dieser Plattform konnten nicht gelöscht werden"
+    }
   },
   es: {
-    watchlist: {
-      deleteAll: "Eliminar todo",
-      confirmDeleteAll: "¿Eliminar los {{count}} elementos de auto-scrape? Esta acción no se puede deshacer.",
-      saveAll: "Guardar todo ({{count}})",
-      savedAllCount: "{{count}} guardados",
-      retrySaveAll: "Reintentar guardar todo"
+    tutorial: {
+      label: "Tutorial",
+      exit: "Salir del tutorial",
+      tipOf: "Consejo {{current}} de {{total}}",
+      finish: "Terminar tutorial",
+      nextScreen: "Siguiente pantalla",
+      next: "Siguiente",
+      dashboard: { title: "Dashboard", body: "Empieza aquí para ver el resumen principal de rendimiento de las publicaciones guardadas." },
+      dashboardSections: { title: "Secciones de rendimiento", body: "Cuando haya publicaciones guardadas, esta zona muestra plataformas, mejores publicaciones, palabras clave y tono." },
+      competitorLookup: { title: "Búsqueda competitiva", body: "Elige una plataforma y busca por usuario, URL, hashtag o palabra clave." },
+      results: { title: "Resultados", body: "Revisa resultados, abre originales y guarda ejemplos útiles para análisis." },
+      savedPosts: { title: "Publicaciones guardadas", body: "Las publicaciones guardadas alimentan reportes, palabras clave, gráficos y respuestas del chat." },
+      savedPostsActions: { title: "Controles por plataforma", body: "Cuando existen publicaciones, cada plataforma tiene sus propios controles para ordenar, borrar y revisar." },
+      keywordTracking: { title: "Seguimiento de palabras clave", body: "Los temas repetidos se clasifican por engagement, consistencia, tendencia y cobertura de plataforma." },
+      autoscraper: { title: "Auto Scraper", body: "Crea búsquedas para traer publicaciones nuevas desde cada plataforma social." },
+      reports: { title: "Reportes", body: "Crea un PDF con publicaciones guardadas, palabras clave, tono y rendimiento por plataforma." },
+      reportPreview: { title: "Vista previa del reporte", body: "Revisa el diseño aquí antes de descargar el reporte final." },
+      chat: { title: "Chat", body: "Haz preguntas sobre publicaciones guardadas, reportes o archivos subidos." },
+      chatHistory: { title: "Historial de chat", body: "Los chats guardados aparecen aquí. Si la cuenta es nueva, empieza desde el cuadro de mensaje." },
+      appearance: { title: "Apariencia", body: "Cambia modo claro/oscuro y el color de la app." },
+      aiModel: { title: "Modelo de chat", body: "Elige el modelo de IA compartido con la página de Chat." }
     },
-    settings: {
-      colorTheme: { default: "Predeterminado" }
-    },
-    connectedIntegrations: {
-      alwaysConnectedSubtitle: "Todas las plataformas compatibles están disponibles en la app.",
-      allConnected: "{{count}} conectadas",
-      connectedPlatforms: "Plataformas conectadas",
-      readyToSearch: "Listo para buscar",
-      readyToSearchDesc: "Usa Competitor Lookup o Auto-Scraper sin conectar nada aquí.",
-      noSetupNeeded: "Sin configuración",
-      noSetupNeededDesc: "Esta pantalla muestra rápidamente las fuentes de datos disponibles."
-    },
-    profile: {
-      unsavedChanges: "Cambios sin guardar",
-      upToDate: "Actualizado",
-      profileDetails: "Detalles del perfil",
-      readyToSave: "Listo",
-      checkFields: "Revisa los campos"
-    },
-    dashboard: { tonePostLimit: "Tono: {{count}} de {{total}} publicaciones" },
-    reports: { tonePostLimit: "Tono: {{count}} de {{total}} publicaciones" }
+    savedPosts: {
+      deleteAllPlatform: "Eliminar todo -- {{platform}}",
+      confirmDeletePlatform: "¿Eliminar {{count}} publicaciones guardadas de {{platform}}? Esta acción no se puede deshacer.",
+      failedDeletePlatform: "No se pudieron eliminar las publicaciones de la plataforma"
+    }
   }
 };
 
-Object.entries(EXTRA_TRANSLATIONS_AUTOSCRAPE_AUTH_PATCH).forEach(([language, translation]) => {
+Object.entries(EXTRA_TRANSLATIONS_TOUR_CLEANUP).forEach(([language, translation]) => {
   if (!resources[language]) resources[language] = { translation: {} };
   deepMergeTranslation(resources[language].translation, translation);
 });

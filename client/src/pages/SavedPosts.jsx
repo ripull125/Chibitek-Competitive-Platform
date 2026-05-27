@@ -23,7 +23,8 @@ async function getAuthSession() {
 
 async function getPublicUserId() {
   const session = await getAuthSession();
-  if (!session?.access_token) return null;
+  const authUserId = session?.user?.id || null;
+  if (!session?.access_token) return authUserId;
 
   try {
     const response = await fetch(apiUrl("/api/auth/access"), {
@@ -31,9 +32,9 @@ async function getPublicUserId() {
       headers: { Authorization: `Bearer ${session.access_token}` },
     });
     const payload = await response.json().catch(() => ({}));
-    return response.ok && payload?.authorized && payload?.user_id ? String(payload.user_id) : null;
+    return payload?.user_id || authUserId;
   } catch {
-    return null;
+    return authUserId;
   }
 }
 
@@ -1284,7 +1285,9 @@ export default function SavedPosts() {
   const [platformMap, setPlatformMap] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [deleteAllModal, setDeleteAllModal] = useState(false);
+  const [deletePlatformModal, setDeletePlatformModal] = useState({ open: false, platformId: null, label: "", count: 0 });
   const [deletingAll, setDeletingAll] = useState(false);
+  const [deletingPlatform, setDeletingPlatform] = useState(false);
   const [sortMode, setSortMode] = useState(() => localStorage.getItem("savedPostsSortMode") || DEFAULT_SORT_MODE);
 
   useEffect(() => {
@@ -1296,9 +1299,8 @@ export default function SavedPosts() {
     fetch(apiUrl("/api/platforms"))
       .then((r) => r.json())
       .then((data) => {
-        const platforms = data?.platforms && typeof data.platforms === "object" ? data.platforms : data;
-        if (platforms && typeof platforms === "object") {
-          for (const [key, id] of Object.entries(platforms)) {
+        if (data && typeof data === "object") {
+          for (const [key, id] of Object.entries(data)) {
             const cfg = PLATFORM_CARD_CONFIG[key];
             if (cfg && id) newMap[id] = { ...cfg };
           }
@@ -1370,6 +1372,32 @@ export default function SavedPosts() {
     }
   }
 
+  async function handleDeletePlatform() {
+    const { platformId } = deletePlatformModal;
+    if (!currentUserId || platformId == null) return;
+    setDeletingPlatform(true);
+    try {
+      const resp = await fetch(
+        apiUrl(`/api/posts?user_id=${encodeURIComponent(currentUserId)}&platform_id=${encodeURIComponent(platformId)}`),
+        { method: "DELETE", headers: await authHeaders() }
+      );
+      const ct = resp.headers.get("content-type") || "";
+      if (!resp.ok) {
+        const errMsg = ct.includes("application/json")
+          ? (await resp.json()).error
+          : `Server error (${resp.status})`;
+        throw new Error(errMsg || t("savedPosts.failedDeletePlatform", { defaultValue: "Failed to delete platform posts" }));
+      }
+      setPosts((prev) => prev.filter((p) => Number(p.platform_id ?? 0) !== Number(platformId)));
+      setDeletePlatformModal({ open: false, platformId: null, label: "", count: 0 });
+    } catch (err) {
+      console.error("Delete platform posts failed:", err);
+      alert(err.message);
+    } finally {
+      setDeletingPlatform(false);
+    }
+  }
+
   /* Group posts by platform */
   const grouped = {};
   for (const p of posts) {
@@ -1392,7 +1420,7 @@ export default function SavedPosts() {
       <LoadingOverlay visible={loading} />
 
       {/* page header */}
-      <Group justify="space-between" align="center" wrap="wrap">
+      <Group justify="space-between" align="center" wrap="wrap" data-tour="saved-posts-header">
         <Title order={2}>{t("savedPosts.title")}</Title>
         <Group gap="sm" align="center" wrap="wrap">
           {posts.length > 0 && <SortSelect value={sortMode} onChange={setSortMode} />}
@@ -1416,17 +1444,19 @@ export default function SavedPosts() {
       {notice && <Text size="sm" c="dimmed">{notice}</Text>}
 
       {!loading && posts.length === 0 && !notice && (
-        <Alert color="gray" variant="light" radius="md">
+        <Alert color="gray" variant="light" radius="md" data-tour="saved-posts-empty">
           {t("savedPosts.noSavedPosts")}
         </Alert>
       )}
 
-      {sortedKeys.map((platformId) => {
+      <Stack gap="md" data-tour="saved-posts-platforms">
+        {sortedKeys.map((platformId) => {
         const platformPosts = sortPostsForDisplay(grouped[platformId], sortMode);
         const cfg = platformMap[platformId];
         const PlatformIcon = cfg?.icon;
         const PlatformCard = cfg?.Card || GenericPostCard;
         const isOpen = !collapsedSections[platformId];
+        const platformLabel = cfg?.label || t("savedPosts.platformFallback", { platformId });
 
         return (
           <Paper key={platformId} withBorder radius="lg" p="md">
@@ -1440,14 +1470,33 @@ export default function SavedPosts() {
                 <Group gap={8} align="center">
                   {PlatformIcon && <PlatformIcon size={18} color={cfg.color} />}
                   <Text fw={700} size="sm">
-                    {cfg?.label || t("savedPosts.platformFallback", { platformId })}
+                    {platformLabel}
                   </Text>
                   <Badge size="sm" variant="light" color="gray">{platformPosts.length}</Badge>
                 </Group>
-                {isOpen
-                  ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
-                  : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
-                }
+                <Group gap="xs" wrap="nowrap">
+                  <Button
+                    color="red"
+                    variant="subtle"
+                    size="xs"
+                    leftSection={<IconTrash size={13} />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeletePlatformModal({
+                        open: true,
+                        platformId,
+                        label: platformLabel,
+                        count: platformPosts.length,
+                      });
+                    }}
+                  >
+                    {t("savedPosts.deleteAllPlatform", { platform: platformLabel, defaultValue: "Delete All -- {{platform}}" })}
+                  </Button>
+                  {isOpen
+                    ? <IconChevronUp size={16} style={{ opacity: 0.5 }} />
+                    : <IconChevronDown size={16} style={{ opacity: 0.5 }} />
+                  }
+                </Group>
               </Group>
               {(cfg?.label === "X / Twitter" || cfg?.label === "X") && (
                 <Alert variant="light" color="blue" radius="md" py="xs" icon={<IconBrandX size={16} />}>
@@ -1481,7 +1530,8 @@ export default function SavedPosts() {
             </Stack>
           </Paper>
         );
-      })}
+        })}
+      </Stack>
 
       {/* delete modal */}
       <Modal
@@ -1495,6 +1545,25 @@ export default function SavedPosts() {
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeleteModal({ open: false, postId: null })}>{t("savedPosts.cancel")}</Button>
             <Button color="red" onClick={handleDelete}>{t("savedPosts.delete")}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+
+      {/* delete platform modal */}
+      <Modal
+        opened={deletePlatformModal.open}
+        onClose={() => setDeletePlatformModal({ open: false, platformId: null, label: "", count: 0 })}
+        title={t("savedPosts.deleteAllPlatform", { platform: deletePlatformModal.label, defaultValue: "Delete All -- {{platform}}" })}
+        centered
+      >
+        <Stack gap="lg">
+          <Text>{t("savedPosts.confirmDeletePlatform", { platform: deletePlatformModal.label, count: deletePlatformModal.count, defaultValue: "Delete {{count}} saved posts from {{platform}}? This action cannot be undone." })}</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeletePlatformModal({ open: false, platformId: null, label: "", count: 0 })}>{t("savedPosts.cancel")}</Button>
+            <Button color="red" loading={deletingPlatform} onClick={handleDeletePlatform}>
+              {t("savedPosts.deleteAllPlatform", { platform: deletePlatformModal.label, defaultValue: "Delete All -- {{platform}}" })}
+            </Button>
           </Group>
         </Stack>
       </Modal>

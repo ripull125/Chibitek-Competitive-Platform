@@ -168,7 +168,7 @@ const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded, 
   const gridCols = `28px 1fr ${COLS.map(c => c.w + "px").join(" ")}`;
 
   return (
-    <div ref={ref}>
+    <div ref={ref} data-tour="keyword-tracking-root">
       <Stack gap="sm">
 
         {/* ── Header card ── */}
@@ -183,9 +183,6 @@ const KeywordTracking = forwardRef(function KeywordTracking({ onKeywordsLoaded, 
                 {t("keywordTracking.intelligenceIntro4")} <strong>{t("keywordTracking.intelligencePlatform")}</strong>{" "}
                 <strong>{t("keywordTracking.intelligenceClickToSort")}</strong>
               </Text>
-              {meta?.debug && (
-                <Text size="xs" c="dimmed" mt={4}>{meta.debug}</Text>
-              )}
             </div>
             <Button
               size="xs"

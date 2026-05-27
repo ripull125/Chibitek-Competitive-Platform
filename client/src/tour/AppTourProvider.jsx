@@ -13,7 +13,8 @@ export function useAppTour() {
 
 const target = (...items) => items.filter(Boolean);
 
-// Plain-language walkthrough. Each tip points to a real screen element.
+// Keep the tour focused on the main workflow. Each target list is ordered from
+// most-specific to safest fallback, so empty dashboards/chats still look clean.
 const getTourFlow = (t) => [
   {
     key: "dashboard",
@@ -21,23 +22,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.dashboard.title", { defaultValue: "Dashboard" }),
-        body: t("tutorial.dashboard.body", { defaultValue: "Start with the main numbers. They summarize the posts saved in the app." }),
-        target: target("dashboard-kpis"),
+        body: t("tutorial.dashboard.body", { defaultValue: "Start here for the main performance snapshot across saved posts." }),
+        target: target("dashboard-kpis", "dashboard-empty", "dashboard-root"),
       },
       {
-        title: t("tutorial.topPosts.title", { defaultValue: "Top posts" }),
-        body: t("tutorial.topPosts.body", { defaultValue: "This shows the posts with the most engagement. Open a post when you want to see the original." }),
-        target: target("dashboard-top-posts"),
-      },
-      {
-        title: t("tutorial.platformCharts.title", { defaultValue: "Platform performance" }),
-        body: t("tutorial.platformCharts.body", { defaultValue: "Use this chart to see which platform is performing best." }),
-        target: target("dashboard-platforms", "dashboard-timeline"),
-      },
-      {
-        title: t("tutorial.keywordRankings.title", { defaultValue: "Keywords" }),
-        body: t("tutorial.keywordRankings.body", { defaultValue: "These topics come from saved posts. They help show what people are talking about." }),
-        target: target("dashboard-keywords"),
+        title: t("tutorial.dashboardSections.title", { defaultValue: "Performance sections" }),
+        body: t("tutorial.dashboardSections.body", { defaultValue: "Once posts are saved, this area shows platform performance, top posts, keywords, and tone." }),
+        target: target("dashboard-platforms", "dashboard-top-posts", "dashboard-empty", "dashboard-root"),
       },
     ],
   },
@@ -47,12 +38,12 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.competitorLookup.title", { defaultValue: "Competitor Lookup" }),
-        body: t("tutorial.competitorLookup.body", { defaultValue: "Choose a platform, then search by username, URL, or keyword." }),
+        body: t("tutorial.competitorLookup.body", { defaultValue: "Choose a platform, then search by username, URL, hashtag, or keyword." }),
         target: target("competitor-lookup-search"),
       },
       {
         title: t("tutorial.results.title", { defaultValue: "Results" }),
-        body: t("tutorial.results.body", { defaultValue: "Review the posts, open the original, or save useful examples." }),
+        body: t("tutorial.results.body", { defaultValue: "Review the results, open originals, and save useful examples for analysis." }),
         target: target("competitor-results", "competitor-lookup-search"),
       },
     ],
@@ -63,8 +54,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.savedPosts.title", { defaultValue: "Saved Posts" }),
-        body: t("tutorial.savedPosts.body", { defaultValue: "Saved posts are the source for reports, keywords, and chat answers." }),
-        target: target("saved-posts-list"),
+        body: t("tutorial.savedPosts.body", { defaultValue: "Saved posts are the evidence library for reports, keywords, dashboard charts, and chat answers." }),
+        target: target("saved-posts-header", "saved-posts-empty", "saved-posts-list"),
+      },
+      {
+        title: t("tutorial.savedPostsActions.title", { defaultValue: "Platform controls" }),
+        body: t("tutorial.savedPostsActions.body", { defaultValue: "When posts exist, each platform section has its own sort, delete, and review controls." }),
+        target: target("saved-posts-platforms", "saved-posts-empty", "saved-posts-header"),
       },
     ],
   },
@@ -74,7 +70,7 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.keywordTracking.title", { defaultValue: "Keyword Tracking" }),
-        body: t("tutorial.keywordTracking.body", { defaultValue: "This page ranks repeated topics from saved posts." }),
+        body: t("tutorial.keywordTracking.body", { defaultValue: "Repeated topics are ranked by engagement, consistency, trend, and platform coverage." }),
         target: target("keyword-tracking-root"),
       },
     ],
@@ -85,7 +81,7 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.autoscraper.title", { defaultValue: "Auto Scraper" }),
-        body: t("tutorial.autoscraper.body", { defaultValue: "Add searches here so the app can pull new posts for you." }),
+        body: t("tutorial.autoscraper.body", { defaultValue: "Create searches that can pull fresh posts from each social platform." }),
         target: target("autoscraper-root"),
       },
     ],
@@ -96,13 +92,13 @@ const getTourFlow = (t) => [
     tips: [
       {
         title: t("tutorial.reports.title", { defaultValue: "Reports" }),
-        body: t("tutorial.reports.body", { defaultValue: "Pick a style and toggle the sections you want included in the PDF." }),
-        target: target("reports-layout", "reports-builder"),
+        body: t("tutorial.reports.body", { defaultValue: "Build a PDF from saved posts, keywords, tone, and platform performance." }),
+        target: target("reports-layout", "reports-ai", "reports-preview"),
       },
       {
         title: t("tutorial.reportPreview.title", { defaultValue: "Report preview" }),
-        body: t("tutorial.reportPreview.body", { defaultValue: "Check the layout here before downloading the PDF." }),
-        target: target("reports-preview"),
+        body: t("tutorial.reportPreview.body", { defaultValue: "Check the layout here before downloading the final report." }),
+        target: target("reports-preview", "reports-layout"),
       },
     ],
   },
@@ -113,11 +109,11 @@ const getTourFlow = (t) => [
       {
         title: t("tutorial.chat.title", { defaultValue: "Chat" }),
         body: t("tutorial.chat.body", { defaultValue: "Ask questions about saved posts, reports, or uploaded files." }),
-        target: target("chat-composer", "chat-root"),
+        target: target("chat-composer", "chat-quick-actions", "chat-root"),
       },
       {
         title: t("tutorial.chatHistory.title", { defaultValue: "Chat history" }),
-        body: t("tutorial.chatHistory.body", { defaultValue: "Past chats stay on the left so you can reopen them later." }),
+        body: t("tutorial.chatHistory.body", { defaultValue: "Saved chats appear here. If the account is new, start a fresh chat from the composer." }),
         target: target("chat-history", "chat-root"),
       },
     ],
@@ -127,51 +123,14 @@ const getTourFlow = (t) => [
     path: "/settings",
     tips: [
       {
-        title: t("tutorial.settings.title", { defaultValue: "Settings" }),
-        body: t("tutorial.settings.body", { defaultValue: "Change language, theme, model, and account settings here." }),
-        target: target("settings-language", "settings-tutorial-card"),
-      },
-      {
         title: t("tutorial.appearance.title", { defaultValue: "Appearance" }),
-        body: t("tutorial.appearance.body", { defaultValue: "Switch light or dark mode and choose the app color." }),
-        target: target("settings-appearance", "settings-tutorial-card"),
+        body: t("tutorial.appearance.body", { defaultValue: "Switch light or dark mode and choose the app color theme." }),
+        target: target("settings-appearance"),
       },
       {
-        title: t("tutorial.restartTutorial.title", { defaultValue: "Tutorial" }),
-        body: t("tutorial.restartTutorial.body", { defaultValue: "Use this button to start the walkthrough again." }),
-        target: target("settings-tutorial-card"),
-      },
-    ],
-  },
-  {
-    key: "profile",
-    path: "/profile",
-    tips: [
-      {
-        title: t("tutorial.profile.title", { defaultValue: "Profile" }),
-        body: t("tutorial.profile.body", { defaultValue: "Update your name, username, email, and picture here." }),
-        target: target("profile-summary", "profile-form"),
-      },
-      {
-        title: t("tutorial.profileForm.title", { defaultValue: "Profile details" }),
-        body: t("tutorial.profileForm.body", { defaultValue: "Edit the fields, then save your changes." }),
-        target: target("profile-form", "profile-summary"),
-      },
-    ],
-  },
-  {
-    key: "connected-integrations",
-    path: "/connected-integrations",
-    tips: [
-      {
-        title: t("tutorial.connectedIntegrations.title", { defaultValue: "Connected Integrations" }),
-        body: t("tutorial.connectedIntegrations.body", { defaultValue: "All supported platforms are available by default." }),
-        target: target("integrations-grid", "integrations-search"),
-      },
-      {
-        title: t("tutorial.integrationSearch.title", { defaultValue: "Find a platform" }),
-        body: t("tutorial.integrationSearch.body", { defaultValue: "Use search to find a platform quickly." }),
-        target: target("integrations-search", "integrations-grid"),
+        title: t("tutorial.aiModel.title", { defaultValue: "Chat model" }),
+        body: t("tutorial.aiModel.body", { defaultValue: "Choose the AI model shared by the Chat page." }),
+        target: target("settings-ai", "settings-appearance"),
       },
     ],
   },
@@ -185,7 +144,12 @@ function getTargetElement(targets) {
       ? String(item)
       : `[data-tour="${item}"]`;
     const el = document.querySelector(selector);
-    if (el) return el;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      const isVisible = rect.width > 2 && rect.height > 2 && style.display !== "none" && style.visibility !== "hidden";
+      if (isVisible) return el;
+    }
   }
   return null;
 }
@@ -258,7 +222,6 @@ function TourSpotlight({ targets, fadeState }) {
       rafRef.current = window.requestAnimationFrame(measure);
     };
 
-    // Wait for routed screens and async cards to paint, then lock onto the target.
     measureTimer = window.setTimeout(scheduleMeasure, 120);
     const secondPass = window.setTimeout(scheduleMeasure, 360);
 
@@ -552,7 +515,6 @@ export default function AppTourProvider({ children }) {
   const tips = screen?.tips ?? [];
   const tip = tips[Math.min(tipIndex, Math.max(0, tips.length - 1))] ?? null;
 
-  // Keep tutorial aligned to manual navigation.
   React.useEffect(() => {
     if (!isRunning) return;
     const idx = TOUR_FLOW.findIndex((s) => s.path === location.pathname);

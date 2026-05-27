@@ -405,7 +405,11 @@ export default function Profile() {
                     alt={t("profile.profilePictureAlt")}
                     size={132}
                     radius={132}
-                  />
+                    color="blue"
+                    variant="light"
+                  >
+                    <IconUser size={58} stroke={1.7} />
+                  </Avatar>
                   <FileButton
                     onChange={(f) => {
                       setBanner(null);
