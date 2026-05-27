@@ -4068,7 +4068,7 @@ const EXTRA_TRANSLATIONS = {
       typeToConfirm: "Type {{phrase}} to confirm.",
       selectOwnerToConfirm: "Select a new owner to generate the confirmation phrase.",
       usersListDesc: "Search and filter instead of scanning the full email list.",
-      searchUsersPlaceholder: "Search email, name, provider, or role",
+      searchUsersPlaceholder: "Search email or name",
       email: "Email",
       role: "Role",
       status: "Status",
