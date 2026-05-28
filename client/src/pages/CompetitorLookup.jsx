@@ -1766,7 +1766,7 @@ export default function CompetitorLookup() {
 
   // Platform name → id mapping from server (e.g. { x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8 })
   const [platformIds, setPlatformIds] = useState({
-    x: 1, instagram: 3, tiktok: 5, reddit: 6, youtube: 8, linkedin: 2,
+    x: 1, instagram: 3, tiktok: 5, reddit: 10, youtube: 8, linkedin: 9,
   });
 
   useEffect(() => {

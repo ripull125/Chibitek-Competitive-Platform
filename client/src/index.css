@@ -382,6 +382,32 @@ html[data-mantine-color-scheme='dark'] .mantine-ActionIcon-root[data-variant='su
   border-radius: 8px;
   color: var(--text-secondary);
 }
+.chat-markdown-table-wrap {
+  margin: 10px 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+.chat-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.chat-markdown-table th,
+.chat-markdown-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+.chat-markdown-table th {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.chat-markdown-table tr:last-child td {
+  border-bottom: 0;
+}
 
 /* Navigation + accent consistency fixes */
 html[data-mantine-color-scheme='light'],

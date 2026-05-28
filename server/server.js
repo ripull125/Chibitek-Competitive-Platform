@@ -435,7 +435,7 @@ async function getUserByEmail(email) {
 
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, role, name, provider, created_at, updated_at')
+    .select('id, email, role, name, provider, provider_user_id, created_at, updated_at')
     .ilike('email', normalized)
     .limit(1)
     .maybeSingle();
@@ -452,16 +452,17 @@ async function getUserByEmail(email) {
   };
 }
 
+// Only matches existing rows in public.users. We deliberately do NOT create a
+// row for a Supabase-authenticated email that has not been pre-added by an
+// admin or owner — that would let any Google account sign in.
 async function ensureVerifiedUserRow(authCtx) {
   if (!authCtx?.verified || !authCtx?.user || !authCtx?.email) return null;
 
   const authUserId = String(authCtx.user.id || '').trim();
   const meta = authCtx.user.user_metadata || {};
   const displayName = String(meta.full_name || meta.name || '').trim() || null;
-  const provider = String(authCtx.user.app_metadata?.provider || authCtx.user.aud || 'google').trim();
 
-  // If an older fallback-created row exists using the Supabase Auth id as provider_user_id,
-  // reuse it instead of creating a second public.users row for the same person.
+  // Reuse a row previously created with the Supabase Auth id as provider_user_id.
   if (authUserId) {
     const { data: byProvider, error: byProviderErr } = await supabase
       .from('users')
@@ -488,28 +489,23 @@ async function ensureVerifiedUserRow(authCtx) {
   }
 
   const existing = await getUserByEmail(authCtx.email);
-  if (existing) return existing;
+  if (!existing) return null;
 
-  const { data, error } = await supabase
-    .from('users')
-    .insert({
-      email: authCtx.email,
-      name: displayName,
-      provider,
-      provider_user_id: authUserId || makeAdminCreatedProviderUserId(authCtx.email),
-      role: ROLE_USER,
-    })
-    .select('id, email, role, name, provider, created_at, updated_at')
-    .single();
-
-  if (error) {
-    throw error;
+  // Backfill provider_user_id / name on the pre-created row the first time the
+  // owner-approved user actually signs in.
+  const updates = {};
+  if (authUserId && !existing.provider_user_id) updates.provider_user_id = authUserId;
+  if (displayName && !existing.name) updates.name = displayName;
+  if (Object.keys(updates).length) {
+    const { data: updated, error: updateErr } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', existing.id)
+      .select('id, email, role, name, provider, created_at, updated_at')
+      .single();
+    if (!updateErr && updated) return { ...updated, role: normalizeRole(updated.role) };
   }
-
-  return {
-    ...data,
-    role: normalizeRole(data.role),
-  };
+  return existing;
 }
 
 
@@ -541,8 +537,9 @@ async function getPublicUserIdByAnyIdentifier(identifier) {
 }
 
 async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allowRawFallbackCreate = false } = {}) {
-  // Best path: use the bearer token, verify the Supabase Auth user, and map/create
-  // the row in public.users. That public.users.id is the only value safe for posts.user_id.
+  // Best path: use the bearer token, verify the Supabase Auth user, and map an
+  // existing row in public.users. That public.users.id is the only value safe for
+  // posts.user_id. We never insert a new row here — see ensureVerifiedUserRow.
   const token = getBearerToken(req);
   if (token) {
     const auth = await getRequestAuthContext(req);
@@ -569,28 +566,13 @@ async function resolvePublicUserIdFromRequest(req, { createFromAuth = true, allo
   const mapped = await getPublicUserIdByAnyIdentifier(rawUserId);
   if (mapped) return mapped;
 
-  // Last-resort compatibility for old clients that only send the Supabase Auth UUID
-  // and no Authorization header. This avoids FK failures for new users.
-  if (allowRawFallbackCreate && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawUserId)) {
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        id: rawUserId,
-        provider: 'supabase',
-        provider_user_id: rawUserId,
-        role: ROLE_USER,
-      })
-      .select('id')
-      .single();
-    if (!error && data?.id) return data.id;
-    if (error && !isDuplicateKeyError(error)) throw error;
+  // Intentionally no fallback insert here. Only users pre-added to public.users
+  // (by an owner/admin) are allowed to act. The `allowRawFallbackCreate` option
+  // is kept for call-site compatibility but is no longer honored.
+  void allowRawFallbackCreate;
 
-    const raced = await getPublicUserIdByAnyIdentifier(rawUserId);
-    if (raced) return raced;
-  }
-
-  const err = new Error('User record was not found in public.users. Sign out and back in, then try again.');
-  err.status = 401;
+  const err = new Error('Your account is not authorized. Ask an owner or admin to add you, then sign in again.');
+  err.status = 403;
   throw err;
 }
 
@@ -2233,7 +2215,7 @@ async function ensurePlatform(name) {
   const { data } = await supabase
     .from('platforms')
     .select('id')
-    .eq('name', name)
+    .ilike('name', name)
     .maybeSingle();
   if (data) return data.id;
 
@@ -3716,7 +3698,7 @@ app.get('/api/platforms', async (req, res) => {
   } catch (err) {
     console.error('[GET /api/platforms] error:', err.message);
     // Fall back to reasonable defaults so the client keeps working
-    res.json({ platforms: { x: 1, youtube: 8, linkedin: 2, instagram: 3, tiktok: 5, reddit: 6 } });
+    res.json({ platforms: { x: 1, youtube: 8, linkedin: 9, instagram: 3, tiktok: 5, reddit: 10 } });
   }
 });
 

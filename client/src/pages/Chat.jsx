@@ -44,6 +44,7 @@ import {
   loadAiSettings,
   saveAiSettings,
 } from "../utils/aiModelSettings";
+import MarkdownContent from "../utils/MarkdownContent";
 
 const CHAT_STORAGE_BASE_KEY = "chibitek-chat-state";
 const CHAT_PENDING_STORAGE_BASE_KEY = "chibitek-chat-pending";
@@ -152,191 +153,6 @@ const CHAT_QUICK_PROMPTS = [
     icon: IconSparkles,
   },
 ];
-
-function renderInlineMarkdown(text) {
-  const value = String(text || "");
-  const pattern = /(\[[^\]]+\]\(https?:\/\/[^\s)]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
-  const parts = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = pattern.exec(value)) !== null) {
-    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
-    const token = match[0];
-    const key = `${match.index}-${token}`;
-
-    if (token.startsWith("[") && token.includes("](")) {
-      const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
-      if (linkMatch) {
-        parts.push(
-          <a key={key} href={linkMatch[2]} target="_blank" rel="noreferrer">
-            {linkMatch[1]}
-          </a>
-        );
-      } else {
-        parts.push(token);
-      }
-    } else if (token.startsWith("`")) {
-      parts.push(<code key={key}>{token.slice(1, -1)}</code>);
-    } else if (token.startsWith("**") || token.startsWith("__")) {
-      parts.push(<strong key={key}>{token.slice(2, -2)}</strong>);
-    } else if (token.startsWith("*") || token.startsWith("_")) {
-      parts.push(<em key={key}>{token.slice(1, -1)}</em>);
-    } else {
-      parts.push(token);
-    }
-
-    lastIndex = pattern.lastIndex;
-  }
-
-  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
-  return parts;
-}
-
-function parseMarkdownBlocks(content) {
-  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
-  const blocks = [];
-  let i = 0;
-
-  const collectParagraph = () => {
-    const paragraph = [];
-    while (i < lines.length) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      if (!trimmed) break;
-      if (/^```/.test(trimmed) || /^#{1,3}\s+/.test(trimmed) || /^>\s?/.test(trimmed) || /^([-*•]|\d+[.)])\s+/.test(trimmed)) break;
-      paragraph.push(trimmed);
-      i += 1;
-    }
-    if (paragraph.length) blocks.push({ type: "paragraph", text: paragraph.join(" ") });
-  };
-
-  while (i < lines.length) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-
-    if (!trimmed) {
-      i += 1;
-      continue;
-    }
-
-    if (/^```/.test(trimmed)) {
-      const language = trimmed.replace(/^```/, "").trim();
-      i += 1;
-      const code = [];
-      while (i < lines.length && !/^```/.test(lines[i].trim())) {
-        code.push(lines[i]);
-        i += 1;
-      }
-      if (i < lines.length) i += 1;
-      blocks.push({ type: "code", language, text: code.join("\n") });
-      continue;
-    }
-
-    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-    if (heading) {
-      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
-      i += 1;
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      const quote = [];
-      while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
-        quote.push(lines[i].trim().replace(/^>\s?/, ""));
-        i += 1;
-      }
-      blocks.push({ type: "quote", text: quote.join(" ") });
-      continue;
-    }
-
-    if (/^([-*•]|\d+[.)])\s+/.test(trimmed)) {
-      const ordered = /^\d+[.)]\s+/.test(trimmed);
-      const items = [];
-
-      while (i < lines.length) {
-        const item = lines[i].trim();
-
-        if (!item) {
-          let nextIndex = i + 1;
-          while (nextIndex < lines.length && !lines[nextIndex].trim()) nextIndex += 1;
-          const nextItem = lines[nextIndex]?.trim() || "";
-          const nextLooksLikeSameList =
-            /^([-*•]|\d+[.)])\s+/.test(nextItem) && /^\d+[.)]\s+/.test(nextItem) === ordered;
-          if (nextLooksLikeSameList) {
-            i = nextIndex;
-            continue;
-          }
-          break;
-        }
-
-        const itemOrdered = /^\d+[.)]\s+/.test(item);
-        if (!/^([-*•]|\d+[.)])\s+/.test(item) || itemOrdered !== ordered) break;
-        items.push(item.replace(/^([-*•]|\d+[.)])\s+/, ""));
-        i += 1;
-      }
-      blocks.push({ type: ordered ? "ordered-list" : "list", items });
-      continue;
-    }
-
-    collectParagraph();
-  }
-
-  return blocks;
-}
-
-function MessageContent({ content }) {
-  const blocks = useMemo(() => parseMarkdownBlocks(content), [content]);
-  if (!blocks.length) return null;
-
-  return (
-    <Box className="chat-markdown">
-      {blocks.map((block, index) => {
-        if (block.type === "heading") {
-          const size = block.level === 1 ? "lg" : block.level === 2 ? "md" : "sm";
-          return (
-            <Text key={index} fw={800} size={size} mt={index ? 8 : 0} mb={4} lh={1.25}>
-              {renderInlineMarkdown(block.text)}
-            </Text>
-          );
-        }
-
-        if (block.type === "code") {
-          return (
-            <Box key={index} component="pre" className="chat-markdown-code">
-              <code>{block.text}</code>
-            </Box>
-          );
-        }
-
-        if (block.type === "quote") {
-          return (
-            <Box key={index} className="chat-markdown-quote">
-              {renderInlineMarkdown(block.text)}
-            </Box>
-          );
-        }
-
-        if (block.type === "list" || block.type === "ordered-list") {
-          const Component = block.type === "ordered-list" ? "ol" : "ul";
-          return (
-            <Box key={index} component={Component} className="chat-markdown-list">
-              {block.items.map((item, itemIndex) => (
-                <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
-              ))}
-            </Box>
-          );
-        }
-
-        return (
-          <Text key={index} size="sm" lh={1.55} className="chat-markdown-p">
-            {renderInlineMarkdown(block.text)}
-          </Text>
-        );
-      })}
-    </Box>
-  );
-}
 
 const DEFAULT_CHAT_TITLE_VALUES = new Set([
   "New chat",
@@ -665,6 +481,29 @@ export default function ChatInput() {
       } else {
         const savedState = loadPersistedChat(publicUserId);
         if (!applyPersistedChatState(savedState)) resetLocalChatForAccountSwitch();
+      }
+
+      let seed = null;
+      try {
+        seed = window.localStorage?.getItem(CHAT_SEED_KEY);
+        if (seed) window.localStorage.removeItem(CHAT_SEED_KEY);
+      } catch {}
+      if (seed && mounted) {
+        const seededConversation = [
+          ...defaultConversation,
+          { role: "assistant", content: seed },
+        ];
+        setMessage("");
+        setAttachments([]);
+        setConversation(seededConversation);
+        conversationRef.current = seededConversation;
+        setCurrentConversationId(null);
+        setCurrentConversationTitle(null);
+        currentConversationIdRef.current = null;
+        currentConversationTitleRef.current = null;
+        lastSavedJsonRef.current = "";
+        setAutoSaveStatus("idle");
+        setSaveNotice("");
       }
 
       loadSavedConversations({ userId: publicUserId, silent: true });
@@ -1091,16 +930,6 @@ export default function ChatInput() {
     setLastContextCount(null);
     setLastAvailablePosts(null);
   };
-
-  useEffect(() => {
-    try {
-      const seed = window.localStorage?.getItem(CHAT_SEED_KEY);
-      if (!seed) return;
-      window.localStorage.removeItem(CHAT_SEED_KEY);
-      handleNewConversation();
-      setConversation([...defaultConversation, { role: "assistant", content: seed }]);
-    } catch {}
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLoadConversation = async (conversationId) => {
     if (!conversationId) return;
@@ -1670,7 +1499,7 @@ export default function ChatInput() {
                         ) : null}
                       </Group>
 
-                      <MessageContent content={entry.content} />
+                      <MarkdownContent content={entry.content} />
 
                       {entry.attachments?.length ? (
                         <Group gap="xs" mt={8} wrap="wrap">
