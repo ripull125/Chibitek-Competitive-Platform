@@ -17,6 +17,7 @@ import { lookupInstagramInput } from "./instagramApi.js";
 import { lookupTikTokInput } from "./tiktokApi.js";
 import { lookupRedditInput } from "./redditApi.js";
 import { scrapeCreators, scrapeCreatorsPaginated } from "./utils/scrapeCreators.js";
+import { collectCerebrasApiKeys } from "./utils/envKeys.js";
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
@@ -151,10 +152,13 @@ const {
 
 const githubAiEndpoint = 'https://models.github.ai/inference';
 const cerebrasEndpoint = CEREBRAS_BASE_URL || 'https://api.cerebras.ai/v1';
-const cerebrasEndpointAlt = 'https://api.cerebras.ai';
 const openaiEndpoint = OPENAI_BASE_URL || 'https://api.openai.com/v1';
 const githubFallbackModel = process.env.CHAT_MODEL_GITHUB_FALLBACK || 'openai/gpt-4o-mini';
-const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || 'llama3.1-70b';
+const cerebrasFallbackModels = (process.env.CHAT_MODEL_CEREBRAS_FALLBACKS || 'gpt-oss-120b,llama3.1-8b,qwen-3-235b-a22b-instruct-2507,zai-glm-4.7')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const cerebrasFallbackModel = process.env.CHAT_MODEL_CEREBRAS_FALLBACK || cerebrasFallbackModels[0] || 'gpt-oss-120b';
 
 function loadIndexedEnvValues(prefix, { start = 1, end = 20 } = {}) {
   const values = [];
@@ -177,7 +181,7 @@ function resolveRequestedProvider(rawProvider) {
   }
 
   if (GITHUB_KEYS.length) return 'github';
-  if (CEREBRAS_API_KEY || process.env.CEREBRAS_API_KEY1) return 'cerebras';
+  if (CEREBRAS_KEYS.length) return 'cerebras';
   return 'openai';
 }
 
@@ -195,11 +199,7 @@ function nextGithubKey() {
   return GITHUB_KEYS[index];
 }
 
-const CEREBRAS_KEYS = [
-  CEREBRAS_API_KEY,
-  ...(process.env.CEREBRAS_API_KEYS || '').split(',').map((s) => s.trim()).filter(Boolean),
-  ...loadIndexedEnvValues('CEREBRAS_API_KEY', { start: 1, end: 20 }),
-].filter(Boolean);
+const CEREBRAS_KEYS = collectCerebrasApiKeys();
 
 let cerebrasKeyIndex = 0;
 function nextCerebrasKey() {
@@ -228,23 +228,34 @@ function normalizeCerebrasModel(model) {
   const raw = String(model || '').trim();
   if (!raw) return raw;
 
-  const aliases = {
-    'llama-3.1-70b': 'llama3.1-70b',
-    'llama-3.3-70b': 'llama-3.3-70b',
-    'meta/llama-3.1-70b-instruct': 'llama3.1-70b',
-  };
+  const keepLegacy = String(process.env.CEREBRAS_ALLOW_LEGACY_MODELS || '').toLowerCase() === 'true';
+  const aliases = keepLegacy
+    ? {}
+    : {
+      // These public Cerebras model IDs have been deprecated. Route old UI/env
+      // selections to the current production default instead of surfacing a 404.
+      'llama3.1-70b': 'gpt-oss-120b',
+      'llama-3.1-70b': 'gpt-oss-120b',
+      'llama-3.3-70b': 'gpt-oss-120b',
+      'qwen-3-32b': 'gpt-oss-120b',
+      'qwen-3-14b': 'gpt-oss-120b',
+      'deepseek-r1-distill-llama-70b': 'gpt-oss-120b',
+      'meta/llama-3.1-70b-instruct': 'gpt-oss-120b',
+    };
 
   const key = raw.toLowerCase();
   return aliases[key] || raw;
 }
 
 function getCerebrasModelCandidates(primaryModel) {
-  const base = normalizeCerebrasModel(primaryModel);
-  const fallback = normalizeCerebrasModel(cerebrasFallbackModel);
   const candidates = [
-    base,
-    fallback,
-    'llama3.1-70b',
+    normalizeCerebrasModel(primaryModel),
+    normalizeCerebrasModel(cerebrasFallbackModel),
+    ...cerebrasFallbackModels.map(normalizeCerebrasModel),
+    'gpt-oss-120b',
+    'llama3.1-8b',
+    'qwen-3-235b-a22b-instruct-2507',
+    'zai-glm-4.7',
   ].filter(Boolean);
   return Array.from(new Set(candidates));
 }
@@ -266,7 +277,7 @@ function resolveChatConfig({ requestedProvider, requestedModel } = {}) {
   }
 
   if (provider === 'cerebras') {
-    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'llama3.1-70b');
+    const model = normalizeCerebrasModel(modelOverride || CHAT_MODEL_CEREBRAS || CEREBRAS_MODEL || 'gpt-oss-120b');
     return {
       provider,
       model,
@@ -1356,18 +1367,15 @@ ${attachmentContext}` }]
       });
     }
 
-    const maxAttempts = chatConfig.provider === 'github'
-      ? Math.max(1, GITHUB_KEYS.length)
-      : chatConfig.provider === 'cerebras'
-        ? Math.max(1, CEREBRAS_KEYS.length || 1) * 4
-        : 1;
-
     const cerebrasModelCandidates = chatConfig.provider === 'cerebras'
       ? getCerebrasModelCandidates(chatConfig.model)
       : [];
+    const maxAttempts = chatConfig.provider === 'github'
+      ? Math.max(1, GITHUB_KEYS.length)
+      : chatConfig.provider === 'cerebras'
+        ? Math.max(1, CEREBRAS_KEYS.length || 1) * Math.max(1, cerebrasModelCandidates.length || 1)
+        : 1;
     let cerebrasModelIndex = 0;
-    let triedCerebrasAltBase = false;
-
     let response;
     let lastError = null;
     let attemptedUnknownModelFallback = false;
@@ -1414,17 +1422,6 @@ ${attachmentContext}` }]
             };
             continue;
           }
-
-          if (cerebras404 && !triedCerebrasAltBase) {
-            triedCerebrasAltBase = true;
-            chatConfig = {
-              ...chatConfig,
-              baseUrl: cerebrasEndpointAlt,
-              apiKey: nextCerebrasKey() || chatConfig.apiKey,
-            };
-            continue;
-          }
-
           const shouldRetryCerebras = (unauthorized || rateLimited) && attempt < maxAttempts - 1;
           if (shouldRetryCerebras) {
             chatConfig = {
@@ -2177,27 +2174,15 @@ app.delete("/api/posts", async (req, res) => {
     return res.status(authErr.status || 401).json({ error: authErr.message || 'Unable to resolve signed-in user.' });
   }
 
-  const platformIdRaw = req.query.platform_id ?? req.query.platformId ?? null;
-  const platformId = platformIdRaw == null || platformIdRaw === "" ? null : Number(platformIdRaw);
-  if (platformIdRaw != null && !Number.isFinite(platformId)) {
-    return res.status(400).json({ error: "platform_id must be a number." });
-  }
-
   try {
-    let query = supabase
+    const { error: deleteError } = await supabase
       .from("posts")
       .delete()
       .eq("user_id", userId);
-
-    if (platformId != null) {
-      query = query.eq("platform_id", platformId);
-    }
-
-    const { error: deleteError } = await query;
     if (deleteError) throw deleteError;
-    res.json({ deleted: true, platform_id: platformId });
+    res.json({ deleted: true });
   } catch (err) {
-    console.error(platformId != null ? "Delete platform posts failed:" : "Delete all posts failed:", err);
+    console.error("Delete all posts failed:", err);
     res.status(500).json({ error: err.message });
   }
 });

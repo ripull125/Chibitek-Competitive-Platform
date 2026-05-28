@@ -1,14 +1,25 @@
 const AI_SETTINGS_STORAGE_KEY = "chibitek-ai-settings";
 const AI_SETTINGS_EVENT = "chibitek:ai-settings-changed";
+
 const MODEL_CATALOG = [
     // GitHub Models
     { provider: "github", model: "openai/gpt-5", label: "GPT-5 (GitHub)" },
     { provider: "github", model: "openai/gpt-5-mini", label: "GPT-5 Mini (GitHub)" },
     { provider: "github", model: "openai/gpt-5-nano", label: "GPT-5 Nano (GitHub)" },
+    { provider: "github", model: "openai/gpt-4.1", label: "GPT-4.1 (GitHub)" },
+    { provider: "github", model: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini (GitHub)" },
+    { provider: "github", model: "openai/gpt-4o", label: "GPT-4o (GitHub)" },
+    { provider: "github", model: "openai/gpt-4o-mini", label: "GPT-4o Mini (GitHub)" },
     { provider: "github", model: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (GitHub)" },
     { provider: "github", model: "anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku (GitHub)" },
-    // Cerebras public endpoint models kept for token efficiency + availability
+    { provider: "github", model: "meta/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct (GitHub)" },
+    { provider: "github", model: "meta/llama-3.1-70b-instruct", label: "Llama 3.1 70B Instruct (GitHub)" },
+    { provider: "github", model: "mistral/mistral-large", label: "Mistral Large (GitHub)" },
+    { provider: "github", model: "mistral/mistral-small", label: "Mistral Small (GitHub)" },
+    // Cerebras public endpoint models
     { provider: "cerebras", model: "gpt-oss-120b", label: "GPT OSS 120B (Cerebras)" },
+    { provider: "cerebras", model: "llama3.1-8b", label: "Llama 3.1 8B (Cerebras)" },
+    { provider: "cerebras", model: "qwen-3-235b-a22b-instruct-2507", label: "Qwen 3 235B Instruct Preview (Cerebras)" },
     { provider: "cerebras", model: "zai-glm-4.7", label: "Z.ai GLM 4.7 Preview (Cerebras)" },
 ].map((item) => ({
     ...item,
@@ -23,25 +34,12 @@ export const AI_MODEL_OPTIONS = MODEL_CATALOG.map((item) => ({
 export const DEFAULT_MODEL_CHOICE = "github:openai/gpt-5-nano";
 
 const LEGACY_MODEL_CHOICE_ALIASES = {
-    // Retired Cerebras public endpoints fall forward to the safest production model.
-    "cerebras:llama3.1-8b": "cerebras:gpt-oss-120b",
     "cerebras:llama3.1-70b": "cerebras:gpt-oss-120b",
     "cerebras:llama-3.1-70b": "cerebras:gpt-oss-120b",
     "cerebras:llama-3.3-70b": "cerebras:gpt-oss-120b",
-    "cerebras:qwen-3-235b-a22b-instruct-2507": "cerebras:gpt-oss-120b",
     "cerebras:qwen-3-32b": "cerebras:gpt-oss-120b",
     "cerebras:qwen-3-14b": "cerebras:gpt-oss-120b",
     "cerebras:deepseek-r1-distill-llama-70b": "cerebras:gpt-oss-120b",
-
-    // Removed GitHub UI options fall back to the lightweight default.
-    "github:openai/gpt-4.1": DEFAULT_MODEL_CHOICE,
-    "github:openai/gpt-4.1-mini": DEFAULT_MODEL_CHOICE,
-    "github:openai/gpt-4o": DEFAULT_MODEL_CHOICE,
-    "github:openai/gpt-4o-mini": DEFAULT_MODEL_CHOICE,
-    "github:meta/llama-3.3-70b-instruct": DEFAULT_MODEL_CHOICE,
-    "github:meta/llama-3.1-70b-instruct": DEFAULT_MODEL_CHOICE,
-    "github:mistral/mistral-large": DEFAULT_MODEL_CHOICE,
-    "github:mistral/mistral-small": DEFAULT_MODEL_CHOICE,
 };
 
 export function normalizeProvider(value) {
@@ -62,7 +60,6 @@ export function normalizeModelChoice(value) {
     if (getModelMeta(aliased)) return aliased;
     return DEFAULT_MODEL_CHOICE;
 }
-
 
 export function getDefaultAiSettings() {
     const modelChoice = DEFAULT_MODEL_CHOICE;
@@ -110,8 +107,7 @@ export function loadAiSettings() {
 export function saveAiSettings(next) {
     if (typeof window === "undefined") return;
 
-    const existing = loadAiSettings();
-    const modelChoice = normalizeModelChoice(next?.modelChoice ?? existing.modelChoice);
+    const modelChoice = normalizeModelChoice(next?.modelChoice);
     const meta = getModelMeta(modelChoice);
     const payload = {
         modelChoice,
