@@ -65,6 +65,7 @@ import { apiUrl } from "../utils/api";
 import classes from "./DashboardPage.module.css";
 import { useTranslation } from "react-i18next";
 import { getModelMeta, loadAiSettings } from "../utils/aiModelSettings";
+import MarkdownContent from "../utils/MarkdownContent";
 import { analyzeUniversalPosts, convertSavedPosts } from "./DataConverter";
 import { useAppTour } from "../tour/AppTourProvider.jsx";
 
@@ -1078,7 +1079,7 @@ function AISummary({ analytics, userId }) {
       {summary ? (
         <Stack gap="md">
           <Paper withBorder p="md" radius="md" className={classes.summaryBox}>
-            <Text size="sm" style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{summary}</Text>
+            <MarkdownContent content={summary} />
           </Paper>
           <Group>
             <Button variant="light" size="sm" onClick={generate} loading={loading}>{t("dashboard.regenerate", { defaultValue: "Regenerate" })}</Button>
