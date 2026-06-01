@@ -1,18 +1,121 @@
-# Chibitek-Competitive-Platform
-An AI-powered web app that automatically collects competitor marketing content, analyzes it using NLP, and delivers insights to help Chibitek identify trends and differentiate its messaging.
+# Chibitek Competitive Platform
 
-Form: Cloud-hosted web app.
+An AI-powered web app that collects competitor content from multiple social media platforms, analyzes it using LLMs, and delivers insights to help businesses identify trends, monitor competitors, and improve marketing strategy.
 
-Firebase Hosting - got a basic URL, still have to connect to backend
+Form: Cloud-hosted web application
 
-Frontend: Node.js/React (Mantine) to display buttons and connect supabase to front end
+Frontend: React (Vite) + Mantine UI
 
-Database: Supabase 
+Backend: Node.js + Express
 
-Data Scraping & Collection: Puppeteer (Node.js library) scraping BooksToScrape website
+Database & Authentication: Supabase
 
-Automation: Google Cloud Scheduler to automatically call a function once every hour (for now) to scrape data
+Hosting: Firebase Hosting
 
-Graphing & Visualization: Recharts to display number of instances of keywords, currently unfiltered
+Data Collection: ScrapeCreators APIs and platform-specific integrations for X, LinkedIn, Instagram, YouTube, Reddit, and TikTok
 
-LLM: GPT 5 Mini + API tokens
+Visualization: Recharts for engagement metrics, keyword trends, and platform comparisons
+
+LLM: OpenAI, Cerebras
+
+## Main Features
+
+* Competitor Lookup across multiple social media platforms
+* Username, URL, and keyword search support
+* AI-generated competitive insights and summaries
+* Dashboard analytics and trend visualization
+* Saved Posts system tied to user accounts
+* Multi-user authentication through Supabase
+* Exportable reports and competitor research
+
+## Environment Variables
+
+Frontend:
+
+* VITE_SUPABASE_URL
+* VITE_SUPABASE_ANON_KEY
+* VITE_API_URL
+
+Backend:
+
+* SUPABASE_URL
+* SUPABASE_SERVICE_ROLE_KEY
+* OPENAI_API_KEY
+* SCRAPECREATORS_API_KEY
+* FIREBASE_PROJECT_ID
+* PORT
+
+## Deployment
+
+### Frontend Deployment
+
+Build the React application:
+
+```bash
+npm run build
+```
+
+Deploy to Firebase Hosting:
+
+```bash
+firebase deploy
+```
+
+### Backend Deployment (Google Cloud Run)
+
+Build container:
+
+```bash
+gcloud builds submit --tag gcr.io/PROJECT_ID/chibitek-api
+```
+
+Deploy container:
+
+```bash
+gcloud run deploy chibitek-api \
+  --image gcr.io/PROJECT_ID/chibitek-api \
+  --platform managed \
+  --allow-unauthenticated \
+  --region us-central1
+```
+
+Update the frontend environment variable:
+
+```env
+VITE_API_URL=https://YOUR-CLOUD-RUN-URL
+```
+
+Redeploy Firebase Hosting after updating the API URL.
+
+## Token Usage
+
+Cerebras and Github tokens are used when generating: 
+
+* Competitive summaries
+* Marketing insights
+* Trend analysis
+* Dashboard recommendations
+
+ScrapeCreators credits are consumed whenever social media content is collected from supported platforms.
+
+Token and credit usage depends on:
+
+* Number of searches
+* Number of platforms searched
+* Size of AI-generated responses
+
+## Architecture
+
+User → React Frontend → Express Backend → Supabase Database
+
+User → React Frontend → Express Backend → OpenAI GPT-5 Mini
+
+User → React Frontend → Express Backend → ScrapeCreators APIs
+
+## Future Improvements
+
+* Email reports
+* Additional platform integrations
+* More advanced dashboard filtering
+* Historical trend tracking
+* Improved AI insight generation
