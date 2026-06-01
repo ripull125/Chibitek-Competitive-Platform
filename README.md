@@ -18,6 +18,26 @@ Visualization: Recharts for engagement metrics, keyword trends, and platform com
 
 LLM: OpenAI, Cerebras
 
+## Configuration
+
+This project uses Supabase, Firebase Hosting, Google Cloud Run, the OpenAI API, and ScrapeCreators.
+
+API keys and tokens are not included in the repository for security reasons. Before running the project, create a `.env` file using the provided `.env.example` template and replace the placeholder values with your own credentials.
+
+Required environment variables:
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_API_URL=
+
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+OPENAI_API_KEY=
+SCRAPECREATORS_API_KEY=
+PORT=
+```
+
 ## Main Features
 
 * Competitor Lookup across multiple social media platforms
